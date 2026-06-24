@@ -1,0 +1,16 @@
+{
+  "name": "claude-terminal",
+  "version": "0.0.1",
+  "description": "定制化终端（Electron + PowerShell 7），适配 Windows",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "smoke:pty": "node scripts/smoke-pty.js"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.12"
+  },
+  "devDependencies": {
+    "electron": "^42.5.0"
+  }
+}
