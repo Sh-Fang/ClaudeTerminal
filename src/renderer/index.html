@@ -124,96 +124,121 @@
 
     <div id="settingsScrim" class="scrim" hidden>
       <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
-        <h2 id="set-title">设置</h2>
-        <p class="sub">改动即时生效；关闭面板即持久化。</p>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="设置分区">
+            <button class="set-nav-item active" data-section="appearance" type="button">
+              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18 4.5 4.5 0 0 1 0-9 4.5 4.5 0 0 0 0-9z"/></svg></span>
+              外观
+            </button>
+            <button class="set-nav-item" data-section="terminal" type="button">
+              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><polyline points="6.5 9 10 12 6.5 15"/><line x1="12.5" y1="15" x2="17.5" y2="15"/></svg></span>
+              终端
+            </button>
+            <button class="set-nav-item" data-section="defaults" type="button">
+              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              新建默认值
+            </button>
+            <button class="set-nav-item" data-section="claude" type="button">
+              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 0-9 9"/><path d="M12 3v9l6 3"/></svg></span>
+              Claude Code
+            </button>
+          </nav>
 
-        <div class="set-section">
-          <div class="set-section-title">外观</div>
-          <div class="set-row">
-            <label for="set-font-family">字体族</label>
-            <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="set-row two">
-            <div>
-              <label for="set-font-size">字号 (px)</label>
-              <input id="set-font-size" type="number" min="8" max="40" step="1" />
-            </div>
-            <div>
-              <label for="set-line-height">行高</label>
-              <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
-            </div>
-          </div>
-          <div class="set-row">
-            <label for="set-theme">主题</label>
-            <select id="set-theme">
-              <option value="vscode-dark">VSCode Dark</option>
-              <option value="vercel-dark">Vercel Dark</option>
-              <option value="one-light">One Light</option>
-            </select>
-          </div>
-        </div>
+          <div class="settings-pane">
+            <h2 id="set-title" class="set-pane-title">设置</h2>
 
-        <div class="set-section">
-          <div class="set-section-title">终端</div>
-          <div class="set-row two">
-            <div>
-              <label for="set-cursor-style">光标样式</label>
-              <select id="set-cursor-style">
-                <option value="block">block</option>
-                <option value="underline">underline</option>
-                <option value="bar">bar</option>
-              </select>
+            <div class="set-section" data-section="appearance">
+              <div class="set-row">
+                <label for="set-font-family">字体族</label>
+                <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="set-row two">
+                <div>
+                  <label for="set-font-size">字号 (px)</label>
+                  <input id="set-font-size" type="number" min="8" max="40" step="1" />
+                </div>
+                <div>
+                  <label for="set-line-height">行高</label>
+                  <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
+                </div>
+              </div>
+              <div class="set-row">
+                <label for="set-theme">主题</label>
+                <select id="set-theme">
+                  <option value="vscode-dark">VSCode Dark</option>
+                  <option value="vercel-dark">Vercel Dark</option>
+                  <option value="one-light">One Light</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label for="set-scrollback">回滚缓冲（行）</label>
-              <input id="set-scrollback" type="number" min="100" max="100000" step="500" />
+
+            <div class="set-section" data-section="terminal" hidden>
+              <div class="set-row">
+                <label>光标样式</label>
+                <div class="seg-group" id="set-cursor-style" role="radiogroup" aria-label="光标样式">
+                  <button class="seg-item" data-val="block" type="button" role="radio">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="2" y="3" width="6" height="8" fill="currentColor"/></svg>
+                    <span>block</span>
+                  </button>
+                  <button class="seg-item" data-val="underline" type="button" role="radio">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="2" y="10" width="6" height="2" fill="currentColor"/></svg>
+                    <span>underline</span>
+                  </button>
+                  <button class="seg-item" data-val="bar" type="button" role="radio">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="2" y="3" width="2" height="8" fill="currentColor"/></svg>
+                    <span>bar</span>
+                  </button>
+                </div>
+              </div>
+              <div class="set-row">
+                <label for="set-scrollback">回滚缓冲（行）</label>
+                <input id="set-scrollback" type="number" min="100" max="100000" step="500" />
+              </div>
+              <div class="field-check">
+                <label>
+                  <input id="set-cursor-blink" type="checkbox" />
+                  <span>光标闪烁</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="set-section" data-section="defaults" hidden>
+              <div class="set-row">
+                <label for="set-default-cwd">默认 cwd（新建分组预填）</label>
+                <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field-check">
+                <label>
+                  <input id="set-default-cc" type="checkbox" />
+                  <span>新建标签默认勾选「自动启动 Claude Code」</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="set-section" data-section="claude" hidden>
+              <div class="set-row">
+                <label for="set-claude-path">claude 可执行路径（留空 = 走 PATH）</label>
+                <div class="row-with-btn">
+                  <input id="set-claude-path" class="mono" type="text" autocomplete="off" spellcheck="false"
+                    placeholder="例如 C:\nvm4w\nodejs\claude.cmd" />
+                  <button id="set-claude-detect" class="btn btn-secondary" type="button">自动检测</button>
+                </div>
+              </div>
+              <div class="field-check">
+                <label>
+                  <input id="set-disable-update" type="checkbox" />
+                  <span>禁止 cc 自动升级（写 <code>DISABLE_AUTOUPDATER=1</code> 到 Windows 用户环境变量，所有终端生效）</span>
+                </label>
+                <div id="set-disable-update-status" class="set-hint"></div>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button id="set-reset" class="btn btn-secondary">恢复默认</button>
+              <div style="flex:1"></div>
+              <button id="set-close" class="btn btn-primary">完成</button>
             </div>
           </div>
-          <div class="field-check">
-            <label>
-              <input id="set-cursor-blink" type="checkbox" />
-              <span>光标闪烁</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="set-section">
-          <div class="set-section-title">新建默认值</div>
-          <div class="set-row">
-            <label for="set-default-cwd">默认 cwd（新建分组预填）</label>
-            <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="field-check">
-            <label>
-              <input id="set-default-cc" type="checkbox" />
-              <span>新建标签默认勾选「自动启动 Claude Code」</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="set-section">
-          <div class="set-section-title">Claude Code</div>
-          <div class="set-row">
-            <label for="set-claude-path">claude 可执行路径（留空 = 走 PATH）</label>
-            <div class="row-with-btn">
-              <input id="set-claude-path" class="mono" type="text" autocomplete="off" spellcheck="false"
-                placeholder="例如 C:\nvm4w\nodejs\claude.cmd" />
-              <button id="set-claude-detect" class="btn btn-secondary" type="button">自动检测</button>
-            </div>
-          </div>
-          <div class="field-check">
-            <label>
-              <input id="set-disable-update" type="checkbox" />
-              <span>禁止 cc 自动升级（写 <code>DISABLE_AUTOUPDATER=1</code> 到 Windows 用户环境变量，所有终端生效）</span>
-            </label>
-            <div id="set-disable-update-status" class="set-hint"></div>
-          </div>
-        </div>
-
-        <div class="actions">
-          <button id="set-reset" class="btn btn-secondary">恢复默认</button>
-          <div style="flex:1"></div>
-          <button id="set-close" class="btn btn-primary">完成</button>
         </div>
       </div>
     </div>

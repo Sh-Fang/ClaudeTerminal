@@ -15,7 +15,7 @@ export class SettingsPanel {
   private fSize = document.getElementById('set-font-size') as HTMLInputElement
   private fLine = document.getElementById('set-line-height') as HTMLInputElement
   private fTheme = document.getElementById('set-theme') as HTMLSelectElement
-  private fCursorStyle = document.getElementById('set-cursor-style') as HTMLSelectElement
+  private fCursorGroup = document.getElementById('set-cursor-style') as HTMLDivElement
   private fCursorBlink = document.getElementById('set-cursor-blink') as HTMLInputElement
   private fScrollback = document.getElementById('set-scrollback') as HTMLInputElement
   private fDefaultCwd = document.getElementById('set-default-cwd') as HTMLInputElement
@@ -26,6 +26,14 @@ export class SettingsPanel {
   private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
   private upUpdHintTimer: number | null = null
   private lastDisableUpd: boolean | null = null
+
+  private navButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('.set-nav-item')
+  )
+  private sections = Array.from(
+    document.querySelectorAll<HTMLDivElement>('.set-section[data-section]')
+  )
+  private currentCursor: CursorStyle = 'block'
 
   constructor(private hooks: SettingsPanelHooks) {
     this.btn.addEventListener('click', () => this.open())
@@ -41,9 +49,22 @@ export class SettingsPanel {
       if (e.key === 'Escape' && !this.scrim.hidden) this.close()
     })
 
-    // 各字段统一监听：input 实时改、change 兜底
+    for (const nav of this.navButtons) {
+      nav.addEventListener('click', () => this.activateSection(nav.dataset.section || 'appearance'))
+    }
+
+    for (const item of this.fCursorGroup.querySelectorAll<HTMLButtonElement>('.seg-item')) {
+      item.addEventListener('click', () => {
+        const v = item.dataset.val as CursorStyle
+        if (!v) return
+        this.currentCursor = v
+        this.paintCursorActive()
+        this.commitChange()
+      })
+    }
+
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
-    const changeOnly = [this.fTheme, this.fCursorStyle, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd]
+    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
@@ -56,8 +77,23 @@ export class SettingsPanel {
 
   open(): void {
     this.bindFromSettings(this.hooks.getSettings())
+    this.activateSection('appearance')
     void this.refreshUpdHint()
     this.scrim.hidden = false
+  }
+  close(): void {
+    this.scrim.hidden = true
+  }
+
+  private activateSection(name: string): void {
+    for (const nav of this.navButtons) nav.classList.toggle('active', nav.dataset.section === name)
+    for (const sec of this.sections) sec.hidden = sec.dataset.section !== name
+  }
+
+  private paintCursorActive(): void {
+    for (const item of this.fCursorGroup.querySelectorAll<HTMLButtonElement>('.seg-item')) {
+      item.classList.toggle('active', item.dataset.val === this.currentCursor)
+    }
   }
 
   private async refreshUpdHint(): Promise<void> {
@@ -84,16 +120,14 @@ export class SettingsPanel {
     if (this.upUpdHintTimer) window.clearTimeout(this.upUpdHintTimer)
     this.upUpdHintTimer = window.setTimeout(() => void this.refreshUpdHint(), 1800)
   }
-  close(): void {
-    this.scrim.hidden = true
-  }
 
   private bindFromSettings(s: Settings): void {
     this.fFamily.value = s.font.family
     this.fSize.value = String(s.font.size)
     this.fLine.value = String(s.font.lineHeight)
     this.fTheme.value = s.terminal.theme
-    this.fCursorStyle.value = s.cursor.style
+    this.currentCursor = s.cursor.style
+    this.paintCursorActive()
     this.fCursorBlink.checked = s.cursor.blink
     this.fScrollback.value = String(s.terminal.scrollback)
     this.fDefaultCwd.value = s.defaults.cwd
@@ -141,7 +175,7 @@ export class SettingsPanel {
         lineHeight: this.clamp(Number(this.fLine.value), 1.0, 2.0, cur.font.lineHeight)
       },
       cursor: {
-        style: (this.fCursorStyle.value as CursorStyle) || cur.cursor.style,
+        style: this.currentCursor || cur.cursor.style,
         blink: this.fCursorBlink.checked
       },
       terminal: {
@@ -156,7 +190,6 @@ export class SettingsPanel {
       disableAutoupdater: this.fDisableUpd.checked
     }
     this.hooks.setSettings(next)
-    // 只在勾选状态发生翻转时去操作注册表，避免重复 setx
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {
       void this.syncSystemEnv(next.disableAutoupdater)
     }
