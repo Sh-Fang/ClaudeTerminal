@@ -10,7 +10,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "smoke:pty": "node scripts/smoke-pty.js",
-    "smoke:electron": "electron scripts/electron-smoke.js"
+    "smoke:electron": "electron scripts/electron-smoke.js",
+    "icon": "pwsh -NoProfile -File scripts/generate-icon.ps1"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12",
