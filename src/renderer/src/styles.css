@@ -98,9 +98,7 @@ body {
 .brand-icon {
   width: 18px;
   height: 18px;
-  border-radius: var(--r-xs);
-  background: linear-gradient(135deg, var(--g-prev-start), var(--g-prev-end));
-  color: #ffffff;
+  color: var(--ink);
   display: inline-grid;
   place-items: center;
   flex: 0 0 18px;
