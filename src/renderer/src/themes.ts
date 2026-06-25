@@ -11,6 +11,7 @@ export interface Settings {
   defaults: { cwd: string; autoLaunchCC: boolean }
   claudePath: string
   disableAutoupdater: boolean
+  lastUsedCwd: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,7 +25,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   defaults: { cwd: '', autoLaunchCC: true },
   claudePath: '',
-  disableAutoupdater: true
+  disableAutoupdater: true,
+  lastUsedCwd: ''
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

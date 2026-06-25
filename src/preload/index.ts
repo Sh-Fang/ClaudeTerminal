@@ -80,6 +80,7 @@ export interface Settings {
   defaults: { cwd: string; autoLaunchCC: boolean }
   claudePath: string
   disableAutoupdater: boolean
+  lastUsedCwd: string
 }
 
 export interface SessionMeta {
@@ -103,6 +104,7 @@ export interface TermBridge {
   claudeSessionMeta(sessionId: string): Promise<SessionMeta>
   claudeDetect(): Promise<string | null>
   hookPaths(): Promise<HookPaths>
+  pickDirectory(defaultPath?: string): Promise<string | null>
   loadSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<Settings>
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
@@ -131,6 +133,7 @@ const api: TermBridge = {
   claudeSessionMeta: (sessionId) => ipcRenderer.invoke('claude:sessionMeta', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),
+  pickDirectory: (defaultPath) => ipcRenderer.invoke('dialog:pickDirectory', defaultPath),
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),

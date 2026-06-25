@@ -26,6 +26,7 @@ export interface Settings {
   }
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径
   disableAutoupdater: boolean  // true = spawn pwsh 时注入 DISABLE_AUTOUPDATER=1
+  lastUsedCwd: string  // 最近一次新建分组选择的 cwd，下次预填用
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,7 +40,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   defaults: { cwd: '', autoLaunchCC: true },
   claudePath: '',
-  disableAutoupdater: true
+  disableAutoupdater: true,
+  lastUsedCwd: ''
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -86,7 +88,8 @@ function normalize(raw: unknown): Settings {
     disableAutoupdater:
       typeof r.disableAutoupdater === 'boolean'
         ? r.disableAutoupdater
-        : DEFAULT_SETTINGS.disableAutoupdater
+        : DEFAULT_SETTINGS.disableAutoupdater,
+    lastUsedCwd: typeof r.lastUsedCwd === 'string' ? r.lastUsedCwd : DEFAULT_SETTINGS.lastUsedCwd
   }
 }
 

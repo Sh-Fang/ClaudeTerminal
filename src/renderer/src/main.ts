@@ -258,15 +258,17 @@ function ensureGroup(opts: { name: string; cwd: string }): Group {
 }
 
 async function newGroup(): Promise<void> {
+  const prefilledCwd = settings.lastUsedCwd || settings.defaults.cwd
   openModal({
     kind: 'new-group',
     title: '新建分组',
     sub: '分组以路径为单位。组内可挂多个标签。',
     name: '新分组',
-    cwd: settings.defaults.cwd,
+    cwd: prefilledCwd,
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
     okLabel: '创建',
+    onPickCwd: (cur) => window.term.pickDirectory(cur || prefilledCwd),
     onOk: async (v) => {
       const cwd = v.cwd?.trim() || ''
       const g = ensureGroup({ name: v.name, cwd })
@@ -275,6 +277,11 @@ async function newGroup(): Promise<void> {
       activeTabId = tab.id
       activateUI(tab.id)
       await spawnTabPty(tab)
+      // 记住这次选的路径作为下次预填
+      if (cwd && cwd !== settings.lastUsedCwd) {
+        settings = { ...settings, lastUsedCwd: cwd }
+        void window.term.saveSettings(settings)
+      }
       scheduleSave()
       toast(`已新建分组「${g.name}」`)
     }

@@ -111,12 +111,14 @@ export interface ModalInput {
   showCC?: boolean
   ccChecked?: boolean
   okLabel?: string
+  onPickCwd?: (currentValue: string) => Promise<string | null>
   onOk: (v: { name: string; cwd?: string; autoLaunchCC?: boolean }) => void
 }
 const modalTitle = document.getElementById('modal-title') as HTMLHeadingElement
 const modalSub = document.getElementById('modal-sub') as HTMLParagraphElement
 const modalName = document.getElementById('modal-name') as HTMLInputElement
 const modalCwd = document.getElementById('modal-cwd') as HTMLInputElement
+const modalCwdPick = document.getElementById('modal-cwd-pick') as HTMLButtonElement
 const modalCC = document.getElementById('modal-cc') as HTMLInputElement
 const modalCwdField = document.getElementById('modal-cwd-field') as HTMLDivElement
 const modalCCField = document.getElementById('modal-cc-field') as HTMLDivElement
@@ -125,6 +127,7 @@ const modalCancel = document.getElementById('modal-cancel') as HTMLButtonElement
 
 let modalCb: ModalInput['onOk'] | null = null
 let modalKind: ModalKind = 'new-group'
+let modalPickCb: ModalInput['onPickCwd'] | null = null
 
 export function openModal(cfg: ModalInput): void {
   modalKind = cfg.kind
@@ -136,6 +139,8 @@ export function openModal(cfg: ModalInput): void {
   modalCwdField.style.display = cfg.cwd !== undefined ? '' : 'none'
   modalCCField.style.display = cfg.showCC ? '' : 'none'
   modalOk.textContent = cfg.okLabel ?? '创建'
+  modalPickCb = cfg.onPickCwd ?? null
+  modalCwdPick.style.display = modalPickCb ? '' : 'none'
   modalCb = cfg.onOk
   scrim.hidden = false
   setTimeout(() => {
@@ -173,6 +178,20 @@ modalOk.addEventListener('click', () => {
     else if (e.key === 'Escape') closeModal()
   })
 )
+
+modalCwdPick.addEventListener('click', () => {
+  if (!modalPickCb) return
+  const cb = modalPickCb
+  modalCwdPick.disabled = true
+  void cb(modalCwd.value)
+    .then((picked) => {
+      if (picked) modalCwd.value = picked
+    })
+    .catch(() => {})
+    .finally(() => {
+      modalCwdPick.disabled = false
+    })
+})
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>

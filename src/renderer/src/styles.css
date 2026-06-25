@@ -835,13 +835,18 @@ body {
   min-width: 0;
 }
 .row-with-btn .btn {
-  height: 36px;
+  height: 40px;
   padding: 0 14px;
   font-size: 13px;
   border-radius: var(--r-sm);
   flex: 0 0 auto;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+.row-with-btn .btn svg { display: block; }
+.set-row .row-with-btn .btn { height: 36px; }
 .set-hint {
   font-family: var(--mono);
   font-size: 11px;

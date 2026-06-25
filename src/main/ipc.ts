@@ -1,4 +1,4 @@
-import { BrowserWindow as BrowserWindowClass, ipcMain, shell, type BrowserWindow } from 'electron'
+import { BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
@@ -92,6 +92,17 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   )
 
   ipcMain.handle('hooks:paths', () => getHookPaths())
+
+  ipcMain.handle('dialog:pickDirectory', async (_e, defaultPath?: string) => {
+    const w = getWindow()
+    const res = await dialog.showOpenDialog(w ?? undefined as unknown as BrowserWindow, {
+      title: '选择路径',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined
+    })
+    if (res.canceled || res.filePaths.length === 0) return null
+    return res.filePaths[0]
+  })
 
   ipcMain.on('pty:input', (_e, p: { id: number; data: string }) => {
     writePty(p.id, p.data)
