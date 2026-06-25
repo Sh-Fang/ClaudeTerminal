@@ -275,14 +275,14 @@ async function newGroup(): Promise<void> {
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
     showTabName: true,
-    tabName: '',
+    tabName: 'A',
     okLabel: '创建',
     onPickCwd: (cur) => window.term.pickDirectory(cur || prefilledCwd),
     onOk: async (v) => {
       const cwd = v.cwd?.trim() || ''
       const g = ensureGroup({ name: v.name, cwd })
       sidebar.render()
-      const firstTabName = (v.autoLaunchCC && v.tabName) ? v.tabName : 'A'
+      const firstTabName = v.tabName?.trim() || 'A'
       const tab = makeTab(g, { name: firstTabName, autoLaunchCC: v.autoLaunchCC })
       activeTabId = tab.id
       activateUI(tab.id)

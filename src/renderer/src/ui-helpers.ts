@@ -6,7 +6,7 @@ const toastMsg = document.getElementById('toastMsg') as HTMLSpanElement
 const scrim = document.getElementById('scrim') as HTMLDivElement
 const confirmScrim = document.getElementById('confirmScrim') as HTMLDivElement
 const cfTitle = document.getElementById('cf-title') as HTMLHeadingElement
-const cfMsg = document.getElementById('cf-msg') as HTMLParagraphElement
+const cfMsg = document.getElementById('cf-msg') as HTMLDivElement
 const cfOk = document.getElementById('cf-ok') as HTMLButtonElement
 const cfCancel = document.getElementById('cf-cancel') as HTMLButtonElement
 
@@ -148,7 +148,7 @@ export function openModal(cfg: ModalInput): void {
   modalCC.checked = cfg.ccChecked ?? true
   modalCwdField.style.display = cfg.cwd !== undefined ? '' : 'none'
   modalCCField.style.display = cfg.showCC ? '' : 'none'
-  modalTabName.value = cfg.tabName ?? ''
+  modalTabName.value = cfg.tabName ?? 'A'
   modalShowTabName = !!cfg.showTabName
   syncTabNameVisibility()
   modalOk.textContent = cfg.okLabel ?? '创建'

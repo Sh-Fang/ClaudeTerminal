@@ -594,6 +594,19 @@ body {
 }
 .modal h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.6px; margin-bottom: 4px; }
 .modal p.sub { font-size: 13px; color: var(--body); margin-bottom: 20px; }
+
+/* Confirm dialog（DESIGN: ex-modal-card / body-sm typography） */
+.modal.modal-confirm { width: 420px; padding: 24px 28px; }
+.modal.modal-confirm h2 { margin-bottom: 10px; }
+.cf-body {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--body);
+  margin-bottom: 22px;
+  letter-spacing: -0.1px;
+}
+.cf-body b { color: var(--ink); font-weight: 600; }
+.cf-body br + b, .cf-body br { line-height: 22px; }
 .field { margin-bottom: 14px; }
 .field label {
   display: block;

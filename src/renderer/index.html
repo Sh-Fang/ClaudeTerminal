@@ -116,15 +116,15 @@
             </button>
           </div>
         </div>
+        <div class="field" id="modal-tabname-field">
+          <label for="modal-tabname">首个标签名</label>
+          <input id="modal-tabname" type="text" autocomplete="off" spellcheck="false" />
+        </div>
         <div class="field-check" id="modal-cc-field">
           <label>
             <input id="modal-cc" type="checkbox" checked />
             <span>自动启动 Claude Code（首次绑定 UUID，之后 <code>--resume</code>）</span>
           </label>
-        </div>
-        <div class="field" id="modal-tabname-field">
-          <label for="modal-tabname">首个标签名（启动 cc 后）</label>
-          <input id="modal-tabname" type="text" autocomplete="off" spellcheck="false" placeholder="留空 = A" />
         </div>
         <div class="actions">
           <button id="modal-cancel" class="btn btn-secondary">取消</button>
@@ -134,9 +134,9 @@
     </div>
 
     <div id="confirmScrim" class="scrim" hidden>
-      <div class="modal" style="width:404px">
+      <div class="modal modal-confirm">
         <h2 id="cf-title">确认</h2>
-        <p class="sub" id="cf-msg"></p>
+        <div class="cf-body" id="cf-msg"></div>
         <div class="actions">
           <button id="cf-cancel" class="btn btn-secondary">取消</button>
           <button id="cf-ok" class="btn btn-danger">确认</button>
