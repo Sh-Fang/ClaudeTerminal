@@ -9,6 +9,7 @@ export interface GroupView {
   cwd: string
   collapsed: boolean
   tabs: TerminalTab[]
+  dirty: boolean
 }
 
 export interface SavedView {
@@ -91,12 +92,15 @@ export class Sidebar {
         gs !== 'idle'
           ? `<span class="st-dot st-${gs} grp-st" title="组内有「${statusLabel(gs)}」的会话"></span>`
           : ''
+      const dirtyDot = g.dirty
+        ? `<span class="grp-dirty" title="有未保存的改动，右键「保存分组」覆盖"></span>`
+        : ''
       el.innerHTML = `
-        <div class="group-head" data-g="${escapeHtml(g.id)}">
+        <div class="group-head${g.dirty ? ' is-dirty' : ''}" data-g="${escapeHtml(g.id)}">
           <span class="group-caret">${icon('chevron-down', { size: 12, stroke: 2.4 })}</span>
           <span class="group-folder">${icon('folder')}</span>
           <div class="group-meta">
-            <div class="group-name">${escapeHtml(g.name)}</div>
+            <div class="group-name">${escapeHtml(g.name)}${dirtyDot}</div>
             <div class="group-path" title="${escapeHtml(g.cwd)}">${escapeHtml(g.cwd)}</div>
           </div>
           ${headStatusDot}

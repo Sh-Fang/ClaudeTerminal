@@ -112,8 +112,10 @@ export interface TermBridge {
   winMinimize(): void
   winToggleMaximize(): void
   winClose(): void
+  winConfirmClose(): void
   winIsMaximized(): Promise<boolean>
   onWindowState(cb: (s: { maximized: boolean }) => void): () => void
+  onWindowCloseRequest(cb: () => void): () => void
   onData(cb: (id: number, data: string) => void): () => void
   onExit(cb: (id: number, exitCode: number) => void): () => void
   onSessionEvent(cb: (e: SessionEvent) => void): () => void
@@ -141,11 +143,17 @@ const api: TermBridge = {
   winMinimize: () => ipcRenderer.send('window:minimize'),
   winToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
   winClose: () => ipcRenderer.send('window:close'),
+  winConfirmClose: () => ipcRenderer.send('window:closeConfirmed'),
   winIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   onWindowState: (cb) => {
     const h = (_e: IpcRendererEvent, s: { maximized: boolean }) => cb(s)
     ipcRenderer.on('window:state', h)
     return () => ipcRenderer.off('window:state', h)
+  },
+  onWindowCloseRequest: (cb) => {
+    const h = (): void => cb()
+    ipcRenderer.on('window:close-request', h)
+    return () => ipcRenderer.off('window:close-request', h)
   },
   onData: (cb) => {
     const h = (_e: IpcRendererEvent, p: { id: number; data: string }) => cb(p.id, p.data)

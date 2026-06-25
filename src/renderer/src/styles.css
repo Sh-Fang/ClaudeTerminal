@@ -160,6 +160,12 @@ body {
   font-size: 13px; font-weight: 600; letter-spacing: -0.2px; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.grp-dirty {
+  display: inline-block; vertical-align: middle;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #f5a623; margin-left: 6px;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.16);
+}
 .group-path {
   font-family: var(--mono); font-size: 10px; color: var(--mute);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px;

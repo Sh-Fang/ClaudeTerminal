@@ -110,9 +110,11 @@ export interface ModalInput {
   cwd?: string
   showCC?: boolean
   ccChecked?: boolean
+  showTabName?: boolean
+  tabName?: string
   okLabel?: string
   onPickCwd?: (currentValue: string) => Promise<string | null>
-  onOk: (v: { name: string; cwd?: string; autoLaunchCC?: boolean }) => void
+  onOk: (v: { name: string; cwd?: string; autoLaunchCC?: boolean; tabName?: string }) => void
 }
 const modalTitle = document.getElementById('modal-title') as HTMLHeadingElement
 const modalSub = document.getElementById('modal-sub') as HTMLParagraphElement
@@ -122,12 +124,20 @@ const modalCwdPick = document.getElementById('modal-cwd-pick') as HTMLButtonElem
 const modalCC = document.getElementById('modal-cc') as HTMLInputElement
 const modalCwdField = document.getElementById('modal-cwd-field') as HTMLDivElement
 const modalCCField = document.getElementById('modal-cc-field') as HTMLDivElement
+const modalTabName = document.getElementById('modal-tabname') as HTMLInputElement
+const modalTabNameField = document.getElementById('modal-tabname-field') as HTMLDivElement
 const modalOk = document.getElementById('modal-ok') as HTMLButtonElement
 const modalCancel = document.getElementById('modal-cancel') as HTMLButtonElement
 
 let modalCb: ModalInput['onOk'] | null = null
 let modalKind: ModalKind = 'new-group'
 let modalPickCb: ModalInput['onPickCwd'] | null = null
+let modalShowTabName = false
+
+function syncTabNameVisibility(): void {
+  const shouldShow = modalShowTabName && modalCC.checked && modalCCField.style.display !== 'none'
+  modalTabNameField.style.display = shouldShow ? '' : 'none'
+}
 
 export function openModal(cfg: ModalInput): void {
   modalKind = cfg.kind
@@ -138,6 +148,9 @@ export function openModal(cfg: ModalInput): void {
   modalCC.checked = cfg.ccChecked ?? true
   modalCwdField.style.display = cfg.cwd !== undefined ? '' : 'none'
   modalCCField.style.display = cfg.showCC ? '' : 'none'
+  modalTabName.value = cfg.tabName ?? ''
+  modalShowTabName = !!cfg.showTabName
+  syncTabNameVisibility()
   modalOk.textContent = cfg.okLabel ?? '创建'
   modalPickCb = cfg.onPickCwd ?? null
   modalCwdPick.style.display = modalPickCb ? '' : 'none'
@@ -148,6 +161,8 @@ export function openModal(cfg: ModalInput): void {
     modalName.select()
   }, 0)
 }
+
+modalCC.addEventListener('change', syncTabNameVisibility)
 function closeModal(): void {
   scrim.hidden = true
   modalCb = null
@@ -161,7 +176,8 @@ modalOk.addEventListener('click', () => {
   const v = {
     name: modalName.value.trim(),
     cwd: modalKind === 'new-group' || modalKind === 'new-tab' ? modalCwd.value.trim() : undefined,
-    autoLaunchCC: modalKind === 'new-group' || modalKind === 'new-tab' ? modalCC.checked : undefined
+    autoLaunchCC: modalKind === 'new-group' || modalKind === 'new-tab' ? modalCC.checked : undefined,
+    tabName: modalShowTabName ? modalTabName.value.trim() : undefined
   }
   if (!v.name) {
     modalName.focus()
@@ -172,7 +188,7 @@ modalOk.addEventListener('click', () => {
   scrim.hidden = true
   cb(v)
 })
-;[modalName, modalCwd].forEach((el) =>
+;[modalName, modalCwd, modalTabName].forEach((el) =>
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') modalOk.click()
     else if (e.key === 'Escape') closeModal()

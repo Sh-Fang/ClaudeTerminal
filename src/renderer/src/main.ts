@@ -6,6 +6,7 @@ import { SettingsPanel } from './settings-panel'
 import { DEFAULT_SETTINGS, type Settings } from './themes'
 import {
   confirmDialog,
+  escapeHtml,
   formatTs,
   openModal,
   shortPath,
@@ -32,6 +33,7 @@ interface Group {
   cwd: string
   collapsed: boolean
   tabs: TerminalTab[]
+  dirty: boolean
 }
 
 interface SavedGroup {
@@ -251,10 +253,15 @@ function ensureGroup(opts: { name: string; cwd: string }): Group {
     name: opts.name,
     cwd: opts.cwd,
     collapsed: false,
-    tabs: []
+    tabs: [],
+    dirty: true
   }
   groups.push(g)
   return g
+}
+
+function markDirty(g: Group | undefined | null): void {
+  if (g) g.dirty = true
 }
 
 async function newGroup(): Promise<void> {
@@ -267,13 +274,16 @@ async function newGroup(): Promise<void> {
     cwd: prefilledCwd,
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
+    showTabName: true,
+    tabName: '',
     okLabel: '创建',
     onPickCwd: (cur) => window.term.pickDirectory(cur || prefilledCwd),
     onOk: async (v) => {
       const cwd = v.cwd?.trim() || ''
       const g = ensureGroup({ name: v.name, cwd })
       sidebar.render()
-      const tab = makeTab(g, { name: 'A', autoLaunchCC: v.autoLaunchCC })
+      const firstTabName = (v.autoLaunchCC && v.tabName) ? v.tabName : 'A'
+      const tab = makeTab(g, { name: firstTabName, autoLaunchCC: v.autoLaunchCC })
       activeTabId = tab.id
       activateUI(tab.id)
       await spawnTabPty(tab)
@@ -304,6 +314,7 @@ async function promptNewTabInGroup(groupId: string): Promise<void> {
     onOk: async (v) => {
       const tab = makeTab(g, { name: v.name, autoLaunchCC: v.autoLaunchCC })
       g.collapsed = false
+      markDirty(g)
       activeTabId = tab.id
       sidebar.render()
       activateUI(tab.id)
@@ -333,27 +344,35 @@ function activateTab(tabId: string): void {
   scheduleSave()
 }
 
-function closeTab(tabId: string): void {
-  const ctx = findTab(tabId)
-  if (!ctx) return
-  const { group, tab } = ctx
+function disposeTabInternal(group: Group, tab: TerminalTab): void {
   const idxInGroup = group.tabs.indexOf(tab)
+  if (idxInGroup < 0) return
   group.tabs.splice(idxInGroup, 1)
   tab.dispose()
-  if (group.tabs.length === 0) {
-    // 空组不自动删除（保留留作 cwd 工作流容器），但若全空、整个 workspace 空则补一个默认分组
-  }
-  if (activeTabId === tabId) {
+  if (activeTabId === tab.id) {
     const next = pickNextActive(group, idxInGroup)
     activeTabId = next?.id ?? null
     if (next) activateUI(next.id)
   }
-  if (groups.every((g) => g.tabs.length === 0) && groups.length === 0) {
-    // 没分组也没标签时，提示新建
-  }
-  sidebar.render()
-  toolbar.render()
-  scheduleSave()
+}
+
+function closeTab(tabId: string): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  const { group, tab } = ctx
+  confirmDialog({
+    title: `关闭标签「${tab.name}」？`,
+    message: `该标签下有 <b>${tab.sessions.length}</b> 条会话，关闭后该标签将从分组移除。` +
+      (group.tabs.length === 1 ? '<br/>这是分组「' + escapeHtml(group.name) + '」的最后一个标签。' : ''),
+    okLabel: '关闭标签',
+    onOk: () => {
+      disposeTabInternal(group, tab)
+      markDirty(group)
+      sidebar.render()
+      toolbar.render()
+      scheduleSave()
+    }
+  })
 }
 
 function pickNextActive(group: Group, idxInGroup: number): TerminalTab | null {
@@ -370,6 +389,7 @@ function renameTab(tabId: string, newName: string): void {
   if (!ctx) return
   if (!newName.trim()) return
   ctx.tab.name = newName.trim()
+  markDirty(ctx.group)
   sidebar.render()
   toolbar.render()
   scheduleSave()
@@ -394,6 +414,7 @@ function renameGroup(groupId: string): void {
     okLabel: '保存',
     onOk: (v) => {
       g.name = v.name
+      markDirty(g)
       sidebar.render()
       toolbar.render()
       scheduleSave()
@@ -427,6 +448,7 @@ function saveGroup(groupId: string): void {
   }
   if (existing) Object.assign(existing, rec)
   else savedGroups.unshift(rec)
+  g.dirty = false
   sidebar.render()
   scheduleSave()
   toast(`已保存「${g.name}」（${g.tabs.length} 个标签）`)
@@ -435,13 +457,13 @@ function saveGroup(groupId: string): void {
 function closeGroup(groupId: string): void {
   const g = findGroup(groupId)
   if (!g) return
-  const saved = savedGroups.some((s) => s.srcId === g.id)
+  const saved = savedGroups.some((s) => s.srcId === g.id) && !g.dirty
   confirmDialog({
     title: `关闭分组「${g.name}」？`,
     message: `将关闭该分组下的 ${g.tabs.length} 个标签。` +
       (saved
         ? '该分组<b>已保存</b>，之后可在「已保存的分组」一键恢复。'
-        : '该分组<b>尚未保存</b>，关闭后将无法恢复其标签布局。'),
+        : '该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。'),
     okLabel: '关闭分组',
     onOk: () => {
       for (const t of g.tabs) t.dispose()
@@ -464,6 +486,9 @@ async function restoreSaved(savedId: string): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
   const g = ensureGroup({ name: s.name, cwd: s.cwd })
+  // 同步 srcId 让后续 saveGroup 走覆盖路径，并标记为已保存
+  s.srcId = g.id
+  g.dirty = false
   const tabs: TerminalTab[] = []
   for (const t of s.snapshot.tabs) {
     const created = makeTab(g, {
@@ -494,7 +519,11 @@ function deleteSaved(savedId: string): void {
     message: '只删除保存记录，不影响当前打开的分组。',
     okLabel: '删除',
     onOk: () => {
-      savedGroups.splice(idx, 1)
+      const removed = savedGroups.splice(idx, 1)[0]
+      if (removed?.srcId) {
+        const live = findGroup(removed.srcId)
+        if (live) live.dirty = true
+      }
       sidebar.render()
       scheduleSave()
       toast('已删除保存的分组')
@@ -783,6 +812,25 @@ window.addEventListener('beforeunload', () => {
   offSession()
   offState()
   for (const g of groups) for (const t of g.tabs) t.dispose()
+})
+
+// ─── 关闭 app 时检查未保存分组 ────────────────────────────────────
+window.term.onWindowCloseRequest(() => {
+  const dirtyGroups = groups.filter((g) => g.dirty && g.tabs.length > 0)
+  if (dirtyGroups.length === 0) {
+    window.term.winConfirmClose()
+    return
+  }
+  const lines = dirtyGroups
+    .map((g) => `• <b>${escapeHtml(g.name)}</b>（${g.tabs.length} 个标签）`)
+    .join('<br/>')
+  confirmDialog({
+    title: '有未保存的分组，仍要关闭？',
+    message: `以下分组未保存，关闭后将丢失标签布局：<br/>${lines}<br/><br/>` +
+      '可先在分组右键「保存分组」，或直接关闭。',
+    okLabel: '仍然关闭',
+    onOk: () => window.term.winConfirmClose()
+  })
 })
 
 // ─── SettingsPanel ───────────────────────────────────────────────

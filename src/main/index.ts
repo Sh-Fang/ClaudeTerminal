@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { registerPtyIpc } from './ipc'
 import { killAll } from './pty-manager'
@@ -7,6 +7,7 @@ import { SessionEventWatcher } from './session-events'
 import { StateEventWatcher } from './state-events'
 
 let mainWindow: BrowserWindow | null = null
+let allowClose = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -34,6 +35,22 @@ function createWindow(): void {
   mainWindow.on('maximize', () => sendState(true))
   mainWindow.on('unmaximize', () => sendState(false))
 
+  mainWindow.on('close', (e) => {
+    if (allowClose) return
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    e.preventDefault()
+    const wc = mainWindow.webContents
+    if (!wc || wc.isDestroyed()) {
+      allowClose = true
+      mainWindow.close()
+      return
+    }
+    try { wc.send('window:close-request') } catch {
+      allowClose = true
+      mainWindow.close()
+    }
+  })
+
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -58,6 +75,10 @@ function stopWatchers(): void {
 
 app.whenReady().then(() => {
   registerPtyIpc(() => mainWindow)
+  ipcMain.on('window:closeConfirmed', () => {
+    allowClose = true
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close()
+  })
   const hp = ensureHookAssets()
   sessionWatcher = new SessionEventWatcher(hp.eventsDir, () => mainWindow)
   stateWatcher = new StateEventWatcher(hp.stateDir, () => mainWindow)
