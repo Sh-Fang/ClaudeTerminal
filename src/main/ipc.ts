@@ -1,4 +1,5 @@
 import { BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
+import { existsSync, statSync } from 'node:fs'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
@@ -62,9 +63,22 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('claude:sessionMeta', (_e, sessionId: string) => readSessionMeta(sessionId))
   ipcMain.handle('claude:detect', () => detectClaudePath())
 
+  ipcMain.handle('path:exists', (_e, p: string) => {
+    if (typeof p !== 'string' || !p) return false
+    try { return existsSync(p) } catch { return false }
+  })
+
   ipcMain.handle(
     'pty:create',
     (_e, opts: { cols?: number; rows?: number; cwd?: string; tabId?: string }) => {
+      if (opts?.cwd) {
+        try {
+          if (!existsSync(opts.cwd)) throw new Error(`目录不存在: ${opts.cwd}`)
+          if (!statSync(opts.cwd).isDirectory()) throw new Error(`不是目录: ${opts.cwd}`)
+        } catch (e) {
+          throw new Error((e as Error).message || '路径无效')
+        }
+      }
       const env: Record<string, string> = {}
       if (opts?.tabId) {
         const hp = getHookPaths()

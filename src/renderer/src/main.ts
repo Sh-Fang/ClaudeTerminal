@@ -8,6 +8,7 @@ import {
   confirmDialog,
   escapeHtml,
   formatTs,
+  isConfirmOpen,
   openModal,
   shortPath,
   showCtxMenu,
@@ -156,7 +157,14 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   if (tab.ptyId == null) return
 
   const claudeBin = settings.claudePath.trim()
-  if (!claudeBin) {
+  if (claudeBin) {
+    // 自定义路径：先校验文件存在
+    if (!(await window.term.pathExists(claudeBin))) {
+      tab.term.writeln(`\x1b[33m[claude 路径不存在：${claudeBin}，跳过自动启动]\x1b[0m`)
+      tab.term.writeln('\x1b[90m请到设置 → Claude Code 中重新选择 claude 可执行文件。\x1b[0m')
+      return
+    }
+  } else {
     const available = await window.term.claudeAvailable()
     if (!available) {
       tab.term.writeln('\x1b[90m[claude 未在 PATH 中，跳过自动启动 Claude Code]\x1b[0m')
@@ -174,6 +182,10 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   if (active && UUID_RE.test(active) && (await window.term.claudeSessionExists(active))) {
     cmd = `${invoker}${claudeCmd} --resume ${active}${settingsArg}`
   } else {
+    // 幽灵会话清理：旧 UUID 对应的 jsonl 已不在，从栈里移除
+    if (active && UUID_RE.test(active)) {
+      tab.sessions = tab.sessions.filter((s) => s.sessionId !== active)
+    }
     const newId = crypto.randomUUID()
     tab.activeSessionId = newId
     scheduleSave()
@@ -360,14 +372,20 @@ function closeTab(tabId: string): void {
   const ctx = findTab(tabId)
   if (!ctx) return
   const { group, tab } = ctx
+  const isLast = group.tabs.length === 1
   confirmDialog({
     title: `关闭标签「${tab.name}」？`,
     message: `该标签下有 <b>${tab.sessions.length}</b> 条会话，关闭后该标签将从分组移除。` +
-      (group.tabs.length === 1 ? '<br/>这是分组「' + escapeHtml(group.name) + '」的最后一个标签。' : ''),
+      (isLast ? '<br/>这是分组「' + escapeHtml(group.name) + '」的最后一个标签，关闭后<b>分组也会被关闭</b>。' : ''),
     okLabel: '关闭标签',
     onOk: () => {
       disposeTabInternal(group, tab)
       markDirty(group)
+      // 空分组自动收尾
+      if (group.tabs.length === 0) {
+        const idx = groups.indexOf(group)
+        if (idx >= 0) groups.splice(idx, 1)
+      }
       sidebar.render()
       toolbar.render()
       scheduleSave()
@@ -458,12 +476,17 @@ function closeGroup(groupId: string): void {
   const g = findGroup(groupId)
   if (!g) return
   const saved = savedGroups.some((s) => s.srcId === g.id) && !g.dirty
+  const busyCount = g.tabs.filter((t) => t.status === 'busy' || t.status === 'attention').length
+  const busyHint = busyCount > 0
+    ? `<br/><b>注意</b>：其中 <b>${busyCount}</b> 个标签正在运行或待决策，关闭会立即中断。`
+    : ''
   confirmDialog({
     title: `关闭分组「${g.name}」？`,
     message: `将关闭该分组下的 ${g.tabs.length} 个标签。` +
       (saved
         ? '该分组<b>已保存</b>，之后可在「已保存的分组」一键恢复。'
-        : '该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。'),
+        : '该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。') +
+      busyHint,
     okLabel: '关闭分组',
     onOk: () => {
       for (const t of g.tabs) t.dispose()
@@ -485,6 +508,16 @@ function closeGroup(groupId: string): void {
 async function restoreSaved(savedId: string): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
+  // 已经有打开的分组关联到该 saved：直接切过去，不重复开
+  if (s.srcId) {
+    const existing = findGroup(s.srcId)
+    if (existing) {
+      const t0 = existing.tabs[0]
+      if (t0) activateTab(t0.id)
+      toast(`分组「${s.name}」已经打开`)
+      return
+    }
+  }
   const g = ensureGroup({ name: s.name, cwd: s.cwd })
   // 同步 srcId 让后续 saveGroup 走覆盖路径，并标记为已保存
   s.srcId = g.id
@@ -743,7 +776,7 @@ const offExit = window.term.onExit((id, exitCode) => {
 const offSession = window.term.onSessionEvent((ev) => {
   const ctx = findTab(ev.tabId)
   if (!ctx) return
-  const { tab } = ctx
+  const { tab, group } = ctx
   const top = tab.sessions[tab.sessions.length - 1]?.sessionId
   if (ev.sessionId === top) {
     if (tab.activeSessionId !== ev.sessionId) {
@@ -759,6 +792,7 @@ const offSession = window.term.onSessionEvent((ev) => {
     createdAt: ev.ts || new Date().toISOString()
   })
   tab.activeSessionId = ev.sessionId
+  markDirty(group)
   scheduleSave()
   sidebar.render()
   toolbar.render()
@@ -816,6 +850,7 @@ window.addEventListener('beforeunload', () => {
 
 // ─── 关闭 app 时检查未保存分组 ────────────────────────────────────
 window.term.onWindowCloseRequest(() => {
+  if (isConfirmOpen()) return // 已有确认弹窗在显示，忽略重复触发
   const dirtyGroups = groups.filter((g) => g.dirty && g.tabs.length > 0)
   if (dirtyGroups.length === 0) {
     window.term.winConfirmClose()

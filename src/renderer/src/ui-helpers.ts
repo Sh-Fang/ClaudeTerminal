@@ -69,35 +69,43 @@ export function toast(msg: string): void {
 
 // ─── 通用 confirm ─────────────────────────────────────────────
 let cfCb: (() => void) | null = null
+let cfCancelCb: (() => void) | null = null
+export function isConfirmOpen(): boolean {
+  return !confirmScrim.hidden
+}
 export function confirmDialog(opts: {
   title: string
   message: string
   okLabel?: string
   danger?: boolean
   onOk: () => void
+  onCancel?: () => void
 }): void {
   cfTitle.textContent = opts.title
   cfMsg.innerHTML = opts.message
   cfOk.textContent = opts.okLabel ?? '确认'
   cfOk.className = `btn ${opts.danger === false ? 'btn-primary' : 'btn-danger'}`
   cfCb = opts.onOk
+  cfCancelCb = opts.onCancel ?? null
   confirmScrim.hidden = false
 }
-cfCancel.addEventListener('click', () => {
+function cancelConfirm(): void {
   confirmScrim.hidden = true
+  const cb = cfCancelCb
   cfCb = null
-})
+  cfCancelCb = null
+  cb?.()
+}
+cfCancel.addEventListener('click', cancelConfirm)
 cfOk.addEventListener('click', () => {
   confirmScrim.hidden = true
   const cb = cfCb
   cfCb = null
+  cfCancelCb = null
   cb?.()
 })
 confirmScrim.addEventListener('click', (e) => {
-  if (e.target === confirmScrim) {
-    confirmScrim.hidden = true
-    cfCb = null
-  }
+  if (e.target === confirmScrim) cancelConfirm()
 })
 
 // ─── 通用 modal 重设：根据用途切换提示 + 字段可见性 + 校验 ─────

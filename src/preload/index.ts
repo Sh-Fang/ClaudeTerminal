@@ -105,6 +105,7 @@ export interface TermBridge {
   claudeDetect(): Promise<string | null>
   hookPaths(): Promise<HookPaths>
   pickDirectory(defaultPath?: string): Promise<string | null>
+  pathExists(p: string): Promise<boolean>
   loadSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<Settings>
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
@@ -136,6 +137,7 @@ const api: TermBridge = {
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),
   pickDirectory: (defaultPath) => ipcRenderer.invoke('dialog:pickDirectory', defaultPath),
+  pathExists: (p) => ipcRenderer.invoke('path:exists', p),
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),

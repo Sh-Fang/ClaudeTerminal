@@ -166,6 +166,10 @@ body {
   background: #f5a623; margin-left: 6px;
   box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.16);
 }
+.path-placeholder {
+  color: var(--mute);
+  font-style: italic;
+}
 .group-path {
   font-family: var(--mono); font-size: 10px; color: var(--mute);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px;
@@ -604,9 +608,15 @@ body {
   color: var(--body);
   margin-bottom: 22px;
   letter-spacing: -0.1px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .cf-body b { color: var(--ink); font-weight: 600; }
 .cf-body br + b, .cf-body br { line-height: 22px; }
+.cf-body::-webkit-scrollbar { width: 6px; }
+.cf-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+.cf-body::-webkit-scrollbar-track { background: transparent; }
 .field { margin-bottom: 14px; }
 .field label {
   display: block;

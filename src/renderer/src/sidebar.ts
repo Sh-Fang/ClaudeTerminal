@@ -95,13 +95,17 @@ export class Sidebar {
       const dirtyDot = g.dirty
         ? `<span class="grp-dirty" title="有未保存的改动，右键「保存分组」覆盖"></span>`
         : ''
+      const cwdLabel = g.cwd
+        ? escapeHtml(g.cwd)
+        : '<span class="path-placeholder">(默认目录)</span>'
+      const cwdTitle = g.cwd ? escapeHtml(g.cwd) : '使用用户主目录'
       el.innerHTML = `
         <div class="group-head${g.dirty ? ' is-dirty' : ''}" data-g="${escapeHtml(g.id)}">
           <span class="group-caret">${icon('chevron-down', { size: 12, stroke: 2.4 })}</span>
           <span class="group-folder">${icon('folder')}</span>
           <div class="group-meta">
             <div class="group-name">${escapeHtml(g.name)}${dirtyDot}</div>
-            <div class="group-path" title="${escapeHtml(g.cwd)}">${escapeHtml(g.cwd)}</div>
+            <div class="group-path" title="${cwdTitle}">${cwdLabel}</div>
           </div>
           ${headStatusDot}
           <span class="group-count">${g.tabs.length}</span>
@@ -147,11 +151,14 @@ export class Sidebar {
       const el = document.createElement('div')
       el.className = 'saved-row'
       el.dataset.saved = s.id
+      const savedCwd = s.cwd
+        ? escapeHtml(s.cwd)
+        : '<span class="path-placeholder">(默认目录)</span>'
       el.innerHTML = `
         <div class="saved-ic">${icon('rotate-ccw')}</div>
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
-          <div class="saved-sub">${s.tabCount} 个标签 · ${escapeHtml(s.cwd)} · ${escapeHtml(s.savedAt)}</div>
+          <div class="saved-sub">${s.tabCount} 个标签 · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
         </div>
         <div class="saved-restore" data-restore="${escapeHtml(s.id)}">${icon('rotate-ccw', { size: 12 })} 恢复</div>
       `

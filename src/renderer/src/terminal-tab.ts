@@ -165,18 +165,28 @@ export class TerminalTab {
 
   async startPty(): Promise<void> {
     if (this.disposed) return
-    const id = await window.term.create({
-      cols: this.term.cols,
-      rows: this.term.rows,
-      cwd: this.cwd,
-      tabId: this.id
-    })
-    this.ptyId = id
-    if (this.pendingInput) {
-      window.term.send(id, this.pendingInput)
-      this.pendingInput = ''
+    try {
+      const id = await window.term.create({
+        cols: this.term.cols,
+        rows: this.term.rows,
+        cwd: this.cwd,
+        tabId: this.id
+      })
+      this.ptyId = id
+      if (this.pendingInput) {
+        window.term.send(id, this.pendingInput)
+        this.pendingInput = ''
+      }
+      this.handlers.onPtyStarted?.()
+    } catch (e) {
+      const msg = (e as Error)?.message || String(e)
+      this.status = 'error'
+      this.note = msg
+      this.term.writeln('')
+      this.term.writeln(`\x1b[31m[启动 shell 失败] ${msg}\x1b[0m`)
+      this.term.writeln('\x1b[90m请检查分组的路径是否仍存在，按任意键重试。\x1b[0m')
+      this.waitingForRestart = true
     }
-    this.handlers.onPtyStarted?.()
   }
 
   writeFromPty(data: string): void {
