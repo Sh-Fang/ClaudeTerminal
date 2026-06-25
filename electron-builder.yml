@@ -1,0 +1,46 @@
+appId: com.silver.claude-terminal
+productName: Claude Terminal
+copyright: Copyright © 2026
+
+directories:
+  output: release
+  buildResources: resources
+
+# 关键：禁掉 electron-builder 自动 rebuild 原生依赖。
+# @lydell/node-pty 自带 N-API 预编译二进制，rebuild 反而会触发本机现场编译（需 VS C++ Build Tools）。
+# 见 docs/PLAN.md §6.1
+npmRebuild: false
+
+# 把 @lydell/node-pty 整体解到 app.asar.unpacked 下，
+# 让 require('@lydell/node-pty') 能加载到里面的 .node 文件 + OpenConsole.exe + conpty.dll
+asarUnpack:
+  - '**/node_modules/@lydell/node-pty/**'
+
+files:
+  - out/**/*
+  - resources/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/test/**'
+  - '!**/tests/**'
+
+win:
+  icon: resources/icon.ico
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: nsis
+      arch: x64
+    - target: zip
+      arch: x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Claude Terminal
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  deleteAppDataOnUninstall: false

@@ -11,7 +11,11 @@
     "start": "electron-vite preview",
     "smoke:pty": "node scripts/smoke-pty.js",
     "smoke:electron": "electron scripts/electron-smoke.js",
-    "icon": "pwsh -NoProfile -File scripts/generate-icon.ps1"
+    "icon": "pwsh -NoProfile -File scripts/generate-icon.ps1",
+    "dist": "electron-vite build && electron-builder",
+    "dist:nsis": "electron-vite build && electron-builder --win nsis",
+    "dist:zip": "electron-vite build && electron-builder --win zip",
+    "dist:dir": "electron-vite build && electron-builder --dir"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12",
@@ -24,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^26.0.0",
     "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.0"
