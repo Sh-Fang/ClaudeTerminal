@@ -104,13 +104,6 @@ body {
   flex: 0 0 18px;
 }
 .brand-icon svg { display: block; }
-.brand-mono {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--mute);
-  font-weight: 400;
-  margin-left: 4px;
-}
 .titlebar-spacer { flex: 1; height: 100%; -webkit-app-region: drag; }
 
 .app {
@@ -190,7 +183,7 @@ body {
 
 .tab-row {
   display: flex; align-items: center; gap: 9px;
-  margin: 1px 6px 1px 22px;
+  margin: 1px 6px 1px 36px;
   padding: 6px 8px;
   border-radius: var(--r-sm);
   cursor: pointer;
@@ -259,7 +252,7 @@ body {
 .trow-close:hover { background: var(--hairline); color: var(--ink); }
 
 .group-addtab {
-  margin: 1px 6px 2px 22px;
+  margin: 1px 6px 2px 36px;
   padding: 5px 8px;
   border-radius: var(--r-sm);
   cursor: pointer;
@@ -355,11 +348,6 @@ body {
 .crumb .g { font-weight: 600; letter-spacing: -0.2px; color: var(--ink); white-space: nowrap; flex: 0 0 auto; }
 .crumb .sep { color: var(--hairline-strong); flex: 0 0 auto; }
 .crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; }
-.crumb .cwd {
-  font-family: var(--mono); font-size: 11px; color: var(--mute);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0; flex: 0 1 auto;
-}
 #cbStatus { flex: 0 0 auto; display: inline-flex; }
 #cbStatus:empty { display: none; }
 .toolbar .spacer { flex: 0 0 8px; }
@@ -483,19 +471,19 @@ body {
 .statusbar {
   flex: 0 0 26px;
   height: 26px;
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center;
   padding: 0 16px;
   border-top: 1px solid var(--hairline);
   background: var(--canvas);
   font-family: var(--mono); font-size: 11px;
   color: var(--mute);
 }
-.statusbar .sb-dot {
-  width: 6px; height: 6px;
-  border-radius: var(--r-full);
-  background: var(--cyan-deep);
+.statusbar #sbCwd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
 }
-.statusbar .right { margin-left: auto; display: flex; gap: 14px; }
 
 /* Search popover */
 #search {

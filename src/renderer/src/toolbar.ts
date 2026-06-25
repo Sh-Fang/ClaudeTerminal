@@ -1,4 +1,4 @@
-import { escapeHtml, formatTs, shortPath, srcLabel, statusLabel } from './ui-helpers'
+import { escapeHtml, formatTs, srcLabel, statusLabel } from './ui-helpers'
 import type { TerminalTab, SessionRecord } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -11,13 +11,11 @@ export class Toolbar {
   private cbGroup = document.getElementById('cbGroup') as HTMLSpanElement
   private cbTab = document.getElementById('cbTab') as HTMLSpanElement
   private cbStatus = document.getElementById('cbStatus') as HTMLSpanElement
-  private cbCwd = document.getElementById('cbCwd') as HTMLSpanElement
   private sessTime = document.getElementById('sessTime') as HTMLSpanElement
   private sessTitle = document.getElementById('sessTitle') as HTMLSpanElement
   private sessSelect = document.getElementById('sessionSelect') as HTMLDivElement
   private sessMenu = document.getElementById('sessionMenu') as HTMLDivElement
   private sessList = document.getElementById('sessList') as HTMLDivElement
-  private sbSession = document.getElementById('sbSession') as HTMLSpanElement
   private sbCwd = document.getElementById('sbCwd') as HTMLSpanElement
 
   constructor(private hooks: ToolbarHooks) {
@@ -40,13 +38,10 @@ export class Toolbar {
       this.cbGroup.textContent = ''
       this.cbTab.textContent = ''
       this.cbStatus.innerHTML = ''
-      this.cbCwd.textContent = ''
-      this.cbCwd.title = ''
       this.sessTime.textContent = ''
       this.sessTitle.textContent = '（无活动标签）'
       this.sessSelect.classList.add('empty')
       this.sessList.innerHTML = ''
-      this.sbSession.textContent = ''
       this.sbCwd.textContent = ''
       this.closeMenu()
       return
@@ -56,8 +51,6 @@ export class Toolbar {
     const { tab, groupName, groupCwd } = cur
     this.cbGroup.textContent = groupName
     this.cbTab.textContent = tab.name
-    this.cbCwd.textContent = shortPath(groupCwd)
-    this.cbCwd.title = groupCwd
 
     const st = (tab.status ?? 'idle') as TabStatus
     if (st === 'idle') this.cbStatus.innerHTML = ''
@@ -72,11 +65,9 @@ export class Toolbar {
       const title = sessionTitle(cur_sess)
       this.sessTime.textContent = formatTs(cur_sess.lastTs || cur_sess.createdAt)
       this.sessTitle.textContent = title
-      this.sbSession.textContent = `session ${cur_sess.sessionId.slice(0, 8)}`
     } else {
       this.sessTime.textContent = ''
       this.sessTitle.textContent = '（未创建会话）'
-      this.sbSession.textContent = ''
     }
     this.sbCwd.textContent = groupCwd
 
