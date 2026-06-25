@@ -42,12 +42,79 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
+  display: grid;
+  grid-template-rows: 32px 1fr;
 }
+
+/* ─── Titlebar (frameless window chrome) ──────────────────────────── */
+.titlebar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+  -webkit-app-region: drag;
+  user-select: none;
+  gap: 12px;
+}
+.win-ctrls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+}
+.win-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  cursor: default;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: transparent;
+  transition: color 0.1s;
+}
+.win-btn:focus { outline: none; }
+.win-btn svg { display: block; }
+.win-btn.c-close { background: #ff5f57; }
+.win-btn.c-min { background: #febc2e; }
+.win-btn.c-max { background: #28c840; }
+.win-ctrls:hover .win-btn { color: rgba(0, 0, 0, 0.55); }
+.win-btn:hover { filter: brightness(0.92); }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+.brand-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(135deg, var(--g-prev-start), var(--g-prev-end));
+  flex: 0 0 12px;
+}
+.brand-mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.titlebar-spacer { flex: 1; height: 100%; -webkit-app-region: drag; }
 
 .app {
   display: grid;
   grid-template-columns: 268px 1fr;
-  height: 100%;
+  min-height: 0;
   background: var(--canvas);
 }
 

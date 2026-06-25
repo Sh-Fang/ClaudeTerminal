@@ -13,7 +13,8 @@ function createWindow(): void {
     width: 1200,
     height: 760,
     show: false,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#ffffff',
+    frame: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -22,6 +23,9 @@ function createWindow(): void {
       sandbox: false
     }
   })
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:state', { maximized: true }))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:state', { maximized: false }))
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 

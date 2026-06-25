@@ -7,6 +7,24 @@
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
+    <div class="titlebar">
+      <div class="win-ctrls" aria-label="窗口控制">
+        <button id="win-close" class="win-btn c-close" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 10 10" width="6" height="6" aria-hidden="true"><path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
+        </button>
+        <button id="win-min" class="win-btn c-min" title="最小化" aria-label="最小化">
+          <svg viewBox="0 0 10 10" width="6" height="2" aria-hidden="true"><path d="M1 5 H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
+        </button>
+        <button id="win-max" class="win-btn c-max" title="最大化" aria-label="最大化">
+          <svg viewBox="0 0 10 10" width="6" height="6" aria-hidden="true"><path d="M2 5 H8 M5 2 V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
+        </button>
+      </div>
+      <div class="brand">
+        <span class="brand-dot"></span>Claude Terminal
+        <span class="brand-mono">pwsh 7 · ConPTY</span>
+      </div>
+      <div class="titlebar-spacer"></div>
+    </div>
     <div class="app">
       <aside class="sidebar">
         <div class="side-scroll">

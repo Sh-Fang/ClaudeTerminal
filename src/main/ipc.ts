@@ -1,4 +1,4 @@
-import { ipcMain, shell, type BrowserWindow } from 'electron'
+import { BrowserWindow as BrowserWindowClass, ipcMain, shell, type BrowserWindow } from 'electron'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
@@ -43,6 +43,19 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     applyDisableAutoupdater(!!enabled)
   )
   ipcMain.handle('sysenv:readDisableAutoupdater', () => readUserEnv('DISABLE_AUTOUPDATER'))
+
+  const winFromEvent = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null =>
+    BrowserWindowClass.fromWebContents(e.sender) ?? getWindow()
+
+  ipcMain.on('window:minimize', (e) => winFromEvent(e)?.minimize())
+  ipcMain.on('window:close', (e) => winFromEvent(e)?.close())
+  ipcMain.on('window:toggleMaximize', (e) => {
+    const w = winFromEvent(e)
+    if (!w) return
+    if (w.isMaximized()) w.unmaximize()
+    else w.maximize()
+  })
+  ipcMain.handle('window:isMaximized', (e) => winFromEvent(e)?.isMaximized() ?? false)
 
   ipcMain.handle('claude:available', () => isClaudeAvailable())
   ipcMain.handle('claude:sessionExists', (_e, sessionId: string) => sessionExists(sessionId))

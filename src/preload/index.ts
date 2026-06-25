@@ -107,6 +107,11 @@ export interface TermBridge {
   saveSettings(s: Settings): Promise<Settings>
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
   readDisableAutoupdater(): Promise<string | null>
+  winMinimize(): void
+  winToggleMaximize(): void
+  winClose(): void
+  winIsMaximized(): Promise<boolean>
+  onWindowState(cb: (s: { maximized: boolean }) => void): () => void
   onData(cb: (id: number, data: string) => void): () => void
   onExit(cb: (id: number, exitCode: number) => void): () => void
   onSessionEvent(cb: (e: SessionEvent) => void): () => void
@@ -130,6 +135,15 @@ const api: TermBridge = {
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),
   readDisableAutoupdater: () => ipcRenderer.invoke('sysenv:readDisableAutoupdater'),
+  winMinimize: () => ipcRenderer.send('window:minimize'),
+  winToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+  winClose: () => ipcRenderer.send('window:close'),
+  winIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onWindowState: (cb) => {
+    const h = (_e: IpcRendererEvent, s: { maximized: boolean }) => cb(s)
+    ipcRenderer.on('window:state', h)
+    return () => ipcRenderer.off('window:state', h)
+  },
   onData: (cb) => {
     const h = (_e: IpcRendererEvent, p: { id: number; data: string }) => cb(p.id, p.data)
     ipcRenderer.on('pty:data', h)

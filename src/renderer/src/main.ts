@@ -694,6 +694,19 @@ searchInput.addEventListener('keydown', (e) => {
 })
 searchClose.addEventListener('click', () => closeSearch())
 
+// ─── Window controls ─────────────────────────────────────────────
+const winClose = document.getElementById('win-close') as HTMLButtonElement | null
+const winMin = document.getElementById('win-min') as HTMLButtonElement | null
+const winMax = document.getElementById('win-max') as HTMLButtonElement | null
+winClose?.addEventListener('click', () => window.term.winClose())
+winMin?.addEventListener('click', () => window.term.winMinimize())
+winMax?.addEventListener('click', () => window.term.winToggleMaximize())
+// 双击 titlebar 切最大化（macOS 同款行为）
+document.querySelector('.titlebar')?.addEventListener('dblclick', (e) => {
+  if ((e.target as HTMLElement).closest('.win-ctrls')) return
+  window.term.winToggleMaximize()
+})
+
 // ─── PTY 全局路由 ─────────────────────────────────────────────────
 const offData = window.term.onData((id, data) => {
   for (const g of groups) for (const t of g.tabs) if (t.ptyId === id) return t.writeFromPty(data)
