@@ -70,7 +70,17 @@
           </div>
         </div>
 
-        <div id="hosts"></div>
+        <div id="hosts">
+          <div id="hosts-empty">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2.5" y="4" width="19" height="16" rx="2.5"/>
+              <polyline points="6.5 9 10 12 6.5 15"/>
+              <line x1="12.5" y1="15" x2="17.5" y2="15"/>
+            </svg>
+            <div class="hint">没有打开的会话</div>
+            <div class="sub">左侧点「新建分组」开始，或从「已保存的分组」恢复</div>
+          </div>
+        </div>
 
         <div id="search" role="search" aria-label="终端内搜索">
           <input id="search-input" type="text" placeholder="搜索（Enter 下一个，Shift+Enter 上一个）" autocomplete="off" spellcheck="false" />

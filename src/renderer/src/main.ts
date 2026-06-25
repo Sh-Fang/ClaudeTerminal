@@ -113,27 +113,15 @@ function findGroup(groupId: string): Group | undefined {
 }
 
 // ─── 持久化 ────────────────────────────────────────────────────────
+// 轻量模式：只持久化已保存的分组（savedGroups），当前打开的分组与标签不写盘。
+// 用户希望"打开秒开 = 空状态"，未保存的工作随窗口关闭即销毁。
 function scheduleSave(): void {
   if (saveDebounceTimer != null) window.clearTimeout(saveDebounceTimer)
   saveDebounceTimer = window.setTimeout(() => {
     saveDebounceTimer = null
     void window.term.saveWorkspace({
       version: 2,
-      groups: groups.map((g) => ({
-        id: g.id,
-        name: g.name,
-        cwd: g.cwd,
-        collapsed: g.collapsed,
-        tabs: g.tabs.map((t) => ({
-          id: t.id,
-          name: t.name,
-          sessions: t.sessions,
-          activeSessionId: t.activeSessionId,
-          autoLaunchCC: t.autoLaunchCC,
-          status: t.status,
-          note: t.note
-        }))
-      })),
+      groups: [],
       savedGroups: savedGroups.map((s) => ({
         id: s.id,
         name: s.name,
@@ -798,10 +786,11 @@ const settingsPanel = new SettingsPanel({
 void settingsPanel
 
 // ─── 启动恢复 ────────────────────────────────────────────────────
+// 轻量模式：只读 settings + savedGroups，groups/activeTabId 一律不恢复。
+// 启动即空状态，等用户点「新建分组」或从已保存的分组恢复。
 ;(async () => {
   settings = await window.term.loadSettings()
   const ws = await window.term.loadWorkspace()
-  // 恢复 savedGroups
   for (const s of ws.savedGroups) {
     savedGroups.push({
       id: s.id,
@@ -822,39 +811,6 @@ void settingsPanel
       }
     })
   }
-  if (ws.groups.length === 0) {
-    // 空 workspace：新建一个默认分组 + 标签
-    const g = ensureGroup({ name: '默认', cwd: '' })
-    const tab = makeTab(g, { name: 'A', autoLaunchCC: true })
-    activeTabId = tab.id
-    sidebar.render()
-    toolbar.render()
-    activateUI(tab.id)
-    await spawnTabPty(tab)
-    scheduleSave()
-    return
-  }
-  for (const gr of ws.groups) {
-    const g = ensureGroup({ name: gr.name, cwd: gr.cwd })
-    g.collapsed = !!gr.collapsed
-    // 覆盖刚生成的 id 为持久化里的 id
-    g.id = gr.id
-    for (const tr of gr.tabs) {
-      makeTab(g, {
-        id: tr.id,
-        name: tr.name,
-        sessions: tr.sessions,
-        activeSessionId: tr.activeSessionId,
-        autoLaunchCC: tr.autoLaunchCC,
-        status: tr.status,
-        note: tr.note
-      })
-    }
-  }
-  const first = ws.activeTabId && findTab(ws.activeTabId) ? ws.activeTabId : groups.flatMap((g) => g.tabs)[0]?.id
-  activeTabId = first ?? null
   sidebar.render()
   toolbar.render()
-  if (activeTabId) activateUI(activeTabId)
-  for (const g of groups) for (const t of g.tabs) await spawnTabPty(t)
 })()
