@@ -636,11 +636,11 @@ body {
 }
 .set-section-title {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.4px;
   color: var(--mute);
   text-transform: uppercase;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .set-row {
   margin-bottom: 12px;
@@ -663,7 +663,7 @@ body {
 .set-row select {
   width: 100%;
   height: 36px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
   background: var(--canvas);
