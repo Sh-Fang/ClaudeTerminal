@@ -14,7 +14,7 @@ npmRebuild: false
 # 把 @lydell/node-pty 整体解到 app.asar.unpacked 下，
 # 让 require('@lydell/node-pty') 能加载到里面的 .node 文件 + OpenConsole.exe + conpty.dll
 asarUnpack:
-  - '**/node_modules/@lydell/node-pty/**'
+  - '**/node_modules/@lydell/**'
 
 files:
   - out/**/*
