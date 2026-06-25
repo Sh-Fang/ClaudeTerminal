@@ -13,7 +13,7 @@
           <div class="side-section-label">打开的分组<span class="line"></span></div>
           <div id="groupList"></div>
           <div class="new-group-btn" id="newGroupBtn" title="新建分组">
-            <span class="ic">＋</span>新建分组
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>新建分组
           </div>
           <div class="side-section-label">已保存的分组<span class="line"></span></div>
           <div id="savedList"></div>
@@ -31,17 +31,17 @@
           </div>
           <div class="spacer"></div>
           <div class="session-select" id="sessionSelect" title="切换会话">
-            <span class="clock">◷</span>
+            <span class="clock"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
             <span class="time" id="sessTime"></span>
             <span class="title" id="sessTitle"></span>
-            <span class="caret">▾</span>
+            <span class="caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
           </div>
-          <button class="tool-icon-btn" id="settingsBtn" title="设置" aria-label="设置">⚙</button>
+          <button class="tool-icon-btn" id="settingsBtn" title="设置" aria-label="设置"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
           <div class="session-menu" id="sessionMenu">
             <div class="menu-eyebrow">本标签的会话（栈顶 = 当前）</div>
             <div id="sessList"></div>
             <div class="menu-foot">
-              <span class="dot">＋</span>
+              <span class="dot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
               <span>终端里 <code>/clear</code> 会自动在此新增一条会话</span>
             </div>
           </div>
@@ -52,7 +52,7 @@
         <div id="search" role="search" aria-label="终端内搜索">
           <input id="search-input" type="text" placeholder="搜索（Enter 下一个，Shift+Enter 上一个）" autocomplete="off" spellcheck="false" />
           <span id="search-count" aria-live="polite"></span>
-          <button id="search-close" title="关闭 (Esc)" aria-label="关闭搜索">×</button>
+          <button id="search-close" title="关闭 (Esc)" aria-label="关闭搜索"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
 
         <div class="statusbar">

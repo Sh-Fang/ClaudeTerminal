@@ -12,6 +12,7 @@ import {
   showCtxMenu,
   toast
 } from './ui-helpers'
+import { icon } from './svg-icons'
 
 const SEARCH_DECOR = {
   matchBackground: '#3a3a00',
@@ -543,12 +544,12 @@ function openGroupCtx(groupId: string, x: number, y: number): void {
   if (!g) return
   showCtxMenu(
     [
-      { label: '新建会话标签', icon: '＋', act: () => promptNewTabInGroup(g.id) },
-      { label: '重命名分组', icon: '✎', act: () => renameGroup(g.id) },
+      { label: '新建会话标签', icon: icon('plus'), act: () => promptNewTabInGroup(g.id) },
+      { label: '重命名分组', icon: icon('edit'), act: () => renameGroup(g.id) },
       { sep: true },
-      { label: '保存分组', icon: '⤓', act: () => saveGroup(g.id) },
+      { label: '保存分组', icon: icon('save'), act: () => saveGroup(g.id) },
       { sep: true },
-      { label: '关闭分组', icon: '✕', danger: true, act: () => closeGroup(g.id) }
+      { label: '关闭分组', icon: icon('close'), danger: true, act: () => closeGroup(g.id) }
     ],
     x,
     y
@@ -562,7 +563,7 @@ function openTabCtx(tabId: string, x: number, y: number): void {
     [
       {
         label: '重命名标签',
-        icon: '✎',
+        icon: icon('edit'),
         act: () => {
           openModal({
             kind: 'rename',
@@ -574,9 +575,9 @@ function openTabCtx(tabId: string, x: number, y: number): void {
           })
         }
       },
-      { label: '在本组新建标签', icon: '＋', act: () => promptNewTabInGroup(ctx.group.id) },
+      { label: '在本组新建标签', icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
       { sep: true },
-      { label: '关闭标签', icon: '✕', danger: true, act: () => closeTab(tabId) }
+      { label: '关闭标签', icon: icon('close'), danger: true, act: () => closeTab(tabId) }
     ],
     x,
     y
@@ -586,10 +587,10 @@ function openTabCtx(tabId: string, x: number, y: number): void {
 function openSavedCtx(savedId: string, x: number, y: number): void {
   showCtxMenu(
     [
-      { label: '一键恢复分组', icon: '↺', act: () => void restoreSaved(savedId) },
-      { label: '重命名', icon: '✎', act: () => renameSaved(savedId) },
+      { label: '一键恢复分组', icon: icon('rotate-ccw'), act: () => void restoreSaved(savedId) },
+      { label: '重命名', icon: icon('edit'), act: () => renameSaved(savedId) },
       { sep: true },
-      { label: '删除保存', icon: '✕', danger: true, act: () => deleteSaved(savedId) }
+      { label: '删除保存', icon: icon('trash'), danger: true, act: () => deleteSaved(savedId) }
     ],
     x,
     y

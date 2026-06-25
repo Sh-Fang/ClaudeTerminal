@@ -1,4 +1,5 @@
 import { escapeHtml, statusLabel, statusShort } from './ui-helpers'
+import { icon } from './svg-icons'
 import type { TerminalTab } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -92,20 +93,20 @@ export class Sidebar {
           : ''
       el.innerHTML = `
         <div class="group-head" data-g="${escapeHtml(g.id)}">
-          <span class="group-caret">▾</span>
-          <span class="group-folder">▣</span>
+          <span class="group-caret">${icon('chevron-down', { size: 12, stroke: 2.4 })}</span>
+          <span class="group-folder">${icon('folder')}</span>
           <div class="group-meta">
             <div class="group-name">${escapeHtml(g.name)}</div>
             <div class="group-path" title="${escapeHtml(g.cwd)}">${escapeHtml(g.cwd)}</div>
           </div>
           ${headStatusDot}
           <span class="group-count">${g.tabs.length}</span>
-          <span class="group-more" data-more="${escapeHtml(g.id)}" title="更多">⋯</span>
+          <span class="group-more" data-more="${escapeHtml(g.id)}" title="更多">${icon('more-horizontal')}</span>
         </div>
         <div class="group-tabs">
           ${g.tabs.map((t) => this.tabRow(t, activeTabId === t.id)).join('')}
           <div class="group-addtab" data-addtab="${escapeHtml(g.id)}">
-            <span class="ic">＋</span>新建会话标签
+            <span class="ic">${icon('plus', { size: 13 })}</span>新建会话标签
           </div>
         </div>
       `
@@ -124,7 +125,7 @@ export class Sidebar {
         <span class="st-dot st-${st}" title="${escapeHtml(dotTitle)}"></span>
         <span class="trow-name">${escapeHtml(t.name)}</span>
         <span class="trow-badge${badgeCls}">${escapeHtml(badgeText)}</span>
-        <span class="trow-close" data-close="${escapeHtml(t.id)}" title="关闭标签">×</span>
+        <span class="trow-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 12, stroke: 2 })}</span>
       </div>`
   }
 
@@ -143,12 +144,12 @@ export class Sidebar {
       el.className = 'saved-row'
       el.dataset.saved = s.id
       el.innerHTML = `
-        <div class="saved-ic">↺</div>
+        <div class="saved-ic">${icon('rotate-ccw')}</div>
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
           <div class="saved-sub">${s.tabCount} 个标签 · ${escapeHtml(s.cwd)} · ${escapeHtml(s.savedAt)}</div>
         </div>
-        <div class="saved-restore" data-restore="${escapeHtml(s.id)}">↺ 恢复</div>
+        <div class="saved-restore" data-restore="${escapeHtml(s.id)}">${icon('rotate-ccw', { size: 12 })} 恢复</div>
       `
       this.savedEl.appendChild(el)
     }
