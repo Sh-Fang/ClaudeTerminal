@@ -96,6 +96,10 @@ export class SessionEventWatcher {
       cwd: typeof obj.cwd === 'string' ? obj.cwd : undefined,
       ts: typeof obj.ts === 'string' ? obj.ts : undefined
     }
-    this.getWindow()?.webContents.send('session:event', payload)
+    const w = this.getWindow()
+    if (!w || w.isDestroyed()) return
+    const wc = w.webContents
+    if (!wc || wc.isDestroyed()) return
+    try { wc.send('session:event', payload) } catch {}
   }
 }

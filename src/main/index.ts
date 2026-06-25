@@ -25,8 +25,14 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:state', { maximized: true }))
-  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:state', { maximized: false }))
+  const sendState = (maximized: boolean): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    const wc = mainWindow.webContents
+    if (!wc || wc.isDestroyed()) return
+    try { wc.send('window:state', { maximized }) } catch {}
+  }
+  mainWindow.on('maximize', () => sendState(true))
+  mainWindow.on('unmaximize', () => sendState(false))
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 

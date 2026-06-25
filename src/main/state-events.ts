@@ -62,12 +62,17 @@ export class StateEventWatcher {
       const state = typeof obj.state === 'string' && ALLOWED_STATES.has(obj.state) ? obj.state : null
       if (!state) return
       const tabId = name.slice(0, -'.json'.length)
-      this.getWindow()?.webContents.send('state:event', {
+      const payload = {
         tabId,
         state,
         message: typeof obj.message === 'string' ? obj.message : undefined,
         ts: typeof obj.ts === 'string' ? obj.ts : undefined
-      })
+      }
+      const w = this.getWindow()
+      if (!w || w.isDestroyed()) return
+      const wc = w.webContents
+      if (!wc || wc.isDestroyed()) return
+      try { wc.send('state:event', payload) } catch {}
     })
   }
 }

@@ -75,10 +75,17 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       if (shouldDisableAutoupdate()) {
         env.DISABLE_AUTOUPDATER = '1'
       }
+      const safeSend = (channel: string, payload: unknown): void => {
+        const w = getWindow()
+        if (!w || w.isDestroyed()) return
+        const wc = w.webContents
+        if (!wc || wc.isDestroyed()) return
+        try { wc.send(channel, payload) } catch {}
+      }
       const id = createPty(
         { cols: opts?.cols, rows: opts?.rows, cwd: opts?.cwd, env },
-        (sid, data) => getWindow()?.webContents.send('pty:data', { id: sid, data }),
-        (sid, exitCode) => getWindow()?.webContents.send('pty:exit', { id: sid, exitCode })
+        (sid, data) => safeSend('pty:data', { id: sid, data }),
+        (sid, exitCode) => safeSend('pty:exit', { id: sid, exitCode })
       )
       return id
     }
