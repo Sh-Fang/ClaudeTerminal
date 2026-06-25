@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>Claude Terminal</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="side-scroll">
+          <div class="side-section-label">打开的分组<span class="line"></span></div>
+          <div id="groupList"></div>
+          <div class="new-group-btn" id="newGroupBtn" title="新建分组">
+            <span class="ic">＋</span>新建分组
+          </div>
+          <div class="side-section-label">已保存的分组<span class="line"></span></div>
+          <div id="savedList"></div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="toolbar">
+          <div class="crumb">
+            <span class="g" id="cbGroup"></span>
+            <span class="sep">›</span>
+            <span class="t" id="cbTab"></span>
+            <span id="cbStatus"></span>
+            <span class="cwd" id="cbCwd"></span>
+          </div>
+          <div class="spacer"></div>
+          <div class="session-select" id="sessionSelect" title="切换会话">
+            <span class="clock">◷</span>
+            <span class="time" id="sessTime"></span>
+            <span class="title" id="sessTitle"></span>
+            <span class="caret">▾</span>
+          </div>
+          <button class="tool-icon-btn" id="settingsBtn" title="设置" aria-label="设置">⚙</button>
+          <div class="session-menu" id="sessionMenu">
+            <div class="menu-eyebrow">本标签的会话（栈顶 = 当前）</div>
+            <div id="sessList"></div>
+            <div class="menu-foot">
+              <span class="dot">＋</span>
+              <span>终端里 <code>/clear</code> 会自动在此新增一条会话</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="hosts"></div>
+
+        <div id="search" role="search" aria-label="终端内搜索">
+          <input id="search-input" type="text" placeholder="搜索（Enter 下一个，Shift+Enter 上一个）" autocomplete="off" spellcheck="false" />
+          <span id="search-count" aria-live="polite"></span>
+          <button id="search-close" title="关闭 (Esc)" aria-label="关闭搜索">×</button>
+        </div>
+
+        <div class="statusbar">
+          <span class="sb-dot"></span>
+          <span>pwsh 7</span>
+          <span>ConPTY</span>
+          <span>UTF-8</span>
+          <div class="right">
+            <span id="sbSession"></span>
+            <span id="sbCwd"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ctx" id="ctx"></div>
+
+    <div id="scrim" class="scrim" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">新建标签</h2>
+        <p class="sub" id="modal-sub">一个标签 = 一个 pwsh 会话。</p>
+        <div class="field" id="modal-name-field">
+          <label for="modal-name">名称</label>
+          <input id="modal-name" type="text" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field" id="modal-cwd-field">
+          <label for="modal-cwd">路径 (cwd)</label>
+          <input id="modal-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field-check" id="modal-cc-field">
+          <label>
+            <input id="modal-cc" type="checkbox" checked />
+            <span>自动启动 Claude Code（首次绑定 UUID，之后 <code>--resume</code>）</span>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="modal-cancel" class="btn btn-secondary">取消</button>
+          <button id="modal-ok" class="btn btn-primary">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmScrim" class="scrim" hidden>
+      <div class="modal" style="width:404px">
+        <h2 id="cf-title">确认</h2>
+        <p class="sub" id="cf-msg"></p>
+        <div class="actions">
+          <button id="cf-cancel" class="btn btn-secondary">取消</button>
+          <button id="cf-ok" class="btn btn-danger">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settingsScrim" class="scrim" hidden>
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
+        <h2 id="set-title">设置</h2>
+        <p class="sub">改动即时生效；关闭面板即持久化。</p>
+
+        <div class="set-section">
+          <div class="set-section-title">外观</div>
+          <div class="set-row">
+            <label for="set-font-family">字体族</label>
+            <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="set-row two">
+            <div>
+              <label for="set-font-size">字号 (px)</label>
+              <input id="set-font-size" type="number" min="8" max="40" step="1" />
+            </div>
+            <div>
+              <label for="set-line-height">行高</label>
+              <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-theme">主题</label>
+            <select id="set-theme">
+              <option value="vscode-dark">VSCode Dark</option>
+              <option value="vercel-dark">Vercel Dark</option>
+              <option value="one-light">One Light</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="set-section">
+          <div class="set-section-title">终端</div>
+          <div class="set-row two">
+            <div>
+              <label for="set-cursor-style">光标样式</label>
+              <select id="set-cursor-style">
+                <option value="block">block</option>
+                <option value="underline">underline</option>
+                <option value="bar">bar</option>
+              </select>
+            </div>
+            <div>
+              <label for="set-scrollback">回滚缓冲（行）</label>
+              <input id="set-scrollback" type="number" min="100" max="100000" step="500" />
+            </div>
+          </div>
+          <div class="field-check">
+            <label>
+              <input id="set-cursor-blink" type="checkbox" />
+              <span>光标闪烁</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="set-section">
+          <div class="set-section-title">新建默认值</div>
+          <div class="set-row">
+            <label for="set-default-cwd">默认 cwd（新建分组预填）</label>
+            <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field-check">
+            <label>
+              <input id="set-default-cc" type="checkbox" />
+              <span>新建标签默认勾选「自动启动 Claude Code」</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="set-section">
+          <div class="set-section-title">Claude Code</div>
+          <div class="set-row">
+            <label for="set-claude-path">claude 可执行路径（留空 = 走 PATH）</label>
+            <div class="row-with-btn">
+              <input id="set-claude-path" class="mono" type="text" autocomplete="off" spellcheck="false"
+                placeholder="例如 C:\nvm4w\nodejs\claude.cmd" />
+              <button id="set-claude-detect" class="btn btn-secondary" type="button">自动检测</button>
+            </div>
+          </div>
+          <div class="field-check">
+            <label>
+              <input id="set-disable-update" type="checkbox" />
+              <span>禁止 cc 自动升级（写 <code>DISABLE_AUTOUPDATER=1</code> 到 Windows 用户环境变量，所有终端生效）</span>
+            </label>
+            <div id="set-disable-update-status" class="set-hint"></div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="set-reset" class="btn btn-secondary">恢复默认</button>
+          <div style="flex:1"></div>
+          <button id="set-close" class="btn btn-primary">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"><span id="toastMsg"></span></div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

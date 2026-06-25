@@ -4,13 +4,27 @@
   "description": "定制化终端（Electron + PowerShell 7），适配 Windows",
   "private": true,
   "type": "commonjs",
+  "main": "out/main/index.js",
   "scripts": {
-    "smoke:pty": "node scripts/smoke-pty.js"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "smoke:pty": "node scripts/smoke-pty.js",
+    "smoke:electron": "electron scripts/electron-smoke.js"
   },
   "dependencies": {
-    "@lydell/node-pty": "^1.2.0-beta.12"
+    "@lydell/node-pty": "^1.2.0-beta.12",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0"
   },
   "devDependencies": {
-    "electron": "^42.5.0"
+    "@types/node": "^26.0.0",
+    "electron": "^42.5.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0"
   }
 }
