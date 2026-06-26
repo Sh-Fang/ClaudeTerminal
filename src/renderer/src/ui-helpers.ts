@@ -1,5 +1,18 @@
 // 简单 UI 工具：context menu / modal / toast / confirm
 
+// 仅当 mousedown 与 mouseup（click）都落在 scrim 自身时触发关闭。
+// 防止用户在 modal 里按住选文字 → 拖到外部释放被误判为"点外部"。
+export function bindScrimDismiss(scrim: HTMLElement, onDismiss: () => void): void {
+  let downOnScrim = false
+  scrim.addEventListener('mousedown', (e) => {
+    downOnScrim = e.target === scrim
+  })
+  scrim.addEventListener('click', (e) => {
+    if (e.target === scrim && downOnScrim) onDismiss()
+    downOnScrim = false
+  })
+}
+
 const ctxEl = document.getElementById('ctx') as HTMLDivElement
 const toastEl = document.getElementById('toast') as HTMLDivElement
 const toastMsg = document.getElementById('toastMsg') as HTMLSpanElement
@@ -104,9 +117,7 @@ cfOk.addEventListener('click', () => {
   cfCancelCb = null
   cb?.()
 })
-confirmScrim.addEventListener('click', (e) => {
-  if (e.target === confirmScrim) cancelConfirm()
-})
+bindScrimDismiss(confirmScrim, cancelConfirm)
 
 // ─── 通用 modal 重设：根据用途切换提示 + 字段可见性 + 校验 ─────
 export type ModalKind = 'new-group' | 'new-tab' | 'rename'
@@ -176,9 +187,7 @@ function closeModal(): void {
   modalCb = null
 }
 modalCancel.addEventListener('click', closeModal)
-scrim.addEventListener('click', (e) => {
-  if (e.target === scrim) closeModal()
-})
+bindScrimDismiss(scrim, closeModal)
 modalOk.addEventListener('click', () => {
   if (!modalCb) return
   const v = {

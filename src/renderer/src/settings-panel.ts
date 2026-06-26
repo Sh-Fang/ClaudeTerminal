@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type CursorStyle } from './themes'
+import { bindScrimDismiss } from './ui-helpers'
 
 export interface SettingsPanelHooks {
   getSettings(): Settings
@@ -42,9 +43,7 @@ export class SettingsPanel {
       this.bindFromSettings(DEFAULT_SETTINGS)
       this.commitChange()
     })
-    this.scrim.addEventListener('click', (e) => {
-      if (e.target === this.scrim) this.close()
-    })
+    bindScrimDismiss(this.scrim, () => this.close())
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !this.scrim.hidden) this.close()
     })
