@@ -12,6 +12,8 @@ export interface Settings {
   claudePath: string
   disableAutoupdater: boolean
   lastUsedCwd: string
+  sidebarWidth: number
+  sidebarCollapsed: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,7 +28,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { cwd: '', autoLaunchCC: true },
   claudePath: '',
   disableAutoupdater: true,
-  lastUsedCwd: ''
+  lastUsedCwd: '',
+  sidebarWidth: 268,
+  sidebarCollapsed: false
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

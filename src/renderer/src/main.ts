@@ -26,6 +26,11 @@ const SEARCH_DECOR = {
 }
 
 const hostsEl = document.getElementById('hosts') as HTMLDivElement
+const appEl = document.querySelector('.app') as HTMLDivElement
+const sidebarEl = document.getElementById('sidebar') as HTMLElement
+const sidebarResizer = document.getElementById('sidebarResizer') as HTMLDivElement
+const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn') as HTMLButtonElement
+const sidebarHandleEl = document.getElementById('sidebarHandle') as HTMLDivElement
 
 // ─── 状态 ───────────────────────────────────────────────────────────
 interface Group {
@@ -868,6 +873,83 @@ window.term.onWindowCloseRequest(() => {
   })
 })
 
+// ─── Sidebar 宽度 / 收起 / 悬浮预览 ──────────────────────────────
+function applySidebarLayout(): void {
+  document.documentElement.style.setProperty('--sidebar-w', `${settings.sidebarWidth}px`)
+  appEl.classList.toggle('sidebar-collapsed', settings.sidebarCollapsed)
+  sidebarEl.classList.toggle('collapsed', settings.sidebarCollapsed)
+  if (!settings.sidebarCollapsed) sidebarEl.classList.remove('peek')
+  sidebarHandleEl.hidden = !settings.sidebarCollapsed
+}
+
+function persistSettings(): void {
+  if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
+  settingsSaveTimer = window.setTimeout(() => {
+    settingsSaveTimer = null
+    void window.term.saveSettings(settings).then((normed) => { settings = normed })
+  }, 300)
+}
+
+sidebarResizer.addEventListener('mousedown', (e) => {
+  if (settings.sidebarCollapsed) return
+  e.preventDefault()
+  document.body.classList.add('col-resizing')
+  sidebarResizer.classList.add('dragging')
+  const startX = e.clientX
+  const startW = settings.sidebarWidth
+  const onMove = (ev: MouseEvent): void => {
+    const w = Math.max(180, Math.min(520, startW + (ev.clientX - startX)))
+    settings = { ...settings, sidebarWidth: w }
+    document.documentElement.style.setProperty('--sidebar-w', `${w}px`)
+  }
+  const onUp = (): void => {
+    document.body.classList.remove('col-resizing')
+    sidebarResizer.classList.remove('dragging')
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    persistSettings()
+    activeContext()?.tab.refit()
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+})
+
+sidebarCollapseBtn.addEventListener('click', () => {
+  settings = { ...settings, sidebarCollapsed: true }
+  applySidebarLayout()
+  persistSettings()
+  setTimeout(() => activeContext()?.tab.refit(), 180)
+})
+
+sidebarHandleEl.addEventListener('click', () => {
+  settings = { ...settings, sidebarCollapsed: false }
+  applySidebarLayout()
+  persistSettings()
+  setTimeout(() => activeContext()?.tab.refit(), 180)
+})
+
+let peekTimer: number | null = null
+function enterPeek(): void {
+  if (!settings.sidebarCollapsed) return
+  if (peekTimer != null) { window.clearTimeout(peekTimer); peekTimer = null }
+  sidebarEl.classList.add('peek')
+}
+function leavePeek(): void {
+  if (peekTimer != null) window.clearTimeout(peekTimer)
+  peekTimer = window.setTimeout(() => {
+    sidebarEl.classList.remove('peek')
+    peekTimer = null
+  }, 180)
+}
+sidebarHandleEl.addEventListener('mouseenter', enterPeek)
+sidebarHandleEl.addEventListener('mouseleave', leavePeek)
+sidebarEl.addEventListener('mouseenter', () => {
+  if (settings.sidebarCollapsed) enterPeek()
+})
+sidebarEl.addEventListener('mouseleave', () => {
+  if (settings.sidebarCollapsed) leavePeek()
+})
+
 // ─── SettingsPanel ───────────────────────────────────────────────
 const settingsPanel = new SettingsPanel({
   getSettings,
@@ -880,6 +962,7 @@ void settingsPanel
 // 启动即空状态，等用户点「新建分组」或从已保存的分组恢复。
 ;(async () => {
   settings = await window.term.loadSettings()
+  applySidebarLayout()
   const ws = await window.term.loadWorkspace()
   for (const s of ws.savedGroups) {
     savedGroups.push({

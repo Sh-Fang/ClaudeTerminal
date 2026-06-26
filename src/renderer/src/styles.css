@@ -108,9 +108,13 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: 268px 1fr;
+  grid-template-columns: var(--sidebar-w, 268px) 1fr;
   min-height: 0;
   background: var(--canvas);
+  position: relative;
+}
+.app.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
 }
 
 /* ─── Sidebar ─────────────────────────────────────────────────────── */
@@ -120,7 +124,99 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
 }
+.sidebar.collapsed:not(.peek) { display: none; }
+.sidebar.peek {
+  position: fixed;
+  top: 38px;
+  left: 28px;
+  width: var(--sidebar-w, 268px);
+  height: calc(100vh - 46px);
+  z-index: 70;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.02),
+    0 8px 16px -4px rgba(0, 0, 0, 0.04),
+    0 24px 32px -8px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--canvas-soft);
+}
+.sidebar.peek .sidebar-resizer { display: none; }
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+  border-bottom: 1px solid transparent;
+}
+.side-head-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: var(--mute);
+  text-transform: uppercase;
+  flex: 1;
+}
+.side-head-btn {
+  width: 22px; height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--mute);
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.side-head-btn:hover { background: var(--hairline); color: var(--ink); }
+.sidebar-resizer {
+  position: absolute;
+  top: 0; bottom: 0; right: -2px;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background 0.15s;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+  background: var(--link);
+}
+body.col-resizing,
+body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* ─── Sidebar 收起态悬浮 handle ───────────────────────────────────── */
+.sidebar-handle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 72px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-left: none;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--mute);
+  cursor: pointer;
+  z-index: 60;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: width 0.15s, color 0.15s, background 0.15s;
+}
+.sidebar-handle[hidden] { display: none; }
+.sidebar-handle:hover {
+  width: 22px;
+  background: var(--canvas-soft);
+  color: var(--ink);
+}
+.sidebar-handle .sh-ic { display: grid; place-items: center; }
+.sidebar-handle .sh-chevron { display: grid; place-items: center; opacity: 0.7; }
 .side-scroll {
   flex: 1;
   overflow: auto;

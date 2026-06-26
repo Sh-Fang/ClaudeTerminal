@@ -27,6 +27,8 @@ export interface Settings {
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径
   disableAutoupdater: boolean  // true = spawn pwsh 时注入 DISABLE_AUTOUPDATER=1
   lastUsedCwd: string  // 最近一次新建分组选择的 cwd，下次预填用
+  sidebarWidth: number
+  sidebarCollapsed: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -41,7 +43,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { cwd: '', autoLaunchCC: true },
   claudePath: '',
   disableAutoupdater: true,
-  lastUsedCwd: ''
+  lastUsedCwd: '',
+  sidebarWidth: 268,
+  sidebarCollapsed: false
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -89,7 +93,9 @@ function normalize(raw: unknown): Settings {
       typeof r.disableAutoupdater === 'boolean'
         ? r.disableAutoupdater
         : DEFAULT_SETTINGS.disableAutoupdater,
-    lastUsedCwd: typeof r.lastUsedCwd === 'string' ? r.lastUsedCwd : DEFAULT_SETTINGS.lastUsedCwd
+    lastUsedCwd: typeof r.lastUsedCwd === 'string' ? r.lastUsedCwd : DEFAULT_SETTINGS.lastUsedCwd,
+    sidebarWidth: clampNum(r.sidebarWidth, 180, 520, DEFAULT_SETTINGS.sidebarWidth),
+    sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed
   }
 }
 

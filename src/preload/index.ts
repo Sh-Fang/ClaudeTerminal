@@ -81,6 +81,8 @@ export interface Settings {
   claudePath: string
   disableAutoupdater: boolean
   lastUsedCwd: string
+  sidebarWidth: number
+  sidebarCollapsed: boolean
 }
 
 export interface SessionMeta {
