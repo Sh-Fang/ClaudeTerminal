@@ -27,6 +27,7 @@ export class SettingsPanel {
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
+  private pickCwdBtn = document.getElementById('set-default-cwd-pick') as HTMLButtonElement
   private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
   private upUpdHintTimer: number | null = null
   private lastDisableUpd: boolean | null = null
@@ -72,6 +73,7 @@ export class SettingsPanel {
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
     const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
+    this.pickCwdBtn.addEventListener('click', () => void this.pickDefaultCwd())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
       el.addEventListener('change', () => this.commitChange())
@@ -84,7 +86,7 @@ export class SettingsPanel {
   open(): void {
     this.bindFromSettings(this.hooks.getSettings())
     this.activateSection('appearance')
-    void this.refreshUpdHint()
+    void this.ensureUpdConsistency()
     this.scrim.hidden = false
   }
   close(): void {
@@ -122,6 +124,30 @@ export class SettingsPanel {
   }
   private getSeg(group: HTMLElement): string {
     return this.segVals.get(group) ?? ''
+  }
+
+  private async pickDefaultCwd(): Promise<void> {
+    const cur = this.fDefaultCwd.value.trim()
+    const picked = await window.term.pickDirectory(cur || undefined)
+    if (picked) {
+      this.fDefaultCwd.value = picked
+      this.commitChange()
+    }
+  }
+
+  // 设置里勾了「禁止自动升级」但系统环境变量还没写（如默认勾选、从未触发过写入）→
+  // 补写一次，让 hint 与勾选状态一致，避免「明明勾了却显示未生效」。
+  private async ensureUpdConsistency(): Promise<void> {
+    try {
+      const cur = await window.term.readDisableAutoupdater()
+      if (this.hooks.getSettings().disableAutoupdater && cur !== '1') {
+        await this.syncSystemEnv(true)
+        return
+      }
+    } catch {
+      // 读取失败就退回普通 hint 刷新
+    }
+    await this.refreshUpdHint()
   }
 
   private async refreshUpdHint(): Promise<void> {

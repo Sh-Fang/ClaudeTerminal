@@ -331,7 +331,15 @@
             <div class="set-section" data-section="defaults" hidden>
               <div class="set-row">
                 <label for="set-default-cwd">默认新建分组路径</label>
-                <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
+                <div class="row-with-btn">
+                  <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
+                  <button id="set-default-cwd-pick" class="btn btn-secondary" type="button" title="选择目录">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    </svg>
+                    <span>浏览</span>
+                  </button>
+                </div>
               </div>
               <div class="field-check">
                 <label>
