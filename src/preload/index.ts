@@ -88,6 +88,21 @@ export interface Settings {
   savedSidebarLimit: number
   statusDowngradeSec: number
   confirmCloseUnsaved: boolean
+  showClaudeUsage: boolean
+}
+
+export interface UsageWindow {
+  utilization: number
+  resetsAt: string | null
+}
+export interface ClaudeUsage {
+  ok: boolean
+  error?: string
+  fiveHour?: UsageWindow
+  sevenDay?: UsageWindow
+  sevenDayOpus?: UsageWindow | null
+  sevenDaySonnet?: UsageWindow | null
+  fetchedAt: number
 }
 
 // 与 src/main/clipboard.ts 的 ClipboardRead 保持一致：files / text / empty 三态
@@ -116,6 +131,7 @@ export interface TermBridge {
   claudeSessionExists(sessionId: string): Promise<boolean>
   claudeSessionMeta(sessionId: string): Promise<SessionMeta>
   claudeDetect(): Promise<string | null>
+  claudeUsage(force?: boolean): Promise<ClaudeUsage>
   hookPaths(): Promise<HookPaths>
   pickDirectory(defaultPath?: string): Promise<string | null>
   pathExists(p: string): Promise<boolean>
@@ -150,6 +166,7 @@ const api: TermBridge = {
   claudeSessionExists: (sessionId) => ipcRenderer.invoke('claude:sessionExists', sessionId),
   claudeSessionMeta: (sessionId) => ipcRenderer.invoke('claude:sessionMeta', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
+  claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),
   pickDirectory: (defaultPath) => ipcRenderer.invoke('dialog:pickDirectory', defaultPath),
   pathExists: (p) => ipcRenderer.invoke('path:exists', p),

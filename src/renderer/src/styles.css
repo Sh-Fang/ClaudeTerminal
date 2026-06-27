@@ -648,6 +648,20 @@ button.saved-toggle:hover { color: var(--ink); }
   user-select: text;   /* 路径可手动选中复制（覆盖外层的 user-select: none）*/
   cursor: text;
 }
+.statusbar .sb-usage {
+  flex: 0 0 auto;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid var(--hairline);
+  white-space: nowrap;
+  cursor: default;
+  letter-spacing: .2px;
+}
+.statusbar .sb-usage.loading { color: var(--mute); }
+.statusbar .sb-usage.error { color: #f14c4c; }
+.statusbar .sb-usage.lv-ok { color: #23d18b; }
+.statusbar .sb-usage.lv-warn { color: #f5a623; }
+.statusbar .sb-usage.lv-danger { color: #f14c4c; }
 
 /* Search popover */
 #search {

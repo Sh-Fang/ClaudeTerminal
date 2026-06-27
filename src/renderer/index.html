@@ -121,6 +121,7 @@
 
         <div class="statusbar">
           <span id="sbCwd"></span>
+          <span id="sbUsage" class="sb-usage" hidden></span>
         </div>
 
         <div id="toast" class="toast"><span id="toastMsg"></span></div>
@@ -364,6 +365,13 @@
                   <span>禁止 cc 自动升级（写 <code>DISABLE_AUTOUPDATER=1</code> 到 Windows 用户环境变量，所有终端生效）</span>
                 </label>
                 <div id="set-disable-update-status" class="set-hint"></div>
+              </div>
+              <div class="field-check">
+                <label>
+                  <input id="set-show-usage" type="checkbox" />
+                  <span>底部状态栏显示 Claude 用量（5h / 周 利用率与重置时间）</span>
+                </label>
+                <div class="set-hint">读取本机 cc 登录凭据调用账号用量接口，仅本地使用、不外发；每 3 分钟刷新一次。</div>
               </div>
             </div>
 

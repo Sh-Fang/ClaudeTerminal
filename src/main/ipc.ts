@@ -8,6 +8,7 @@ import { readSessionMeta } from './jsonl-reader'
 import { loadSettings, saveSettings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
+import { getClaudeUsage } from './claude-usage'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -68,6 +69,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('claude:sessionExists', (_e, sessionId: string) => sessionExists(sessionId))
   ipcMain.handle('claude:sessionMeta', (_e, sessionId: string) => readSessionMeta(sessionId))
   ipcMain.handle('claude:detect', () => detectClaudePath())
+  ipcMain.handle('claude:usage', (_e, force?: boolean) => getClaudeUsage(!!force))
 
   ipcMain.handle('path:exists', (_e, p: string) => {
     if (typeof p !== 'string' || !p) return false

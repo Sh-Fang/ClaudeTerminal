@@ -18,6 +18,9 @@ import {
 } from './ui-helpers'
 import { icon } from './svg-icons'
 import { SavedManager, type ManageGroupView } from './saved-manager'
+import { UsageIndicator } from './usage-indicator'
+
+const usageIndicator = new UsageIndicator()
 
 const SEARCH_DECOR = {
   matchBackground: '#3a3a00',
@@ -94,6 +97,7 @@ function applySettingsToAll(): void {
 function updateSettings(s: Settings): void {
   settings = s
   applySettingsToAll()
+  usageIndicator.applySettings(settings.showClaudeUsage)
   // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
   sidebar.render()
   savedManager.render()
@@ -1313,6 +1317,7 @@ const savedManager = new SavedManager({
 ;(async () => {
   settings = await window.term.loadSettings()
   applySidebarLayout()
+  usageIndicator.applySettings(settings.showClaudeUsage)
   const ws = await window.term.loadWorkspace()
   for (const s of ws.savedGroups) {
     savedGroups.push({
