@@ -85,6 +85,9 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean
+  savedSidebarLimit: number
+  statusDowngradeSec: number
+  confirmCloseUnsaved: boolean
 }
 
 // 与 src/main/clipboard.ts 的 ClipboardRead 保持一致：files / text / empty 三态

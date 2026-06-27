@@ -187,7 +187,7 @@
         <div class="mg-head">
           <div>
             <h2 id="mg-title">管理已保存的分组</h2>
-            <p class="sub">拖动调整顺序；前 <b>4</b> 个会展示在侧边栏。点名称可重命名，展开可管理标签。</p>
+            <p class="sub">拖动调整顺序；前 <b id="mg-limit-n">4</b> 个会展示在侧边栏。点名称可重命名，展开可管理标签。</p>
           </div>
           <button id="mg-close" class="mg-close-btn" type="button" aria-label="关闭">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -219,6 +219,10 @@
             <button class="set-nav-item active" data-section="appearance" type="button">
               <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18 4.5 4.5 0 0 1 0-9 4.5 4.5 0 0 0 0-9z"/></svg></span>
               外观
+            </button>
+            <button class="set-nav-item" data-section="general" type="button">
+              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+              通用
             </button>
             <button class="set-nav-item" data-section="terminal" type="button">
               <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><polyline points="6.5 9 10 12 6.5 15"/><line x1="12.5" y1="15" x2="17.5" y2="15"/></svg></span>
@@ -259,6 +263,23 @@
                   <option value="vercel-dark">Vercel Dark</option>
                   <option value="one-light">One Light</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="set-section" data-section="general" hidden>
+              <div class="set-row">
+                <label for="set-saved-limit">侧边栏显示的「已保存分组」数量</label>
+                <input id="set-saved-limit" type="number" min="1" max="20" step="1" />
+              </div>
+              <div class="set-row">
+                <label for="set-downgrade-sec">完成/待办绿点停留秒数后消失</label>
+                <input id="set-downgrade-sec" type="number" min="1" max="120" step="1" />
+              </div>
+              <div class="field-check">
+                <label>
+                  <input id="set-confirm-close" type="checkbox" />
+                  <span>关闭未保存的分组前二次确认</span>
+                </label>
               </div>
             </div>
 

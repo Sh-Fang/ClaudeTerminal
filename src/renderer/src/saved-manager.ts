@@ -28,9 +28,8 @@ export interface SavedManagerHooks {
   onDeleteTab(savedId: string, tabId: string): void
   onRestoreAll(savedId: string): void
   onRestoreSelect(savedId: string): void
+  getSidebarLimit(): number
 }
-
-const SIDEBAR_LIMIT = 4
 
 export class SavedManager {
   private scrim: HTMLDivElement
@@ -73,12 +72,15 @@ export class SavedManager {
   render(): void {
     if (this.scrim.hidden) return
     const list = this.hooks.getSaved()
+    const limit = this.hooks.getSidebarLimit()
+    const limitEl = document.getElementById('mg-limit-n')
+    if (limitEl) limitEl.textContent = String(limit)
     this.body.innerHTML = ''
     this.empty.hidden = list.length > 0
     if (list.length === 0) return
     for (let i = 0; i < list.length; i++) {
-      const visible = i < SIDEBAR_LIMIT
-      if (i === SIDEBAR_LIMIT) {
+      const visible = i < limit
+      if (i === limit) {
         const sep = document.createElement('div')
         sep.className = 'mg-divider'
         sep.textContent = '以下分组仅在管理页可见'

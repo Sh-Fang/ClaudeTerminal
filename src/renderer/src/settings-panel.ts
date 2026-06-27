@@ -23,6 +23,9 @@ export class SettingsPanel {
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
   private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
+  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLInputElement
+  private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLInputElement
+  private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
   private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
   private upUpdHintTimer: number | null = null
@@ -62,8 +65,8 @@ export class SettingsPanel {
       })
     }
 
-    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
-    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd]
+    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath, this.fSavedLimit, this.fDowngradeSec]
+    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
@@ -133,6 +136,9 @@ export class SettingsPanel {
     this.fDefaultCC.checked = s.defaults.autoLaunchCC
     this.fClaudePath.value = s.claudePath
     this.fDisableUpd.checked = s.disableAutoupdater
+    this.fSavedLimit.value = String(s.savedSidebarLimit)
+    this.fDowngradeSec.value = String(s.statusDowngradeSec)
+    this.fConfirmClose.checked = s.confirmCloseUnsaved
     this.lastDisableUpd = s.disableAutoupdater
   }
 
@@ -189,7 +195,10 @@ export class SettingsPanel {
         autoLaunchCC: this.fDefaultCC.checked
       },
       claudePath: this.fClaudePath.value.trim(),
-      disableAutoupdater: this.fDisableUpd.checked
+      disableAutoupdater: this.fDisableUpd.checked,
+      savedSidebarLimit: this.clamp(Number(this.fSavedLimit.value), 1, 20, cur.savedSidebarLimit),
+      statusDowngradeSec: this.clamp(Number(this.fDowngradeSec.value), 1, 120, cur.statusDowngradeSec),
+      confirmCloseUnsaved: this.fConfirmClose.checked
     }
     this.hooks.setSettings(next)
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {

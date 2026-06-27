@@ -15,6 +15,9 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean
+  savedSidebarLimit: number    // 侧边栏「已保存的分组」最多显示几个
+  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
+  confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,7 +35,10 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUsedCwd: '',
   sidebarWidth: 268,
   sidebarCollapsed: false,
-  savedCollapsed: false
+  savedCollapsed: false,
+  savedSidebarLimit: 4,
+  statusDowngradeSec: 5,
+  confirmCloseUnsaved: true
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

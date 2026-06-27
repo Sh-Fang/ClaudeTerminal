@@ -94,6 +94,9 @@ function applySettingsToAll(): void {
 function updateSettings(s: Settings): void {
   settings = s
   applySettingsToAll()
+  // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
+  sidebar.render()
+  savedManager.render()
   if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
   settingsSaveTimer = window.setTimeout(() => {
     settingsSaveTimer = null
@@ -367,9 +370,8 @@ function activateUI(tabId: string): void {
   toolbar.render()
 }
 
-// 查看降级：用户切到 done/attention 的标签后，停留 5s 才把状态降回 idle。
+// 查看降级：用户切到 done/attention 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
 // 用意：误点切走时绿点仍保留；真正"我看过了"才消失。
-const VIEW_DOWNGRADE_MS = 5000
 let downgradeTimer: number | null = null
 let downgradeTabId: string | null = null
 let downgradeFromStatus: TerminalTab['status'] | null = null
@@ -398,7 +400,7 @@ function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
     sidebar.render()
     toolbar.render()
     scheduleSave()
-  }, VIEW_DOWNGRADE_MS)
+  }, settings.statusDowngradeSec * 1000)
 }
 
 function activateTab(tabId: string): void {
@@ -604,6 +606,26 @@ function closeGroup(groupId: string): void {
   const busyHint = busyCount > 0
     ? `<br/><b>注意</b>：其中 <b>${busyCount}</b> 个标签正在运行或待决策，关闭会立即中断。`
     : ''
+  const doClose = (): void => {
+    for (const t of g.tabs) t.dispose()
+    const idx = groups.indexOf(g)
+    groups.splice(idx, 1)
+    if (activeTabId && !findTab(activeTabId)) {
+      const next = groups.flatMap((x) => x.tabs)[0]
+      activeTabId = next?.id ?? null
+      if (next) activateUI(next.id)
+    }
+    sidebar.render()
+    toolbar.render()
+    scheduleSave()
+    toast(`已关闭分组「${g.name}」`)
+  }
+  // 未保存分组 + 用户关掉了二次确认 + 无 busy 标签 → 直接关闭不打扰。
+  // 已保存分组（可恢复）保持原确认；有 busy 标签则强制确认，避免误中断运行中的任务。
+  if (!saved && !settings.confirmCloseUnsaved && busyCount === 0) {
+    doClose()
+    return
+  }
   confirmDialog({
     title: `关闭分组「${g.name}」？`,
     message: `将关闭该分组下的 ${g.tabs.length} 个标签。` +
@@ -612,20 +634,7 @@ function closeGroup(groupId: string): void {
         : '该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。') +
       busyHint,
     okLabel: '关闭分组',
-    onOk: () => {
-      for (const t of g.tabs) t.dispose()
-      const idx = groups.indexOf(g)
-      groups.splice(idx, 1)
-      if (activeTabId && !findTab(activeTabId)) {
-        const next = groups.flatMap((x) => x.tabs)[0]
-        activeTabId = next?.id ?? null
-        if (next) activateUI(next.id)
-      }
-      sidebar.render()
-      toolbar.render()
-      scheduleSave()
-      toast(`已关闭分组「${g.name}」`)
-    }
+    onOk: doClose
   })
 }
 
@@ -927,6 +936,7 @@ const sidebar = new Sidebar({
       tabCount: s.snapshot.tabs.length,
       savedAt: formatTs(s.savedAt)
     })),
+  getSavedLimit: () => settings.savedSidebarLimit,
   getActiveTabId: () => activeTabId,
   activateTab,
   closeTab,
@@ -1136,7 +1146,7 @@ window.addEventListener('beforeunload', () => {
 window.term.onWindowCloseRequest(() => {
   if (isConfirmOpen()) return // 已有确认弹窗在显示，忽略重复触发
   const dirtyGroups = groups.filter((g) => isGroupDirty(g) && g.tabs.length > 0)
-  if (dirtyGroups.length === 0) {
+  if (dirtyGroups.length === 0 || !settings.confirmCloseUnsaved) {
     window.term.winConfirmClose()
     return
   }
@@ -1293,7 +1303,8 @@ const savedManager = new SavedManager({
     scheduleSave()
   },
   onRestoreAll: (id) => restoreSavedAll(id),
-  onRestoreSelect: (id) => openRestoreSelect(id)
+  onRestoreSelect: (id) => openRestoreSelect(id),
+  getSidebarLimit: () => settings.savedSidebarLimit
 })
 
 // ─── 启动恢复 ────────────────────────────────────────────────────

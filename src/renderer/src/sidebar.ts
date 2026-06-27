@@ -23,6 +23,7 @@ export interface SavedView {
 export interface SidebarHooks {
   getGroups(): GroupView[]
   getSaved(): SavedView[]
+  getSavedLimit(): number
   getActiveTabId(): string | null
 
   activateTab(tabId: string): void
@@ -40,8 +41,6 @@ export interface SidebarHooks {
   restoreSaved(savedId: string): void
   openManageSaved(): void
 }
-
-const SAVED_SIDEBAR_LIMIT = 4
 
 const ORDER: Record<TabStatus, number> = { error: 4, attention: 3, done: 2, busy: 1, idle: 0 }
 
@@ -159,7 +158,7 @@ export class Sidebar {
       this.savedEl.appendChild(empty)
       return
     }
-    const visible = saved.slice(0, SAVED_SIDEBAR_LIMIT)
+    const visible = saved.slice(0, this.hooks.getSavedLimit())
     for (const s of visible) {
       const el = document.createElement('div')
       el.className = 'saved-row'

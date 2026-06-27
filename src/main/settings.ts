@@ -30,6 +30,9 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean  // 「已保存的分组」区是否折叠到底部
+  savedSidebarLimit: number    // 侧边栏「已保存的分组」最多显示几个
+  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
+  confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,7 +50,10 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUsedCwd: '',
   sidebarWidth: 268,
   sidebarCollapsed: false,
-  savedCollapsed: false
+  savedCollapsed: false,
+  savedSidebarLimit: 4,
+  statusDowngradeSec: 5,
+  confirmCloseUnsaved: true
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -98,7 +104,11 @@ function normalize(raw: unknown): Settings {
     lastUsedCwd: typeof r.lastUsedCwd === 'string' ? r.lastUsedCwd : DEFAULT_SETTINGS.lastUsedCwd,
     sidebarWidth: clampNum(r.sidebarWidth, 180, 520, DEFAULT_SETTINGS.sidebarWidth),
     sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed,
-    savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed
+    savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed,
+    savedSidebarLimit: clampNum(r.savedSidebarLimit, 1, 20, DEFAULT_SETTINGS.savedSidebarLimit),
+    statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 120, DEFAULT_SETTINGS.statusDowngradeSec),
+    confirmCloseUnsaved:
+      typeof r.confirmCloseUnsaved === 'boolean' ? r.confirmCloseUnsaved : DEFAULT_SETTINGS.confirmCloseUnsaved
   }
 }
 
