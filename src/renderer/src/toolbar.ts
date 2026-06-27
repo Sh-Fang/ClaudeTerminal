@@ -5,9 +5,11 @@ import type { TabStatus } from './ui-helpers-types'
 export interface ToolbarHooks {
   getActiveTab(): { tab: TerminalTab; groupName: string; groupCwd: string } | null
   switchSession(sessionId: string): void
+  onSessionCtx(sessionId: string, x: number, y: number): void
 }
 
 export class Toolbar {
+  private crumbEl = document.querySelector('.toolbar .crumb') as HTMLDivElement
   private cbGroup = document.getElementById('cbGroup') as HTMLSpanElement
   private cbTab = document.getElementById('cbTab') as HTMLSpanElement
   private cbStatus = document.getElementById('cbStatus') as HTMLSpanElement
@@ -35,6 +37,7 @@ export class Toolbar {
   render(): void {
     const cur = this.hooks.getActiveTab()
     if (!cur) {
+      this.crumbEl?.classList.add('is-empty')
       this.cbGroup.textContent = ''
       this.cbTab.textContent = ''
       this.cbStatus.innerHTML = ''
@@ -46,6 +49,7 @@ export class Toolbar {
       this.closeMenu()
       return
     }
+    this.crumbEl?.classList.remove('is-empty')
     this.sessSelect.classList.remove('empty')
 
     const { tab, groupName, groupCwd } = cur
@@ -107,6 +111,11 @@ export class Toolbar {
         this.closeMenu()
         this.hooks.switchSession(s.sessionId)
       })
+      it.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        this.hooks.onSessionCtx(s.sessionId, e.clientX, e.clientY)
+      })
       this.sessList.appendChild(it)
     }
   }
@@ -134,6 +143,7 @@ function currentSession(tab: TerminalTab): SessionRecord | undefined {
 }
 
 function sessionTitle(s: SessionRecord): string {
+  if (s.userTitle) return s.userTitle
   if (s.aiTitle) return s.aiTitle
   return `（待 Claude 生成标题…${s.sessionId.slice(0, 8)}）`
 }

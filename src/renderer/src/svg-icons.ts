@@ -8,6 +8,7 @@ type IconName =
   | 'chevron-down'
   | 'more-horizontal'
   | 'folder'
+  | 'folder-filled'
   | 'rotate-ccw'
   | 'clock'
   | 'settings'
@@ -15,6 +16,10 @@ type IconName =
   | 'save'
   | 'trash'
   | 'sliders'
+  | 'grip-vertical'
+  | 'check-square'
+  | 'square'
+  | 'expand'
 
 interface IconOpts {
   size?: number
@@ -31,12 +36,21 @@ function svg(body: string, opts: IconOpts = {}): string {
   )
 }
 
+function svgFilled(body: string, opts: IconOpts = {}): string {
+  const size = opts.size ?? 14
+  return (
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ` +
+    `fill="currentColor" stroke="none" aria-hidden="true">${body}</svg>`
+  )
+}
+
 const PATHS: Record<IconName, string> = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
   'chevron-down': '<path d="m6 9 6 6 6-6"/>',
   'more-horizontal': '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  'folder-filled': '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   'rotate-ccw': '<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   settings:
@@ -47,9 +61,18 @@ const PATHS: Record<IconName, string> = {
     '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>' +
     '<path d="M17 21v-8H7v8M7 3v5h8"/>',
   trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-  sliders: '<path d="M4 6h16M4 12h16M4 18h16"/>'
+  sliders: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  'grip-vertical': '<circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/>',
+  'check-square': '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  square: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>',
+  expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>'
+}
+
+const FILLED: Partial<Record<IconName, true>> = {
+  'folder-filled': true
 }
 
 export function icon(name: IconName, opts?: IconOpts): string {
+  if (FILLED[name]) return svgFilled(PATHS[name], opts)
   return svg(PATHS[name], opts)
 }

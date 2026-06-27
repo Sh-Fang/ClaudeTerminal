@@ -167,6 +167,9 @@ export class SettingsPanel {
   private commitChange(): void {
     const cur = this.hooks.getSettings()
     const next: Settings = {
+      // 用 cur 打底，保留面板里没有的字段（lastUsedCwd / sidebarWidth /
+      // sidebarCollapsed / savedCollapsed），否则它们会在每次保存时被抹掉。
+      ...cur,
       version: 1,
       font: {
         family: this.fFamily.value.trim() || DEFAULT_SETTINGS.font.family,

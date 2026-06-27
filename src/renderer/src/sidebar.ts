@@ -36,8 +36,12 @@ export interface SidebarHooks {
 
   addTabInGroup(groupId: string): void
   newGroup(): void
+  reorderGroups(orderedIds: string[]): void
   restoreSaved(savedId: string): void
+  openManageSaved(): void
 }
+
+const SAVED_SIDEBAR_LIMIT = 4
 
 const ORDER: Record<TabStatus, number> = { error: 4, attention: 3, done: 2, busy: 1, idle: 0 }
 
@@ -54,18 +58,27 @@ export class Sidebar {
   private listEl: HTMLDivElement
   private savedEl: HTMLDivElement
   private newGroupBtn: HTMLDivElement
+  private manageBtn: HTMLDivElement
+  private dragGroupId: string | null = null
 
   constructor(private hooks: SidebarHooks) {
     this.listEl = document.getElementById('groupList') as HTMLDivElement
     this.savedEl = document.getElementById('savedList') as HTMLDivElement
     this.newGroupBtn = document.getElementById('newGroupBtn') as HTMLDivElement
+    this.manageBtn = document.getElementById('manageSavedBtn') as HTMLDivElement
 
     this.listEl.addEventListener('click', (e) => this.onListClick(e))
     this.listEl.addEventListener('contextmenu', (e) => this.onListCtx(e))
     this.listEl.addEventListener('dblclick', (e) => this.onListDblClick(e))
+    this.listEl.addEventListener('dragstart', (e) => this.onGroupDragStart(e))
+    this.listEl.addEventListener('dragover', (e) => this.onGroupDragOver(e))
+    this.listEl.addEventListener('dragleave', (e) => this.onGroupDragLeave(e))
+    this.listEl.addEventListener('drop', (e) => this.onGroupDrop(e))
+    this.listEl.addEventListener('dragend', () => this.onGroupDragEnd())
     this.savedEl.addEventListener('click', (e) => this.onSavedClick(e))
     this.savedEl.addEventListener('contextmenu', (e) => this.onSavedCtxEvent(e))
     this.newGroupBtn.addEventListener('click', () => this.hooks.newGroup())
+    this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved())
   }
 
   render(): void {
@@ -87,35 +100,34 @@ export class Sidebar {
     for (const g of groups) {
       const el = document.createElement('div')
       el.className = 'group' + (g.collapsed ? ' collapsed' : '')
+      el.draggable = true
+      el.dataset.dragId = g.id
       const gs = groupStatus(g)
       const headStatusDot =
         gs !== 'idle'
           ? `<span class="st-dot st-${gs} grp-st" title="组内有「${statusLabel(gs)}」的会话"></span>`
           : ''
-      const dirtyDot = g.dirty
-        ? `<span class="grp-dirty" title="有未保存的改动，右键「保存分组」覆盖"></span>`
-        : ''
       const cwdLabel = g.cwd
         ? escapeHtml(g.cwd)
         : '<span class="path-placeholder">(默认目录)</span>'
       const cwdTitle = g.cwd ? escapeHtml(g.cwd) : '使用用户主目录'
+      const folderIcon = g.dirty ? icon('folder-filled') : icon('folder')
+      const folderTitle = g.dirty ? '有未保存的改动，右键「保存分组」' : ''
       el.innerHTML = `
-        <div class="group-head${g.dirty ? ' is-dirty' : ''}" data-g="${escapeHtml(g.id)}">
+        <div class="group-head" data-g="${escapeHtml(g.id)}">
           <span class="group-caret">${icon('chevron-down', { size: 12, stroke: 2.4 })}</span>
-          <span class="group-folder">${icon('folder')}</span>
+          <span class="group-folder${g.dirty ? ' is-dirty' : ''}" title="${folderTitle}">${folderIcon}</span>
           <div class="group-meta">
-            <div class="group-name">${escapeHtml(g.name)}${dirtyDot}</div>
+            <div class="group-name">${escapeHtml(g.name)}</div>
             <div class="group-path" title="${cwdTitle}">${cwdLabel}</div>
           </div>
           ${headStatusDot}
           <span class="group-count">${g.tabs.length}</span>
+          <span class="group-add" data-addtab="${escapeHtml(g.id)}" title="新建会话标签">${icon('plus', { size: 13, stroke: 2.2 })}</span>
           <span class="group-more" data-more="${escapeHtml(g.id)}" title="更多">${icon('more-horizontal')}</span>
         </div>
         <div class="group-tabs">
           ${g.tabs.map((t) => this.tabRow(t, activeTabId === t.id)).join('')}
-          <div class="group-addtab" data-addtab="${escapeHtml(g.id)}">
-            <span class="ic">${icon('plus', { size: 13 })}</span>新建会话标签
-          </div>
         </div>
       `
       this.listEl.appendChild(el)
@@ -147,7 +159,8 @@ export class Sidebar {
       this.savedEl.appendChild(empty)
       return
     }
-    for (const s of saved) {
+    const visible = saved.slice(0, SAVED_SIDEBAR_LIMIT)
+    for (const s of visible) {
       const el = document.createElement('div')
       el.className = 'saved-row'
       el.dataset.saved = s.id
@@ -163,6 +176,13 @@ export class Sidebar {
         <div class="saved-restore" data-restore="${escapeHtml(s.id)}">${icon('rotate-ccw', { size: 12 })} 恢复</div>
       `
       this.savedEl.appendChild(el)
+    }
+    const more = saved.length - visible.length
+    if (more > 0) {
+      const hint = document.createElement('div')
+      hint.className = 'saved-overflow-hint'
+      hint.textContent = `还有 ${more} 个隐藏，点下方「展开管理」查看。`
+      this.savedEl.appendChild(hint)
     }
   }
 
@@ -278,5 +298,78 @@ export class Sidebar {
     if (!row) return
     e.preventDefault()
     this.hooks.onSavedCtx(row.dataset.saved!, e.clientX, e.clientY)
+  }
+
+  // ─── 分组拖动排序 ─────────────────────────────────────────────
+  private onGroupDragStart(e: DragEvent): void {
+    const row = (e.target as HTMLElement).closest('.group') as HTMLElement | null
+    if (!row) return
+    // 编辑中的标签名优先：不抢拖动
+    if ((e.target as HTMLElement).closest('[contenteditable="true"]')) {
+      e.preventDefault()
+      return
+    }
+    this.dragGroupId = row.dataset.dragId || null
+    row.classList.add('dragging')
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', this.dragGroupId ?? '')
+      const head = row.querySelector('.group-head') as HTMLElement | null
+      if (head) e.dataTransfer.setDragImage(head, 8, 8)
+    }
+  }
+
+  private onGroupDragOver(e: DragEvent): void {
+    if (!this.dragGroupId) return
+    const row = (e.target as HTMLElement).closest('.group') as HTMLElement | null
+    if (!row || row.dataset.dragId === this.dragGroupId) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    const rect = row.getBoundingClientRect()
+    const before = e.clientY < rect.top + rect.height / 2
+    this.clearGroupDropMarks()
+    row.classList.add(before ? 'drop-before' : 'drop-after')
+  }
+
+  private onGroupDragLeave(e: DragEvent): void {
+    const row = (e.target as HTMLElement).closest('.group') as HTMLElement | null
+    if (!row) return
+    if (e.relatedTarget && row.contains(e.relatedTarget as Node)) return
+    row.classList.remove('drop-before', 'drop-after')
+  }
+
+  private onGroupDrop(e: DragEvent): void {
+    if (!this.dragGroupId) return
+    const row = (e.target as HTMLElement).closest('.group') as HTMLElement | null
+    if (!row) return
+    e.preventDefault()
+    const targetId = row.dataset.dragId
+    const before = row.classList.contains('drop-before')
+    this.clearGroupDropMarks()
+    if (!targetId || targetId === this.dragGroupId) return
+
+    const order = Array.from(this.listEl.querySelectorAll('.group'))
+      .map((el) => (el as HTMLElement).dataset.dragId)
+      .filter((id): id is string => !!id)
+    const fromIdx = order.indexOf(this.dragGroupId)
+    if (fromIdx < 0) return
+    order.splice(fromIdx, 1)
+    let toIdx = order.indexOf(targetId)
+    if (toIdx < 0) return
+    if (!before) toIdx += 1
+    order.splice(toIdx, 0, this.dragGroupId)
+    this.hooks.reorderGroups(order)
+  }
+
+  private onGroupDragEnd(): void {
+    this.dragGroupId = null
+    this.clearGroupDropMarks()
+    this.listEl.querySelectorAll('.group.dragging').forEach((el) => el.classList.remove('dragging'))
+  }
+
+  private clearGroupDropMarks(): void {
+    this.listEl.querySelectorAll('.drop-before, .drop-after').forEach((el) => {
+      el.classList.remove('drop-before', 'drop-after')
+    })
   }
 }

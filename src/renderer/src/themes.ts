@@ -14,6 +14,7 @@ export interface Settings {
   lastUsedCwd: string
   sidebarWidth: number
   sidebarCollapsed: boolean
+  savedCollapsed: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -30,7 +31,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,
-  sidebarCollapsed: false
+  sidebarCollapsed: false,
+  savedCollapsed: false
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

@@ -226,6 +226,110 @@ modalCwdPick.addEventListener('click', () => {
     })
 })
 
+// ─── 选择对话框（用于：从已保存的分组里选要恢复的标签，等场景） ─
+export interface PickItem {
+  id: string
+  label: string
+  meta?: string
+  disabled?: boolean
+  defaultChecked?: boolean
+}
+export interface PickTabsCfg {
+  title: string
+  sub?: string
+  items: PickItem[]
+  okLabel?: string
+  onOk: (selectedIds: string[]) => void
+  onCancel?: () => void
+}
+const pickScrim = document.getElementById('pickScrim') as HTMLDivElement
+const pkTitle = document.getElementById('pk-title') as HTMLHeadingElement
+const pkSub = document.getElementById('pk-sub') as HTMLParagraphElement
+const pkList = document.getElementById('pk-list') as HTMLDivElement
+const pkAllBtn = document.getElementById('pk-all') as HTMLButtonElement
+const pkNoneBtn = document.getElementById('pk-none') as HTMLButtonElement
+const pkCount = document.getElementById('pk-count') as HTMLSpanElement
+const pkOk = document.getElementById('pk-ok') as HTMLButtonElement
+const pkCancel = document.getElementById('pk-cancel') as HTMLButtonElement
+let pkCb: PickTabsCfg['onOk'] | null = null
+let pkCancelCb: PickTabsCfg['onCancel'] | null = null
+let pkItems: PickItem[] = []
+function pkSelected(): string[] {
+  return pkItems
+    .filter((it) => !it.disabled)
+    .filter((it) => {
+      const cb = pkList.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+      return cb?.checked
+    })
+    .map((it) => it.id)
+}
+function pkUpdateCount(): void {
+  const total = pkItems.filter((it) => !it.disabled).length
+  const cur = pkSelected().length
+  pkCount.textContent = total === 0 ? '' : `已选 ${cur} / ${total}`
+  pkOk.disabled = cur === 0
+}
+function pkSetAll(checked: boolean): void {
+  for (const it of pkItems) {
+    if (it.disabled) continue
+    const cb = pkList.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+    if (cb) cb.checked = checked
+  }
+  pkUpdateCount()
+}
+function cssAttr(s: string): string {
+  return s.replace(/["\\]/g, '\\$&')
+}
+export function openPickTabs(cfg: PickTabsCfg): void {
+  pkTitle.textContent = cfg.title
+  pkSub.textContent = cfg.sub ?? ''
+  pkSub.style.display = cfg.sub ? '' : 'none'
+  pkOk.textContent = cfg.okLabel ?? '确认'
+  pkCb = cfg.onOk
+  pkCancelCb = cfg.onCancel ?? null
+  pkItems = cfg.items
+  pkList.innerHTML = ''
+  for (const it of cfg.items) {
+    const row = document.createElement('label')
+    row.className = 'pk-row' + (it.disabled ? ' is-disabled' : '')
+    const checked = it.defaultChecked !== false && !it.disabled
+    row.innerHTML = `
+      <input type="checkbox" data-pk-id="${escapeHtml(it.id)}" ${checked ? 'checked' : ''} ${it.disabled ? 'disabled' : ''} />
+      <span class="pk-label">${escapeHtml(it.label)}</span>
+      ${it.meta ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>` : ''}
+    `
+    row.addEventListener('change', pkUpdateCount)
+    pkList.appendChild(row)
+  }
+  pkUpdateCount()
+  pickScrim.hidden = false
+}
+function pkClose(): void {
+  pickScrim.hidden = true
+  pkCb = null
+  pkCancelCb = null
+  pkItems = []
+}
+pkAllBtn.addEventListener('click', () => pkSetAll(true))
+pkNoneBtn.addEventListener('click', () => pkSetAll(false))
+pkCancel.addEventListener('click', () => {
+  const cb = pkCancelCb
+  pkClose()
+  cb?.()
+})
+pkOk.addEventListener('click', () => {
+  const ids = pkSelected()
+  if (ids.length === 0) return
+  const cb = pkCb
+  pkClose()
+  cb?.(ids)
+})
+bindScrimDismiss(pickScrim, () => {
+  const cb = pkCancelCb
+  pkClose()
+  cb?.()
+})
+
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!)

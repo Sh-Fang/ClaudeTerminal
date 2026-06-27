@@ -33,23 +33,36 @@
     </div>
     <div class="app">
       <aside class="sidebar" id="sidebar">
-        <div class="side-head">
-          <span class="side-head-title">工作区</span>
-          <button id="sidebarCollapseBtn" class="side-head-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m15 6-6 6 6 6"/>
-            </svg>
-          </button>
-        </div>
-        <div class="side-scroll">
-          <div class="side-section-label">打开的分组<span class="line"></span></div>
-          <div id="groupList"></div>
-          <div class="new-group-btn" id="newGroupBtn" title="新建分组">
-            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>新建分组
+        <!-- 打开的分组：占满剩余高度，超长时在本区内部滚动 -->
+        <section class="side-section side-open">
+          <div class="side-section-label">
+            打开的分组<span class="line"></span>
+            <button id="sidebarCollapseBtn" class="side-head-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 6-6 6 6 6"/>
+              </svg>
+            </button>
           </div>
-          <div class="side-section-label">已保存的分组<span class="line"></span></div>
-          <div id="savedList"></div>
-        </div>
+          <div class="side-open-scroll">
+            <div id="groupList"></div>
+            <div class="new-group-btn" id="newGroupBtn" title="新建分组">
+              <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>新建分组
+            </div>
+          </div>
+        </section>
+        <!-- 已保存的分组：固定在底部，点标题可收起 -->
+        <section class="side-section side-saved" id="savedSection">
+          <button class="side-section-label saved-toggle" id="savedToggle" type="button" title="收起 / 展开已保存的分组">
+            <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+            已保存的分组<span class="line"></span>
+          </button>
+          <div class="side-saved-body">
+            <div id="savedList"></div>
+            <div class="manage-saved-btn" id="manageSavedBtn" title="管理全部已保存的分组">
+              <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span>展开管理
+            </div>
+          </div>
+        </section>
         <div id="sidebarResizer" class="sidebar-resizer" title="拖动调整宽度" aria-hidden="true"></div>
       </aside>
       <div id="sidebarHandle" class="sidebar-handle" hidden title="展开侧边栏（hover 预览）">
@@ -147,6 +160,43 @@
         <div class="actions">
           <button id="modal-cancel" class="btn btn-secondary">取消</button>
           <button id="modal-ok" class="btn btn-primary">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pickScrim" class="scrim" hidden>
+      <div class="modal modal-pick">
+        <h2 id="pk-title">恢复标签</h2>
+        <p class="sub" id="pk-sub"></p>
+        <div class="pk-toolbar">
+          <button id="pk-all" type="button" class="link-btn">全选</button>
+          <span class="dot-sep">·</span>
+          <button id="pk-none" type="button" class="link-btn">取消全选</button>
+          <span id="pk-count" class="pk-count"></span>
+        </div>
+        <div id="pk-list" class="pk-list"></div>
+        <div class="actions">
+          <button id="pk-cancel" class="btn btn-secondary">取消</button>
+          <button id="pk-ok" class="btn btn-primary">恢复</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="manageScrim" class="scrim" hidden>
+      <div class="modal modal-manage" role="dialog" aria-modal="true" aria-labelledby="mg-title">
+        <div class="mg-head">
+          <div>
+            <h2 id="mg-title">管理已保存的分组</h2>
+            <p class="sub">拖动调整顺序；前 <b>4</b> 个会展示在侧边栏。点名称可重命名，展开可管理标签。</p>
+          </div>
+          <button id="mg-close" class="mg-close-btn" type="button" aria-label="关闭">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="mg-body" id="mg-body"></div>
+        <div class="mg-empty" id="mg-empty" hidden>
+          <div>还没有已保存的分组。</div>
+          <div class="sub">右键打开的分组「保存分组」就会出现在这里。</div>
         </div>
       </div>
     </div>

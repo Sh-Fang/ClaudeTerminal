@@ -29,6 +29,7 @@ export interface Settings {
   lastUsedCwd: string  // 最近一次新建分组选择的 cwd，下次预填用
   sidebarWidth: number
   sidebarCollapsed: boolean
+  savedCollapsed: boolean  // 「已保存的分组」区是否折叠到底部
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,7 +46,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,
-  sidebarCollapsed: false
+  sidebarCollapsed: false,
+  savedCollapsed: false
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -95,7 +97,8 @@ function normalize(raw: unknown): Settings {
         : DEFAULT_SETTINGS.disableAutoupdater,
     lastUsedCwd: typeof r.lastUsedCwd === 'string' ? r.lastUsedCwd : DEFAULT_SETTINGS.lastUsedCwd,
     sidebarWidth: clampNum(r.sidebarWidth, 180, 520, DEFAULT_SETTINGS.sidebarWidth),
-    sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed
+    sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed,
+    savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed
   }
 }
 
