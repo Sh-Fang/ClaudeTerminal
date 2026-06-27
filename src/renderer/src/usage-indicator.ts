@@ -31,28 +31,33 @@ function fmtCountdown(resetsAt: string | null): string {
   return '<1m'
 }
 
-function fmtClock(resetsAt: string | null): string {
-  if (!resetsAt) return '—'
-  const d = new Date(resetsAt)
-  if (Number.isNaN(d.getTime())) return '—'
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
 function pct(w?: UsageWindow): number {
   return w && Number.isFinite(w.utilization) ? Math.round(w.utilization) : 0
 }
 
-// 用量展示由 5h / 周 两个窗口里更高的那个决定颜色档位
-function levelClass(u: ClaudeUsage): string {
-  const max = Math.max(pct(u.fiveHour), pct(u.sevenDay))
-  if (max >= 90) return 'lv-danger'
-  if (max >= 70) return 'lv-warn'
+function lvOf(p: number): string {
+  if (p >= 90) return 'lv-danger'
+  if (p >= 70) return 'lv-warn'
   return 'lv-ok'
 }
 
+// 一栏进度条：标签在上，百分比 + 重置一行，整条轨道在下
+function bar(label: string, percent: number, reset: string): string {
+  return (
+    `<span class="ubar">` +
+    `<span class="ubar-label">${label}</span>` +
+    `<span class="ubar-head">` +
+    `<span class="ubar-val">${percent}%</span>` +
+    (reset ? `<span class="ubar-reset">重置 ${reset}</span>` : '') +
+    `</span>` +
+    `<span class="ubar-track"><i class="ubar-fill ${lvOf(percent)}" style="width:${percent}%"></i></span>` +
+    `</span>`
+  )
+}
+
 export class UsageIndicator {
-  private el = document.getElementById('sbUsage') as HTMLSpanElement
+  private panel = document.getElementById('usagePanel') as HTMLElement
+  private el = document.getElementById('usageBars') as HTMLDivElement
   private pollTimer: number | null = null
   private tickTimer: number | null = null
   private enabled = false
@@ -66,10 +71,9 @@ export class UsageIndicator {
   }
 
   private start(): void {
-    this.el.hidden = false
-    this.el.className = 'sb-usage loading'
+    this.panel.hidden = false
+    this.el.className = 'usage-bars loading'
     this.el.textContent = 'Claude 用量…'
-    this.el.title = '正在获取…'
     void this.refresh(true)
     this.pollTimer = window.setInterval(() => void this.refresh(false), POLL_MS)
     this.tickTimer = window.setInterval(() => this.paint(), TICK_MS)
@@ -80,7 +84,8 @@ export class UsageIndicator {
     if (this.tickTimer) window.clearInterval(this.tickTimer)
     this.pollTimer = this.tickTimer = null
     this.last = null
-    this.el.hidden = true
+    this.panel.hidden = true
+    this.el.className = 'usage-bars'
     this.el.textContent = ''
     this.el.title = ''
   }
@@ -93,9 +98,8 @@ export class UsageIndicator {
       this.paint()
     } catch {
       if (!this.enabled) return
-      this.el.className = 'sb-usage error'
+      this.el.className = 'usage-bars error'
       this.el.textContent = 'Claude 用量 ✕'
-      this.el.title = '获取失败'
     }
   }
 
@@ -103,24 +107,17 @@ export class UsageIndicator {
     const u = this.last
     if (!u) return
     if (!u.ok) {
-      this.el.className = 'sb-usage error'
+      this.el.className = 'usage-bars error'
       this.el.textContent = 'Claude 用量 ✕'
       this.el.title = u.error || '获取失败'
       return
     }
     const five = pct(u.fiveHour)
     const week = pct(u.sevenDay)
-    const weekReset = fmtCountdown(u.sevenDay?.resetsAt ?? null)
-    this.el.className = `sb-usage ${levelClass(u)}`
-    this.el.textContent = `周 ${week}% · 5h ${five}%${weekReset ? ` · 重置 ${weekReset}` : ''}`
-
-    const lines = [
-      `5 小时窗口：${five}%　重置 ${fmtCountdown(u.fiveHour?.resetsAt ?? null) || '—'}（${fmtClock(u.fiveHour?.resetsAt ?? null)}）`,
-      `7 天窗口：${week}%　重置 ${weekReset || '—'}（${fmtClock(u.sevenDay?.resetsAt ?? null)}）`
-    ]
-    if (u.sevenDaySonnet) lines.push(`Sonnet 周：${pct(u.sevenDaySonnet)}%`)
-    if (u.sevenDayOpus) lines.push(`Opus 周：${pct(u.sevenDayOpus)}%`)
-    lines.push(`更新于 ${fmtClock(new Date(u.fetchedAt).toISOString())}`)
-    this.el.title = lines.join('\n')
+    this.el.className = 'usage-bars'
+    this.el.title = ''
+    this.el.innerHTML =
+      bar('5h额度', five, fmtCountdown(u.fiveHour?.resetsAt ?? null)) +
+      bar('本周额度', week, fmtCountdown(u.sevenDay?.resetsAt ?? null))
   }
 }

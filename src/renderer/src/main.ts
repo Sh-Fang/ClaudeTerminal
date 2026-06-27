@@ -19,6 +19,7 @@ import {
 import { icon } from './svg-icons'
 import { SavedManager, type ManageGroupView } from './saved-manager'
 import { UsageIndicator } from './usage-indicator'
+import { SessionInfoBar } from './session-info'
 
 const usageIndicator = new UsageIndicator()
 
@@ -416,6 +417,7 @@ function activateTab(tabId: string): void {
   clearDowngradeTimer()
   maybeStartDowngrade(tabId, ctx.tab.status)
   activateUI(tabId)
+  sessionInfo.nudge()
   scheduleSave()
 }
 
@@ -857,6 +859,7 @@ async function switchSession(sessionId: string): Promise<void> {
   await tab.restartPty()
   toolbar.render()
   sidebar.render()
+  sessionInfo.nudge()
 }
 
 // ─── 右键菜单 ──────────────────────────────────────────────────────
@@ -974,6 +977,14 @@ const toolbar = new Toolbar({
   },
   switchSession: (id) => void switchSession(id),
   onSessionCtx: openSessionCtx
+})
+
+const sessionInfo = new SessionInfoBar({
+  getActive: () => {
+    const ctx = activeContext()
+    if (!ctx) return null
+    return { sessionId: ctx.tab.activeSessionId ?? null, cwd: ctx.group.cwd }
+  }
 })
 
 // ─── Search popover ────────────────────────────────────────────────

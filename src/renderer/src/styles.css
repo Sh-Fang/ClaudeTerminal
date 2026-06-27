@@ -648,20 +648,62 @@ button.saved-toggle:hover { color: var(--ink); }
   user-select: text;   /* 路径可手动选中复制（覆盖外层的 user-select: none）*/
   cursor: text;
 }
-.statusbar .sb-usage {
+.statusbar .sb-session {
   flex: 0 0 auto;
   margin-left: 16px;
   padding-left: 16px;
   border-left: 1px solid var(--hairline);
   white-space: nowrap;
   cursor: default;
-  letter-spacing: .2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.statusbar .sb-usage.loading { color: var(--mute); }
-.statusbar .sb-usage.error { color: #f14c4c; }
-.statusbar .sb-usage.lv-ok { color: #23d18b; }
-.statusbar .sb-usage.lv-warn { color: #f5a623; }
-.statusbar .sb-usage.lv-danger { color: #f14c4c; }
+.statusbar .sb-session .sbi-sep { color: var(--hairline); }
+.statusbar .sb-session .sbi-branch,
+.statusbar .sb-session .sbi-model { color: var(--mute); }
+.statusbar .sb-session .sbi-branch { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.statusbar .sb-session .sbi-branch-ic { flex: 0 0 12px; opacity: .85; }
+.statusbar .sb-session .sbi-branch-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 150px;   /* 太长的分支名截断为省略号，完整名见 hover 提示 */
+}
+.statusbar .sb-session .sbi-ctx { display: inline-flex; align-items: center; gap: 6px; color: var(--mute); }
+.statusbar .sb-session .sbi-ctx-track {
+  width: 44px; height: 5px; border-radius: 3px;
+  background: #2a2a2a; overflow: hidden; display: inline-block; vertical-align: middle;
+}
+.statusbar .sb-session .sbi-ctx-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
+.statusbar .sb-session .sbi-ctx-tok { color: var(--mute); }
+/* 进度条填充 / 数值配色（ctx 与顶部账号条共用） */
+.sbi-ctx-fill.lv-ok, .ubar-fill.lv-ok { background: #23d18b; }
+.sbi-ctx-fill.lv-warn, .ubar-fill.lv-warn { background: #f5a623; }
+.sbi-ctx-fill.lv-danger, .ubar-fill.lv-danger { background: #f14c4c; }
+.sbi-ctx-val.lv-ok { color: #23d18b; }
+.sbi-ctx-val.lv-warn { color: #f5a623; }
+.sbi-ctx-val.lv-danger { color: #f14c4c; }
+
+/* 侧边栏底部账号用量面板（usage / weekly），竖向堆叠 */
+.side-usage {
+  flex: 0 0 auto;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--hairline);
+}
+.usage-bars {
+  display: flex; flex-direction: row; gap: 14px;
+  font-family: var(--mono); font-size: 11px; color: var(--mute);
+}
+.usage-bars.error { color: #f14c4c; }
+.usage-bars .ubar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.usage-bars .ubar-label { color: var(--mute); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usage-bars .ubar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; white-space: nowrap; }
+.usage-bars .ubar-val { color: var(--body); font-weight: 600; }
+.usage-bars .ubar-reset { color: var(--mute); opacity: .75; font-size: 10px; }
+.usage-bars .ubar-track {
+  width: 100%; height: 6px; border-radius: 3px;
+  background: #2a2a2a; overflow: hidden;
+}
+.usage-bars .ubar-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
 
 /* Search popover */
 #search {

@@ -46,6 +46,7 @@ export class Toolbar {
       this.sessSelect.classList.add('empty')
       this.sessList.innerHTML = ''
       this.sbCwd.textContent = ''
+      this.sbCwd.title = ''
       this.closeMenu()
       return
     }
@@ -74,6 +75,7 @@ export class Toolbar {
       this.sessTitle.textContent = '（未创建会话）'
     }
     this.sbCwd.textContent = groupCwd
+    this.sbCwd.title = groupCwd
 
     this.renderSessList(tab)
   }

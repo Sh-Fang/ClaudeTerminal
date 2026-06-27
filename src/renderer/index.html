@@ -63,6 +63,10 @@
             </div>
           </div>
         </section>
+        <!-- Claude 账号用量：固定在侧边栏最底部 -->
+        <section class="side-usage" id="usagePanel" hidden>
+          <div id="usageBars" class="usage-bars"></div>
+        </section>
         <div id="sidebarResizer" class="sidebar-resizer" title="拖动调整宽度" aria-hidden="true"></div>
       </aside>
       <div id="sidebarHandle" class="sidebar-handle" hidden title="展开侧边栏（hover 预览）">
@@ -121,7 +125,7 @@
 
         <div class="statusbar">
           <span id="sbCwd"></span>
-          <span id="sbUsage" class="sb-usage" hidden></span>
+          <span id="sbSession" class="sb-session" hidden></span>
         </div>
 
         <div id="toast" class="toast"><span id="toastMsg"></span></div>
