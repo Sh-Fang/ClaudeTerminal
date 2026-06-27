@@ -23,8 +23,8 @@ export class SettingsPanel {
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
   private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
-  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLSelectElement
-  private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLSelectElement
+  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLDivElement
+  private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
   private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
@@ -65,8 +65,11 @@ export class SettingsPanel {
       })
     }
 
+    this.initSeg(this.fSavedLimit)
+    this.initSeg(this.fDowngradeSec)
+
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
-    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fSavedLimit, this.fDowngradeSec]
+    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
@@ -96,6 +99,28 @@ export class SettingsPanel {
     for (const item of this.fCursorGroup.querySelectorAll<HTMLButtonElement>('.seg-item')) {
       item.classList.toggle('active', item.dataset.val === this.currentCursor)
     }
+  }
+
+  // 通用分段按钮：点击切换 active + 触发保存；选中值存在 data-val。
+  private segVals = new Map<HTMLElement, string>()
+  private initSeg(group: HTMLElement): void {
+    for (const item of group.querySelectorAll<HTMLButtonElement>('.seg-item')) {
+      item.addEventListener('click', () => {
+        const v = item.dataset.val
+        if (v == null) return
+        this.setSeg(group, v)
+        this.commitChange()
+      })
+    }
+  }
+  private setSeg(group: HTMLElement, v: string): void {
+    this.segVals.set(group, v)
+    for (const item of group.querySelectorAll<HTMLButtonElement>('.seg-item')) {
+      item.classList.toggle('active', item.dataset.val === v)
+    }
+  }
+  private getSeg(group: HTMLElement): string {
+    return this.segVals.get(group) ?? ''
   }
 
   private async refreshUpdHint(): Promise<void> {
@@ -132,12 +157,12 @@ export class SettingsPanel {
     this.paintCursorActive()
     this.fCursorBlink.checked = s.cursor.blink
     this.fScrollback.value = String(s.terminal.scrollback)
-    this.fDefaultCwd.value = s.defaults.cwd
+    this.fDefaultCwd.value = s.lastUsedCwd || s.defaults.cwd
     this.fDefaultCC.checked = s.defaults.autoLaunchCC
     this.fClaudePath.value = s.claudePath
     this.fDisableUpd.checked = s.disableAutoupdater
-    this.fSavedLimit.value = String(s.savedSidebarLimit)
-    this.fDowngradeSec.value = String(s.statusDowngradeSec)
+    this.setSeg(this.fSavedLimit, String(s.savedSidebarLimit))
+    this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
     this.fConfirmClose.checked = s.confirmCloseUnsaved
     this.lastDisableUpd = s.disableAutoupdater
   }
@@ -196,9 +221,11 @@ export class SettingsPanel {
       },
       claudePath: this.fClaudePath.value.trim(),
       disableAutoupdater: this.fDisableUpd.checked,
-      savedSidebarLimit: this.clamp(Number(this.fSavedLimit.value), 0, 5, cur.savedSidebarLimit),
-      statusDowngradeSec: this.clamp(Number(this.fDowngradeSec.value), 1, 5, cur.statusDowngradeSec),
-      confirmCloseUnsaved: this.fConfirmClose.checked
+      savedSidebarLimit: this.clamp(Number(this.getSeg(this.fSavedLimit)), 0, 5, cur.savedSidebarLimit),
+      statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 5, cur.statusDowngradeSec),
+      confirmCloseUnsaved: this.fConfirmClose.checked,
+      // 「默认新建分组路径」框即代表下次预填，写回时同步 lastUsedCwd 让它立即生效
+      lastUsedCwd: this.fDefaultCwd.value
     }
     this.hooks.setSettings(next)
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {

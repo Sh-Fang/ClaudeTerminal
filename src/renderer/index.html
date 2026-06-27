@@ -268,25 +268,25 @@
 
             <div class="set-section" data-section="general" hidden>
               <div class="set-row">
-                <label for="set-saved-limit">侧边栏显示的「已保存分组」数量</label>
-                <select id="set-saved-limit">
-                  <option value="0">0（不显示，仅在管理页查看）</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
+                <label>侧边栏显示的「已保存分组」数量（0 = 仅在管理页）</label>
+                <div class="seg-group" id="set-saved-limit" role="radiogroup" aria-label="已保存分组数量">
+                  <button class="seg-item" data-val="0" type="button" role="radio">0</button>
+                  <button class="seg-item" data-val="1" type="button" role="radio">1</button>
+                  <button class="seg-item" data-val="2" type="button" role="radio">2</button>
+                  <button class="seg-item" data-val="3" type="button" role="radio">3</button>
+                  <button class="seg-item" data-val="4" type="button" role="radio">4</button>
+                  <button class="seg-item" data-val="5" type="button" role="radio">5</button>
+                </div>
               </div>
               <div class="set-row">
-                <label for="set-downgrade-sec">完成/待办绿点停留时间</label>
-                <select id="set-downgrade-sec">
-                  <option value="1">1 秒</option>
-                  <option value="2">2 秒</option>
-                  <option value="3">3 秒</option>
-                  <option value="4">4 秒</option>
-                  <option value="5">5 秒</option>
-                </select>
+                <label>完成/待办绿点停留时间</label>
+                <div class="seg-group" id="set-downgrade-sec" role="radiogroup" aria-label="绿点停留时间">
+                  <button class="seg-item" data-val="1" type="button" role="radio">1s</button>
+                  <button class="seg-item" data-val="2" type="button" role="radio">2s</button>
+                  <button class="seg-item" data-val="3" type="button" role="radio">3s</button>
+                  <button class="seg-item" data-val="4" type="button" role="radio">4s</button>
+                  <button class="seg-item" data-val="5" type="button" role="radio">5s</button>
+                </div>
               </div>
               <div class="field-check">
                 <label>
@@ -328,7 +328,7 @@
 
             <div class="set-section" data-section="defaults" hidden>
               <div class="set-row">
-                <label for="set-default-cwd">默认 cwd（新建分组预填）</label>
+                <label for="set-default-cwd">默认新建分组路径</label>
                 <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
               </div>
               <div class="field-check">
