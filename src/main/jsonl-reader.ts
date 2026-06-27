@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { app } from 'electron'
+import { existsSync, readdirSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -86,6 +87,120 @@ export function readSessionMeta(sessionId: string): SessionMeta {
   }
 
   return { exists: true, aiTitle, lastPrompt, lastTs, mtime }
+}
+
+export interface SessionUsage {
+  exists: boolean
+  model?: string // 原始 id，如 claude-opus-4-8
+  modelLabel?: string // 美化后，如 Opus 4.8
+  ctxTokens?: number // 最近一次请求的上下文占用（input + cache）
+  ctxWindow?: number // 上下文窗口（来自 cc / claude-hud 缓存，准确）
+  ctxPercent?: number // 0~100
+  ctxApprox?: boolean // true = transcript 兜底估算（窗口靠猜）
+}
+
+// claude-opus-4-8 → Opus 4.8 ；claude-sonnet-4-6 → Sonnet 4.6
+function prettyModel(id: string): string {
+  const m = /(opus|sonnet|haiku)-(\d+)(?:-(\d+))?/i.exec(id)
+  if (!m) return id
+  const fam = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()
+  return `${fam} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`
+}
+
+// app 自己的 statusline 探针把 cc statusLine stdin 的快照按 session_id 落在这里
+// （session-status/<sessionId>.json）。这是 cc 自算的 used_percentage + 真实窗口 + 模型，
+// 最准，且不依赖任何第三方插件。
+const STATUS_DIR = (): string => join(app.getPath('userData'), 'session-status')
+
+interface OwnStatus {
+  percent: number
+  window: number
+  tokens: number
+  model?: string // 已是 display_name（去掉 "(...context)" 后缀），如 Opus 4.8
+}
+
+function readOwnStatus(sessionId: string): OwnStatus | null {
+  try {
+    const raw = readFileSync(join(STATUS_DIR(), `${sessionId}.json`), 'utf8')
+    const c = JSON.parse(raw) as {
+      percent?: number
+      window?: number
+      tokens?: number
+      model?: string
+    }
+    if (typeof c.percent !== 'number' || !c.window) return null
+    return {
+      percent: Math.min(100, Math.max(0, Math.round(c.percent))),
+      window: c.window,
+      tokens: typeof c.tokens === 'number' ? c.tokens : 0,
+      model: typeof c.model === 'string' && c.model ? c.model : undefined
+    }
+  } catch {
+    return null
+  }
+}
+
+// 最后一条「主线」（非 sidechain）assistant 的模型 id。
+// 过滤 isSidechain 是为了避开子 agent / 标题生成用的小模型，拿到真正的会话模型。
+function lastMainModel(lines: string[]): string | undefined {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const obj = safeParse(lines[i])
+    if (!obj || obj.type !== 'assistant' || obj.isSidechain === true) continue
+    const m = (obj.message as { model?: string } | undefined)?.model
+    if (typeof m === 'string' && m) return m
+  }
+  return undefined
+}
+
+// transcript 兜底估算（探针快照缺失时用，如会话刚起首帧还没落盘）：窗口只能靠启发式猜。
+function estimateFromTranscript(lines: string[]): OwnStatus | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const obj = safeParse(lines[i])
+    if (!obj || obj.type !== 'assistant' || obj.isSidechain === true) continue
+    const u = (obj.message as { usage?: Record<string, unknown> } | undefined)?.usage
+    if (!u) continue
+    const num = (k: string): number => (typeof u[k] === 'number' ? (u[k] as number) : 0)
+    const used = num('input_tokens') + num('cache_creation_input_tokens') + num('cache_read_input_tokens')
+    if (used <= 0) continue
+    const window = used > 200_000 ? 1_000_000 : 200_000
+    return { percent: Math.min(100, Math.round((used / window) * 100)), window, tokens: used }
+  }
+  return null
+}
+
+// 模型从 transcript 取；上下文优先读 claude-hud 缓存（最准），否则 transcript 估算。
+export function readSessionUsage(sessionId: string): SessionUsage {
+  const path = findJsonl(sessionId)
+  if (!path) return { exists: false }
+
+  // 优先用探针快照（cc 自算，最准）；缺失才回退 transcript（按需读一次尾部）。
+  const snap = readOwnStatus(sessionId)
+  let lines: string[] | null = null
+  const tail = (): string[] => (lines ??= readTail(path))
+
+  const ctx = snap ?? estimateFromTranscript(tail())
+
+  let modelLabel = snap?.model
+  if (!modelLabel) {
+    const id = lastMainModel(tail())
+    modelLabel = id ? prettyModel(id) : undefined
+  }
+
+  return {
+    exists: true,
+    model: modelLabel,
+    modelLabel,
+    ctxTokens: ctx?.tokens,
+    ctxWindow: ctx?.window,
+    ctxPercent: ctx?.percent,
+    ctxApprox: ctx ? !snap : undefined // 来自 transcript 兜底估算时为 true（窗口靠猜）
+  }
+}
+
+// transcript 尾部按行切（去掉可能被截断的首行）
+function readTail(path: string): string[] {
+  const raw = tailRead(path, 64 * 1024)
+  return raw ? raw.split(/\r?\n/).slice(1).filter((l) => l.length > 0) : []
 }
 
 function isRealMessage(obj: Record<string, unknown>): boolean {

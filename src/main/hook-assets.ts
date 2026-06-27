@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
 export interface HookPaths {
@@ -8,6 +9,82 @@ export interface HookPaths {
   recordStatePs1: string
   eventsDir: string
   stateDir: string
+  statusDir: string
+  statuslineJs: string
+}
+
+// cc 每 ~300ms 调一次 statusLine 命令并从 stdin 喂 JSON（含 context_window / model）。
+// 用 node（启动快，pwsh 太慢扛不住这个频率）读 stdin、把会话快照按 session_id 落盘，
+// stdout 输出空串 → cc TUI 那行留空。数据由 app 底部状态栏展示。
+const STATUSLINE_JS = `// Claude Terminal · statusline 探针
+const fs = require('fs'); const path = require('path');
+const dir = process.argv[2];
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('end', () => {
+  try {
+    const j = JSON.parse(raw);
+    const sid = j.session_id; if (!sid || !dir) return;
+    const cw = j.context_window || {};
+    const cu = cw.current_usage || {};
+    const tokens = (cu.input_tokens||0) + (cu.cache_creation_input_tokens||0) + (cu.cache_read_input_tokens||0);
+    let pct = cw.used_percentage;
+    if (typeof pct !== 'number' || pct <= 0) {
+      const sz = cw.context_window_size || 0;
+      pct = sz > 0 ? Math.round(tokens / sz * 100) : 0;
+    }
+    const raw_model = (j.model && (j.model.display_name || j.model.id)) || '';
+    const out = {
+      sessionId: sid,
+      model: String(raw_model).replace(/\\s*\\([^)]*context[^)]*\\)/i, '').trim(),
+      window: cw.context_window_size || 0,
+      percent: Math.min(100, Math.max(0, Math.round(pct || 0))),
+      tokens: tokens,
+      savedAt: Date.now()
+    };
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, sid + '.json'); const tmp = f + '.' + process.pid + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(out)); fs.renameSync(tmp, f);
+
+    // 账号用量（5h/周）：cc 已联网把 rate_limits 放进 stdin → 不需要我们再调 API、不依赖代理
+    const rl = j.rate_limits;
+    if (rl) {
+      const win = (w) => {
+        if (!w || typeof w.used_percentage !== 'number') return null;
+        let resetsAt = null;
+        if (typeof w.resets_at === 'number' && w.resets_at > 0) {
+          const ms = w.resets_at > 1e12 ? w.resets_at : w.resets_at * 1000;
+          resetsAt = new Date(ms).toISOString();
+        } else if (typeof w.resets_at === 'string' && w.resets_at) {
+          resetsAt = w.resets_at;
+        }
+        return { percent: Math.min(100, Math.max(0, Math.round(w.used_percentage))), resetsAt: resetsAt };
+      };
+      const fh = win(rl.five_hour); const sd = win(rl.seven_day);
+      if (fh || sd) {
+        const acct = { fiveHour: fh, sevenDay: sd, savedAt: Date.now() };
+        const af = path.join(dir, '_account-usage.json'); const atmp = af + '.' + process.pid + '.tmp';
+        fs.writeFileSync(atmp, JSON.stringify(acct)); fs.renameSync(atmp, af);
+      }
+    }
+  } catch (e) {}
+  // 不输出任何内容 → cc 的 statusline 行留空
+});
+`
+
+// 解析 node 可执行路径（cc 的 statusline shell 不一定有 PATH，尽量用绝对路径）
+function detectNodePath(): string {
+  try {
+    const out = execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (out[0]) return out[0]
+  } catch {
+    // 退回 PATH
+  }
+  return 'node'
 }
 
 const PS1_SESSION = `# Claude Terminal · SessionStart hook
@@ -64,18 +141,26 @@ export function ensureHookAssets(): HookPaths {
 
   const eventsDir = join(userData, 'session-events')
   const stateDir = join(userData, 'session-state')
+  const statusDir = join(userData, 'session-status')
   if (!existsSync(eventsDir)) mkdirSync(eventsDir, { recursive: true })
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true })
+  if (!existsSync(statusDir)) mkdirSync(statusDir, { recursive: true })
 
   const recordSessionPs1 = join(userData, 'record-session.ps1')
   const recordStatePs1 = join(userData, 'record-state.ps1')
+  const statuslineJs = join(userData, 'statusline-probe.cjs')
   writeFileSync(recordSessionPs1, PS1_SESSION, 'utf8')
   writeFileSync(recordStatePs1, PS1_STATE, 'utf8')
+  writeFileSync(statuslineJs, STATUSLINE_JS, 'utf8')
 
   const stateCmd = (st: string): string =>
     `pwsh -NoProfile -File "${recordStatePs1}" ${st}`
 
+  // 经 sh 执行，Windows 路径在双引号里原样传给 node（与 hooks 同款写法）
+  const statuslineCmd = `"${detectNodePath()}" "${statuslineJs}" "${statusDir}"`
+
   const settings = {
+    statusLine: { type: 'command', command: statuslineCmd },
     hooks: {
       SessionStart: [
         {
@@ -102,5 +187,5 @@ export function ensureHookAssets(): HookPaths {
   const ccHooksJson = join(userData, 'cc-hooks.json')
   writeFileSync(ccHooksJson, JSON.stringify(settings, null, 2), 'utf8')
 
-  return { ccHooksJson, recordSessionPs1, recordStatePs1, eventsDir, stateDir }
+  return { ccHooksJson, recordSessionPs1, recordStatePs1, eventsDir, stateDir, statusDir, statuslineJs }
 }

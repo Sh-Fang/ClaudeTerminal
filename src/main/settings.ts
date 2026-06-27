@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   savedSidebarLimit: 4,
   statusDowngradeSec: 5,
   confirmCloseUnsaved: true,
-  showClaudeUsage: false
+  showClaudeUsage: true
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')

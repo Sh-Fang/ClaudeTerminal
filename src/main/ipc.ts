@@ -4,7 +4,8 @@ import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
 import { ensureHookAssets, type HookPaths } from './hook-assets'
-import { readSessionMeta } from './jsonl-reader'
+import { readSessionMeta, readSessionUsage } from './jsonl-reader'
+import { readGitBranch } from './git-info'
 import { loadSettings, saveSettings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
@@ -70,6 +71,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('claude:sessionMeta', (_e, sessionId: string) => readSessionMeta(sessionId))
   ipcMain.handle('claude:detect', () => detectClaudePath())
   ipcMain.handle('claude:usage', (_e, force?: boolean) => getClaudeUsage(!!force))
+  ipcMain.handle('claude:sessionUsage', (_e, sessionId: string) => readSessionUsage(sessionId))
+  ipcMain.handle('git:branch', (_e, cwd: string) => readGitBranch(cwd))
 
   ipcMain.handle('path:exists', (_e, p: string) => {
     if (typeof p !== 'string' || !p) return false

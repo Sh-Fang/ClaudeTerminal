@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   savedSidebarLimit: 4,
   statusDowngradeSec: 5,
   confirmCloseUnsaved: true,
-  showClaudeUsage: false
+  showClaudeUsage: true
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

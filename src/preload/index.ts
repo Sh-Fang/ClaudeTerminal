@@ -68,6 +68,8 @@ export interface HookPaths {
   recordStatePs1: string
   eventsDir: string
   stateDir: string
+  statusDir: string
+  statuslineJs: string
 }
 
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-light'
@@ -119,6 +121,16 @@ export interface SessionMeta {
   exists: boolean
 }
 
+export interface SessionUsage {
+  exists: boolean
+  model?: string
+  modelLabel?: string
+  ctxTokens?: number
+  ctxWindow?: number
+  ctxPercent?: number
+  ctxApprox?: boolean
+}
+
 export interface TermBridge {
   create(opts: { cols: number; rows: number; cwd?: string; tabId?: string }): Promise<number>
   send(id: number, data: string): void
@@ -130,8 +142,10 @@ export interface TermBridge {
   claudeAvailable(): Promise<boolean>
   claudeSessionExists(sessionId: string): Promise<boolean>
   claudeSessionMeta(sessionId: string): Promise<SessionMeta>
+  claudeSessionUsage(sessionId: string): Promise<SessionUsage>
   claudeDetect(): Promise<string | null>
   claudeUsage(force?: boolean): Promise<ClaudeUsage>
+  gitBranch(cwd: string): Promise<string | null>
   hookPaths(): Promise<HookPaths>
   pickDirectory(defaultPath?: string): Promise<string | null>
   pathExists(p: string): Promise<boolean>
@@ -165,8 +179,10 @@ const api: TermBridge = {
   claudeAvailable: () => ipcRenderer.invoke('claude:available'),
   claudeSessionExists: (sessionId) => ipcRenderer.invoke('claude:sessionExists', sessionId),
   claudeSessionMeta: (sessionId) => ipcRenderer.invoke('claude:sessionMeta', sessionId),
+  claudeSessionUsage: (sessionId) => ipcRenderer.invoke('claude:sessionUsage', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
   claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
+  gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),
   pickDirectory: (defaultPath) => ipcRenderer.invoke('dialog:pickDirectory', defaultPath),
   pathExists: (p) => ipcRenderer.invoke('path:exists', p),

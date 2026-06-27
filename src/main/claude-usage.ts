@@ -25,6 +25,28 @@ export interface ClaudeUsage {
 let cache: ClaudeUsage | null = null
 let inflight: Promise<ClaudeUsage> | null = null
 
+// statusline 探针从 cc stdin 的 rate_limits 落下的账号用量快照。
+// cc 自己联网拿到，所以这条路不依赖代理/直连——这正是 claude-hud 关了 Clash 也能用的原因。
+const ACCOUNT_FILE = (): string => join(app.getPath('userData'), 'session-status', '_account-usage.json')
+
+function readAccountSnapshot(): ClaudeUsage | null {
+  try {
+    const c = JSON.parse(readFileSync(ACCOUNT_FILE(), 'utf8')) as {
+      fiveHour?: { percent?: number; resetsAt?: string | null } | null
+      sevenDay?: { percent?: number; resetsAt?: string | null } | null
+      savedAt?: number
+    }
+    const win = (w: { percent?: number; resetsAt?: string | null } | null | undefined): UsageWindow | undefined =>
+      w && typeof w.percent === 'number' ? { utilization: w.percent, resetsAt: w.resetsAt ?? null } : undefined
+    const fiveHour = win(c.fiveHour)
+    const sevenDay = win(c.sevenDay)
+    if (!fiveHour && !sevenDay) return null
+    return { ok: true, fiveHour, sevenDay, fetchedAt: c.savedAt || Date.now() }
+  } catch {
+    return null
+  }
+}
+
 // 排障用：把最近一次拉取的关键信息覆盖写到 userData，方便定位 0%/失败。
 function debugLog(line: string): void {
   try {
@@ -146,6 +168,12 @@ async function fetchFresh(): Promise<ClaudeUsage> {
 
 // force=true 跳过缓存（如用户刚在设置里开启时想立刻看到）。
 export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
+  // 1) 首选：cc statusline stdin 落下的账号用量快照。cc 已联网拿到，无需代理/直连，
+  //    且只要在 app 里开过 cc 就有数据（含上次会话残留的快照）。
+  const snap = readAccountSnapshot()
+  if (snap) return snap
+
+  // 2) 退路（首次还没跑过任何 cc 时的引导）：直连 OAuth usage API，需要能直连或走代理。
   if (!force && cache && Date.now() - cache.fetchedAt < TTL_MS) return cache
   if (inflight) return inflight
   inflight = fetchFresh().then((r) => {
