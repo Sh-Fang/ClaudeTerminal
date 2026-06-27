@@ -122,6 +122,8 @@
         <div class="statusbar">
           <span id="sbCwd"></span>
         </div>
+
+        <div id="toast" class="toast"><span id="toastMsg"></span></div>
       </div>
     </div>
 
@@ -257,12 +259,12 @@
                 </div>
               </div>
               <div class="set-row">
-                <label for="set-theme">主题</label>
-                <select id="set-theme">
-                  <option value="vscode-dark">VSCode Dark</option>
-                  <option value="vercel-dark">Vercel Dark</option>
-                  <option value="one-light">One Light</option>
-                </select>
+                <label>主题</label>
+                <div class="seg-group" id="set-theme" role="radiogroup" aria-label="主题">
+                  <button class="seg-item" data-val="vscode-dark" type="button" role="radio">VSCode Dark</button>
+                  <button class="seg-item" data-val="vercel-dark" type="button" role="radio">Vercel Dark</button>
+                  <button class="seg-item" data-val="one-light" type="button" role="radio">One Light</button>
+                </div>
               </div>
             </div>
 
@@ -366,8 +368,6 @@
         </div>
       </div>
     </div>
-
-    <div id="toast" class="toast"><span id="toastMsg"></span></div>
 
     <script type="module" src="./src/main.ts"></script>
   </body>

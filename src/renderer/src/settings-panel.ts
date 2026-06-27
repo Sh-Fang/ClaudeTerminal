@@ -15,7 +15,7 @@ export class SettingsPanel {
   private fFamily = document.getElementById('set-font-family') as HTMLInputElement
   private fSize = document.getElementById('set-font-size') as HTMLInputElement
   private fLine = document.getElementById('set-line-height') as HTMLInputElement
-  private fTheme = document.getElementById('set-theme') as HTMLSelectElement
+  private fTheme = document.getElementById('set-theme') as HTMLDivElement
   private fCursorGroup = document.getElementById('set-cursor-style') as HTMLDivElement
   private fCursorBlink = document.getElementById('set-cursor-blink') as HTMLInputElement
   private fScrollback = document.getElementById('set-scrollback') as HTMLInputElement
@@ -65,11 +65,12 @@ export class SettingsPanel {
       })
     }
 
+    this.initSeg(this.fTheme)
     this.initSeg(this.fSavedLimit)
     this.initSeg(this.fDowngradeSec)
 
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
-    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
+    const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
@@ -152,7 +153,7 @@ export class SettingsPanel {
     this.fFamily.value = s.font.family
     this.fSize.value = String(s.font.size)
     this.fLine.value = String(s.font.lineHeight)
-    this.fTheme.value = s.terminal.theme
+    this.setSeg(this.fTheme, s.terminal.theme)
     this.currentCursor = s.cursor.style
     this.paintCursorActive()
     this.fCursorBlink.checked = s.cursor.blink
@@ -213,7 +214,7 @@ export class SettingsPanel {
       },
       terminal: {
         scrollback: this.clamp(Number(this.fScrollback.value), 100, 100000, cur.terminal.scrollback),
-        theme: (this.fTheme.value as ThemePreset) || cur.terminal.theme
+        theme: (this.getSeg(this.fTheme) as ThemePreset) || cur.terminal.theme
       },
       defaults: {
         cwd: this.fDefaultCwd.value,

@@ -1123,6 +1123,8 @@ button.saved-toggle:hover { color: var(--ink); }
 /* segment group for cursor style */
 .seg-group {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   background: var(--canvas-soft);
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
