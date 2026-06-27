@@ -23,8 +23,8 @@ export class SettingsPanel {
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
   private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
-  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLInputElement
-  private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLInputElement
+  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLSelectElement
+  private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLSelectElement
   private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
   private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
@@ -65,8 +65,8 @@ export class SettingsPanel {
       })
     }
 
-    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath, this.fSavedLimit, this.fDowngradeSec]
-    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose]
+    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
+    const changeOnly = [this.fTheme, this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fSavedLimit, this.fDowngradeSec]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
@@ -196,8 +196,8 @@ export class SettingsPanel {
       },
       claudePath: this.fClaudePath.value.trim(),
       disableAutoupdater: this.fDisableUpd.checked,
-      savedSidebarLimit: this.clamp(Number(this.fSavedLimit.value), 1, 20, cur.savedSidebarLimit),
-      statusDowngradeSec: this.clamp(Number(this.fDowngradeSec.value), 1, 120, cur.statusDowngradeSec),
+      savedSidebarLimit: this.clamp(Number(this.fSavedLimit.value), 0, 5, cur.savedSidebarLimit),
+      statusDowngradeSec: this.clamp(Number(this.fDowngradeSec.value), 1, 5, cur.statusDowngradeSec),
       confirmCloseUnsaved: this.fConfirmClose.checked
     }
     this.hooks.setSettings(next)

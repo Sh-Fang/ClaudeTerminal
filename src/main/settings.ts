@@ -105,8 +105,8 @@ function normalize(raw: unknown): Settings {
     sidebarWidth: clampNum(r.sidebarWidth, 180, 520, DEFAULT_SETTINGS.sidebarWidth),
     sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed,
     savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed,
-    savedSidebarLimit: clampNum(r.savedSidebarLimit, 1, 20, DEFAULT_SETTINGS.savedSidebarLimit),
-    statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 120, DEFAULT_SETTINGS.statusDowngradeSec),
+    savedSidebarLimit: clampNum(r.savedSidebarLimit, 0, 5, DEFAULT_SETTINGS.savedSidebarLimit),
+    statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 5, DEFAULT_SETTINGS.statusDowngradeSec),
     confirmCloseUnsaved:
       typeof r.confirmCloseUnsaved === 'boolean' ? r.confirmCloseUnsaved : DEFAULT_SETTINGS.confirmCloseUnsaved
   }

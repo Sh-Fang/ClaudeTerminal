@@ -269,11 +269,24 @@
             <div class="set-section" data-section="general" hidden>
               <div class="set-row">
                 <label for="set-saved-limit">侧边栏显示的「已保存分组」数量</label>
-                <input id="set-saved-limit" type="number" min="1" max="20" step="1" />
+                <select id="set-saved-limit">
+                  <option value="0">0（不显示，仅在管理页查看）</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
               </div>
               <div class="set-row">
-                <label for="set-downgrade-sec">完成/待办绿点停留秒数后消失</label>
-                <input id="set-downgrade-sec" type="number" min="1" max="120" step="1" />
+                <label for="set-downgrade-sec">完成/待办绿点停留时间</label>
+                <select id="set-downgrade-sec">
+                  <option value="1">1 秒</option>
+                  <option value="2">2 秒</option>
+                  <option value="3">3 秒</option>
+                  <option value="4">4 秒</option>
+                  <option value="5">5 秒</option>
+                </select>
               </div>
               <div class="field-check">
                 <label>
