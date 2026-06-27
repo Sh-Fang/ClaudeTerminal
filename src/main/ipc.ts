@@ -7,6 +7,7 @@ import { ensureHookAssets, type HookPaths } from './hook-assets'
 import { readSessionMeta } from './jsonl-reader'
 import { loadSettings, saveSettings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
+import { readClipboardSelection, writeClipboardText } from './clipboard'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -39,6 +40,11 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('settings:load', () => loadSettings())
   ipcMain.handle('settings:save', (_e, s: unknown) => saveSettings(s))
+
+  ipcMain.handle('clipboard:read', () => readClipboardSelection())
+  ipcMain.handle('clipboard:write', (_e, text: unknown) =>
+    typeof text === 'string' ? writeClipboardText(text) : false
+  )
 
   ipcMain.handle('sysenv:applyDisableAutoupdater', (_e, enabled: boolean) =>
     applyDisableAutoupdater(!!enabled)

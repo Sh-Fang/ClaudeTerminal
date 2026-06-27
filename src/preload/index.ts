@@ -8,6 +8,7 @@ export interface SessionRecord {
   source: SessionSource
   createdAt: string
   aiTitle?: string
+  userTitle?: string  // 用户手动重命名（优先于 aiTitle 显示）
   lastTs?: string
 }
 
@@ -85,6 +86,12 @@ export interface Settings {
   sidebarCollapsed: boolean
 }
 
+// 与 src/main/clipboard.ts 的 ClipboardRead 保持一致：files / text / empty 三态
+export type ClipboardRead =
+  | { kind: 'files'; files: string[] }
+  | { kind: 'text'; text: string }
+  | { kind: 'empty' }
+
 export interface SessionMeta {
   aiTitle?: string
   lastTs?: string
@@ -110,6 +117,8 @@ export interface TermBridge {
   pathExists(p: string): Promise<boolean>
   loadSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<Settings>
+  writeClipboard(text: string): Promise<boolean>
+  readClipboard(): Promise<ClipboardRead>
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
   readDisableAutoupdater(): Promise<string | null>
   winMinimize(): void
@@ -142,6 +151,8 @@ const api: TermBridge = {
   pathExists: (p) => ipcRenderer.invoke('path:exists', p),
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
+  readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+  writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),
   readDisableAutoupdater: () => ipcRenderer.invoke('sysenv:readDisableAutoupdater'),
   winMinimize: () => ipcRenderer.send('window:minimize'),
