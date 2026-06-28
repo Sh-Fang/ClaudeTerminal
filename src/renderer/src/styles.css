@@ -639,15 +639,21 @@ button.saved-toggle:hover { color: var(--ink); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  user-select: text;   /* 路径可手动选中复制（覆盖外层的 user-select: none）*/
+  flex: 0 1 auto;
+  margin-left: auto;          /* 推到状态栏右端 */
+  padding-left: 16px;
+  border-left: 1px solid var(--hairline);
+  max-width: 60%;              /* 太长的路径截断，给左边 ctx/模型/分支让位置 */
+  user-select: text;          /* 路径可手动选中复制（覆盖外层的 user-select: none）*/
   cursor: text;
 }
 .statusbar .sb-session {
-  flex: 0 0 auto;
-  margin-left: 16px;
-  padding-left: 16px;
-  border-left: 1px solid var(--hairline);
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
   white-space: nowrap;
   cursor: default;
   display: flex;
@@ -657,11 +663,18 @@ button.saved-toggle:hover { color: var(--ink); }
 .statusbar .sb-session .sbi-sep { color: var(--hairline); }
 .statusbar .sb-session .sbi-branch,
 .statusbar .sb-session .sbi-model { color: var(--mute); }
-.statusbar .sb-session .sbi-branch { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.statusbar .sb-session .sbi-branch {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;     /* 占据 sb-session 内的剩余空间，吃满中间空白 */
+  overflow: hidden;
+}
 .statusbar .sb-session .sbi-branch-ic { flex: 0 0 12px; opacity: .85; }
 .statusbar .sb-session .sbi-branch-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 150px;   /* 太长的分支名截断为省略号，完整名见 hover 提示 */
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 不再写死 150px——自适应到 statusbar 给的剩余空间；超长仍 ellipsis，完整名 hover 看 */
 }
 .statusbar .sb-session .sbi-ctx { display: inline-flex; align-items: center; gap: 6px; color: var(--mute); }
 .statusbar .sb-session .sbi-ctx-track {
@@ -678,27 +691,35 @@ button.saved-toggle:hover { color: var(--ink); }
 .sbi-ctx-val.lv-warn { color: #f5a623; }
 .sbi-ctx-val.lv-danger { color: #f14c4c; }
 
-/* 侧边栏底部账号用量面板（usage / weekly），竖向堆叠 */
+/* 侧边栏底部账号用量面板：两条 inline 进度条上下堆叠，跟底部 ctx 同款排版 */
 .side-usage {
   flex: 0 0 auto;
-  padding: 10px 14px 12px;
+  padding: 8px 14px 10px;
   border-top: 1px solid var(--hairline);
 }
 .usage-bars {
-  display: flex; flex-direction: row; gap: 14px;
+  display: flex; flex-direction: column; gap: 4px;
   font-family: var(--mono); font-size: 11px; color: var(--mute);
 }
 .usage-bars.error { color: #f14c4c; }
-.usage-bars .ubar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.usage-bars .ubar-label { color: var(--mute); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.usage-bars .ubar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; white-space: nowrap; }
-.usage-bars .ubar-val { color: var(--body); font-weight: 600; }
-.usage-bars .ubar-reset { color: var(--mute); opacity: .75; font-size: 10px; }
+.usage-bars .ubar {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.usage-bars .ubar-label { color: var(--mute); flex-shrink: 0; white-space: nowrap; }
 .usage-bars .ubar-track {
-  width: 100%; height: 6px; border-radius: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 5px; border-radius: 3px;
   background: #2a2a2a; overflow: hidden;
 }
 .usage-bars .ubar-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
+.usage-bars .ubar-val {
+  flex-shrink: 0;
+  color: var(--body);
+  font-variant-numeric: tabular-nums;   /* 数字等宽，跳动不抖 */
+}
+.usage-bars .ubar-reset { flex-shrink: 0; color: var(--mute); opacity: .75; }
 
 /* Search popover */
 #search {

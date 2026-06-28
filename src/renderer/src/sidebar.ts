@@ -180,7 +180,7 @@ export class Sidebar {
     if (more > 0) {
       const hint = document.createElement('div')
       hint.className = 'saved-overflow-hint'
-      hint.textContent = `还有 ${more} 个隐藏，点下方「展开管理」查看。`
+      hint.textContent = `还有 ${more} 个隐藏，点右上角的「展开管理」查看。`
       this.savedEl.appendChild(hint)
     }
   }

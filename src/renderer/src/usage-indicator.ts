@@ -41,16 +41,14 @@ function lvOf(p: number): string {
   return 'lv-ok'
 }
 
-// 一栏进度条：标签在上，百分比 + 重置一行，整条轨道在下
+// 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版
 function bar(label: string, percent: number, reset: string): string {
   return (
     `<span class="ubar">` +
     `<span class="ubar-label">${label}</span>` +
-    `<span class="ubar-head">` +
-    `<span class="ubar-val">${percent}%</span>` +
-    (reset ? `<span class="ubar-reset">重置 ${reset}</span>` : '') +
-    `</span>` +
     `<span class="ubar-track"><i class="ubar-fill ${lvOf(percent)}" style="width:${percent}%"></i></span>` +
+    `<span class="ubar-val">${percent}%</span>` +
+    (reset ? `<span class="ubar-reset">${reset}</span>` : '') +
     `</span>`
   )
 }

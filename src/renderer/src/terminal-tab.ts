@@ -265,7 +265,9 @@ export class TerminalTab {
     // 序列，cc 收不到滚轮 mouse report，alt-screen 本就没 scrollback 可滚。
     // 解决：在 alt-screen 下拦截 xterm 的默认转换，自己把滚轮换成 PgUp/PgDn 发给
     // PTY —— cc 的应用层用 PgUp/PgDn 翻看历史输出，且 cc 输入框不消费这俩键。
-    // 单次滚轮的 deltaY 大约 100px ≈ 1 行，按比例换算成 1~6 次 PgUp/PgDn。
+    // alt-screen 下：每个 wheel notch（约 100px deltaY）只发 1 个 PgUp/PgDn——
+    // 已经是 cc 历史查看器能接受的最小粒度。cc 本身按页跳，做不到真正的"行级"
+    // 连续滚动，所以这是当前能给的最细体验。
     this.host.addEventListener('wheel', (e) => {
       const buffer = this.term.buffer.active
       const isAltScreen = buffer && buffer.type === 'alternate'
@@ -273,9 +275,8 @@ export class TerminalTab {
       e.preventDefault()
       e.stopImmediatePropagation()
       if (this.ptyId == null) return
-      const steps = Math.min(6, Math.max(1, Math.round(Math.abs(e.deltaY) / 100)))
       const key = e.deltaY < 0 ? '\x1b[5~' : '\x1b[6~' // PgUp / PgDn
-      window.term.send(this.ptyId, key.repeat(steps))
+      window.term.send(this.ptyId, key)
     }, { capture: true, passive: false })
 
     // Windows Terminal 风格：有选区→复制，无选区→粘贴
