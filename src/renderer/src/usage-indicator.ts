@@ -43,11 +43,12 @@ function lvOf(p: number): string {
 
 // 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版
 function bar(label: string, percent: number, reset: string): string {
+  const lv = lvOf(percent)
   return (
     `<span class="ubar">` +
     `<span class="ubar-label">${label}</span>` +
-    `<span class="ubar-track"><i class="ubar-fill ${lvOf(percent)}" style="width:${percent}%"></i></span>` +
-    `<span class="ubar-val">${percent}%</span>` +
+    `<span class="ubar-track"><i class="ubar-fill ${lv}" style="width:${percent}%"></i></span>` +
+    `<span class="ubar-val ${lv}">${percent}%</span>` +
     (reset ? `<span class="ubar-reset">${reset}</span>` : '') +
     `</span>`
   )
