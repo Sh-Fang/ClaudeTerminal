@@ -1,14 +1,13 @@
 import type { BrowserWindow } from 'electron'
 import { existsSync, mkdirSync, readdirSync, statSync, watch, readFile, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
+import { UUID_RE } from './claude-paths'
+import { isSessionSource } from './session-constants'
 
 interface FileState {
   offset: number
   debounce: NodeJS.Timeout | null
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const ALLOWED_SOURCES = new Set(['startup', 'clear', 'compact', 'resume'])
 
 export class SessionEventWatcher {
   private dir: string
@@ -87,8 +86,7 @@ export class SessionEventWatcher {
     } catch { return }
     const sessionId = typeof obj.sessionId === 'string' ? obj.sessionId : ''
     if (!UUID_RE.test(sessionId)) return
-    const sourceRaw = typeof obj.source === 'string' ? obj.source : 'startup'
-    const source = ALLOWED_SOURCES.has(sourceRaw) ? sourceRaw : 'startup'
+    const source = isSessionSource(obj.source) ? obj.source : 'startup'
     const payload = {
       tabId,
       sessionId,

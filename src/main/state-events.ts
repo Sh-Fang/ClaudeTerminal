@@ -1,8 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFile, watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
-
-const ALLOWED_STATES = new Set(['busy', 'attention', 'done', 'idle', 'error'])
+import { isTabStatus } from './session-constants'
 
 interface FileState {
   debounce: NodeJS.Timeout | null
@@ -59,7 +58,7 @@ export class StateEventWatcher {
       try {
         obj = JSON.parse(raw) as Record<string, unknown>
       } catch { return }
-      const state = typeof obj.state === 'string' && ALLOWED_STATES.has(obj.state) ? obj.state : null
+      const state = isTabStatus(obj.state) ? obj.state : null
       if (!state) return
       const tabId = name.slice(0, -'.json'.length)
       const payload = {

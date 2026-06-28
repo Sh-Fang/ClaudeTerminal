@@ -1,9 +1,14 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
+import {
+  isSessionSource,
+  isTabStatus,
+  type SessionSource,
+  type TabStatus
+} from './session-constants'
 
-export type SessionSource = 'startup' | 'clear' | 'compact' | 'resume'
-export type TabStatus = 'busy' | 'attention' | 'done' | 'idle' | 'error'
+export type { SessionSource, TabStatus }
 
 export interface SessionRecord {
   sessionId: string
@@ -52,17 +57,13 @@ const FILE = () => join(app.getPath('userData'), 'workspace.json')
 
 const EMPTY: Workspace = { version: 2, groups: [], savedGroups: [], activeTabId: null }
 
-const ALLOWED_SOURCES: SessionSource[] = ['startup', 'clear', 'compact', 'resume']
-const ALLOWED_STATUS: TabStatus[] = ['busy', 'attention', 'done', 'idle', 'error']
-
 function normalizeSession(s: unknown): SessionRecord | null {
   if (!s || typeof s !== 'object') return null
   const r = s as Record<string, unknown>
   if (typeof r.sessionId !== 'string') return null
-  const src = typeof r.source === 'string' ? r.source : 'startup'
   return {
     sessionId: r.sessionId,
-    source: (ALLOWED_SOURCES as string[]).includes(src) ? (src as SessionSource) : 'startup',
+    source: isSessionSource(r.source) ? r.source : 'startup',
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
     aiTitle: typeof r.aiTitle === 'string' ? r.aiTitle : undefined,
     lastTs: typeof r.lastTs === 'string' ? r.lastTs : undefined
@@ -94,9 +95,7 @@ function normalizeTab(t: unknown): TabRecord | null {
     activeSessionId = sessions[sessions.length - 1].sessionId
   }
 
-  const status = typeof r.status === 'string' && (ALLOWED_STATUS as string[]).includes(r.status)
-    ? (r.status as TabStatus)
-    : undefined
+  const status = isTabStatus(r.status) ? r.status : undefined
 
   return {
     id: r.id,
@@ -218,5 +217,3 @@ export function saveWorkspace(ws: Workspace): void {
   writeFileSync(tmp, JSON.stringify(ws, null, 2), 'utf8')
   renameSync(tmp, path)
 }
-
-export { groupNameFromCwd, basename }

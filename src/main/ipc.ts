@@ -10,12 +10,11 @@ import { loadSettings, saveSettings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
+import { isSafeExternalUrl } from './url-safety'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
 }
-
-const SAFE_URL = /^https?:\/\/[^\s'"<>]+$/i
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   let hookPaths: HookPaths | null = null
@@ -27,7 +26,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   try { getHookPaths() } catch (e) { console.error('[hooks] ensure failed', e) }
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
-    if (typeof url === 'string' && SAFE_URL.test(url)) {
+    if (isSafeExternalUrl(url)) {
       void shell.openExternal(url)
       return true
     }

@@ -1,9 +1,7 @@
 import { app } from 'electron'
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { findSessionJsonl as findJsonl } from './claude-paths'
 
 export interface SessionMeta {
   exists: boolean
@@ -11,22 +9,6 @@ export interface SessionMeta {
   lastTs?: string
   lastPrompt?: string
   mtime?: number
-}
-
-const ROOT = () => join(homedir(), '.claude', 'projects')
-
-function findJsonl(sessionId: string): string | null {
-  if (!UUID_RE.test(sessionId)) return null
-  const root = ROOT()
-  if (!existsSync(root)) return null
-  const target = `${sessionId}.jsonl`
-  try {
-    for (const dir of readdirSync(root)) {
-      const p = join(root, dir, target)
-      if (existsSync(p)) return p
-    }
-  } catch {}
-  return null
 }
 
 // 从文件尾读最多 N 字节

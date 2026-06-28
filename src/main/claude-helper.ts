@@ -1,9 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export { sessionExists } from './claude-paths'
 
 let cachedAvailable: boolean | null = null
 
@@ -39,22 +36,4 @@ export function detectClaudePath(): string | null {
   } catch {
     return null
   }
-}
-
-// 按 FEATURE-session-tabs.md §3.2：用全局唯一的 UUID 直接搜，免疫编码冲突
-export function sessionExists(sessionId: string): boolean {
-  if (!UUID_RE.test(sessionId)) return false
-  const root = join(homedir(), '.claude', 'projects')
-  if (!existsSync(root)) return false
-  const target = `${sessionId}.jsonl`
-  try {
-    for (const entry of readdirSync(root)) {
-      const dir = join(root, entry)
-      try {
-        if (!statSync(dir).isDirectory()) continue
-      } catch { continue }
-      if (existsSync(join(dir, target))) return true
-    }
-  } catch {}
-  return false
 }
