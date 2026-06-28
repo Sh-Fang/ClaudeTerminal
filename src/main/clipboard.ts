@@ -42,16 +42,24 @@ export function readClipboardSelection(): ClipboardRead {
 // 'FileName' 是 ANSI 字符串。两个都试一遍，谁有用谁。
 function readSingleFileName(): string[] {
   if (process.platform !== 'win32') return []
-  for (const fmt of ['FileNameW', 'FileName']) {
-    try {
-      const s = clipboard.read(fmt)
-      if (s && s.trim()) {
-        // FileNameW 偶尔末尾带 \0，清掉
-        const cleaned = s.replace(/\0+$/g, '').trim()
-        if (cleaned) return [cleaned]
-      }
-    } catch {}
-  }
+  // FileNameW：原生 UTF-16LE。直接读 buffer 自己解码，不走 Electron 的 read(string)
+  // 那条不确定按啥编码转码的路径，避免中文文件名乱码。
+  try {
+    const buf = clipboard.readBuffer('FileNameW')
+    if (buf && buf.length >= 2) {
+      const evenLen = buf.length - (buf.length % 2)
+      const s = buf.subarray(0, evenLen).toString('utf16le').replace(/\0+$/g, '').trim()
+      if (s) return [s]
+    }
+  } catch {}
+  // ANSI FileName 兜底：Electron read 对 ANSI 编码不一定正确处理，但能接 ASCII 路径
+  try {
+    const s = clipboard.read('FileName')
+    if (s && s.trim()) {
+      const cleaned = s.replace(/\0+$/g, '').trim()
+      if (cleaned) return [cleaned]
+    }
+  } catch {}
   return []
 }
 
@@ -77,7 +85,20 @@ function readDropFiles(): string[] {
     const fWide = buf.readUInt32LE(FWIDE_FIELD_OFFSET) !== 0
     if (offset >= buf.length) return []
     const payload = buf.slice(offset)
-    return parseNulSeparatedList(payload, fWide ? 2 : 1)
+    if (fWide) {
+      // UTF-16LE：一次性 Buffer.toString('utf16le') 解码，比循环 readUInt16LE 更可靠
+      // （正确处理 surrogate pair；payload 长度若为奇数尾字节会被自然丢弃）。
+      // 资源管理器复制文件走这条路。
+      const evenLen = payload.length - (payload.length % 2)
+      return payload
+        .subarray(0, evenLen)
+        .toString('utf16le')
+        .split('\0')
+        .filter((s) => s.length > 0)
+    }
+    // ANSI 分支（fWide=0）：现代 Windows 极少见。Node 标准库不支持 GBK，
+    // 按 latin1 退化解码——含非 ASCII 文件名会乱码，但能避免崩。
+    return parseNulSeparatedList(payload, 1)
   } catch {
     return []
   }

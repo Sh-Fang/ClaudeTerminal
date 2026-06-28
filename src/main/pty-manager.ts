@@ -49,7 +49,12 @@ export function createPty(
     useConpty: true
   })
 
-  proc.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r')
+  // 同时把 Input/Output 编码与 console code page 都置成 UTF-8。
+  // 只设 OutputEncoding 时，pwsh 提示符里粘贴含中文的路径会按 ACP=936（GBK）解码
+  // 我们传进去的 UTF-8 字节流，显示成乱码。chcp 65001 + InputEncoding 一起改才彻底。
+  proc.write(
+    'chcp 65001 > $null; [Console]::OutputEncoding = [Console]::InputEncoding = [System.Text.Encoding]::UTF8\r'
+  )
 
   proc.onData((d) => onData(id, d))
   proc.onExit(({ exitCode }) => {
