@@ -1,0 +1,238 @@
+// 标签历史窗口：仿浏览器历史的左 nav 时间分组 + 右列表 + 底部清空。
+// 数据源是主进程 tabHistoryList()（已按 lastSeenAt 倒序）；按"今天 / 昨天 / 更早"
+// 切桶，左侧 nav 切换右侧列表。点行/恢复按钮 = 恢复成 live tab；垃圾桶 = 单条删除。
+
+import type { SessionRecord } from './terminal-tab'
+import { escapeHtml, formatTs, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
+import { icon } from './svg-icons'
+
+export interface HistoryEntry {
+  tabId: string
+  tabName: string
+  groupName: string
+  cwd: string
+  autoLaunchCC: boolean
+  sessions: SessionRecord[]
+  activeSessionId?: string
+  openedAt: string
+  lastSeenAt: string
+}
+
+export interface HistoryManagerHooks {
+  onRestore(entry: HistoryEntry): void
+}
+
+type Bucket = 'today' | 'yesterday' | 'earlier'
+const BUCKETS: { key: Bucket; label: string }[] = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
+  { key: 'earlier', label: '更早' }
+]
+
+function startOfDay(d: Date): number {
+  const c = new Date(d)
+  c.setHours(0, 0, 0, 0)
+  return c.getTime()
+}
+
+function bucketOf(iso: string, todayStartMs: number, yesterdayStartMs: number): Bucket {
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return 'earlier'
+  if (t >= todayStartMs) return 'today'
+  if (t >= yesterdayStartMs) return 'yesterday'
+  return 'earlier'
+}
+
+export class HistoryManager {
+  private scrim: HTMLDivElement
+  private body: HTMLDivElement
+  private empty: HTMLDivElement
+  private nav: HTMLElement
+  private closeBtn: HTMLButtonElement
+  private clearBtn: HTMLButtonElement
+  private entries: HistoryEntry[] = []
+  private grouped: Record<Bucket, HistoryEntry[]> = { today: [], yesterday: [], earlier: [] }
+  private activeBucket: Bucket = 'today'
+
+  constructor(private hooks: HistoryManagerHooks) {
+    this.scrim = document.getElementById('historyScrim') as HTMLDivElement
+    this.body = document.getElementById('hist-body') as HTMLDivElement
+    this.empty = document.getElementById('hist-empty') as HTMLDivElement
+    this.nav = document.getElementById('hist-nav') as HTMLElement
+    this.closeBtn = document.getElementById('hist-close') as HTMLButtonElement
+    this.clearBtn = document.getElementById('hist-clear') as HTMLButtonElement
+    this.closeBtn.addEventListener('click', () => this.close())
+    this.clearBtn.addEventListener('click', () => this.onClear())
+    this.nav.addEventListener('click', (e) => this.onNavClick(e))
+    bindScrimDismiss(this.scrim, () => this.close())
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.scrim.hidden) this.close()
+    })
+    this.body.addEventListener('click', (e) => this.onBodyClick(e))
+  }
+
+  async open(): Promise<void> {
+    this.entries = await window.term.tabHistoryList()
+    this.regroup()
+    // 打开时默认跳到第一个非空桶（用户最关心今天，但今天为空就跳昨天）
+    this.activeBucket = this.firstNonEmptyBucket() ?? 'today'
+    this.scrim.hidden = false
+    this.render()
+  }
+
+  close(): void {
+    this.scrim.hidden = true
+  }
+
+  private async refresh(): Promise<void> {
+    this.entries = await window.term.tabHistoryList()
+    this.regroup()
+    // 当前 active 桶被删空就跳到第一个非空桶；都空就保持原 active（让 empty 提示展示）
+    if (this.grouped[this.activeBucket].length === 0) {
+      this.activeBucket = this.firstNonEmptyBucket() ?? this.activeBucket
+    }
+    this.render()
+  }
+
+  private regroup(): void {
+    const now = new Date()
+    const todayStart = startOfDay(now)
+    const yesterdayStart = todayStart - 86_400_000
+    const buckets: Record<Bucket, HistoryEntry[]> = { today: [], yesterday: [], earlier: [] }
+    for (const e of this.entries) buckets[bucketOf(e.lastSeenAt, todayStart, yesterdayStart)].push(e)
+    this.grouped = buckets
+  }
+
+  private firstNonEmptyBucket(): Bucket | null {
+    for (const b of BUCKETS) if (this.grouped[b.key].length > 0) return b.key
+    return null
+  }
+
+  private render(): void {
+    this.renderNav()
+    this.renderList()
+    this.renderClearBtn()
+  }
+
+  private renderClearBtn(): void {
+    const bucketLabel = BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? ''
+    const n = this.grouped[this.activeBucket].length
+    this.clearBtn.hidden = false
+    this.clearBtn.textContent = n > 0 ? `清空${bucketLabel}的历史 (${n})` : `清空${bucketLabel}的历史`
+    this.clearBtn.disabled = n === 0
+  }
+
+  private renderNav(): void {
+    this.nav.innerHTML = BUCKETS.map(
+      (b) => `
+      <button type="button" class="hist-nav-item${b.key === this.activeBucket ? ' active' : ''}" data-bucket="${b.key}">
+        <span>${b.label}</span>
+        <span class="count">${this.grouped[b.key].length}</span>
+      </button>
+    `
+    ).join('')
+  }
+
+  private renderList(): void {
+    this.body.innerHTML = ''
+    const list = this.grouped[this.activeBucket]
+    const isEmpty = list.length === 0
+    this.empty.hidden = !isEmpty
+    if (isEmpty) {
+      const e1 = this.empty.querySelector('div:first-child') as HTMLElement | null
+      // 区分"完全没历史"与"这个时间段没有"
+      if (this.entries.length === 0) {
+        if (e1) e1.textContent = '7 天内没有打开过标签的记录。'
+      } else {
+        if (e1) e1.textContent = '这个时间段没有标签记录。'
+      }
+      return
+    }
+    for (const e of list) this.body.appendChild(this.row(e))
+  }
+
+  private row(e: HistoryEntry): HTMLDivElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'mg-row is-visible'
+    wrap.dataset.tabId = e.tabId
+    const cwd = e.cwd ? escapeHtml(shortPath(e.cwd)) : '<span class="path-placeholder">(默认目录)</span>'
+    const sessionCount = e.sessions?.length ?? 0
+    const sessionMeta = sessionCount > 0 ? `${sessionCount} 个会话` : '空会话'
+    wrap.innerHTML = `
+      <div class="mg-head-row">
+        <span class="mg-folder">${icon('folder')}</span>
+        <div class="mg-info">
+          <div class="mg-name">${escapeHtml(e.groupName)} <span class="mg-group-name">· ${escapeHtml(e.tabName)}</span></div>
+          <div class="mg-meta">${cwd} · ${sessionMeta} · ${escapeHtml(formatTs(e.lastSeenAt))}</div>
+        </div>
+        <button class="mg-btn" data-restore="${escapeHtml(e.tabId)}" title="恢复成新标签">${icon('rotate-ccw', { size: 14 })}</button>
+        <button class="mg-btn mg-danger" data-delete="${escapeHtml(e.tabId)}" title="从历史里删除此条">${icon('trash', { size: 14 })}</button>
+      </div>
+    `
+    return wrap
+  }
+
+  private onNavClick(e: MouseEvent): void {
+    const btn = (e.target as HTMLElement).closest('[data-bucket]') as HTMLElement | null
+    if (!btn) return
+    const b = btn.dataset.bucket as Bucket | undefined
+    if (!b || b === this.activeBucket) return
+    this.activeBucket = b
+    this.render()
+  }
+
+  private async onBodyClick(e: MouseEvent): Promise<void> {
+    const tgt = e.target as HTMLElement
+    const restore = tgt.closest('[data-restore]') as HTMLElement | null
+    if (restore) {
+      const id = restore.dataset.restore!
+      const entry = this.entries.find((x) => x.tabId === id)
+      if (entry) {
+        this.close()
+        this.hooks.onRestore(entry)
+      }
+      return
+    }
+    const del = tgt.closest('[data-delete]') as HTMLElement | null
+    if (del) {
+      const id = del.dataset.delete!
+      const entry = this.entries.find((x) => x.tabId === id)
+      if (!entry) return
+      confirmDialog({
+        title: `删除这条历史？`,
+        message: `将从历史里删除「<b>${escapeHtml(entry.groupName)} · ${escapeHtml(entry.tabName)}</b>」，已打开的标签不受影响。`,
+        okLabel: '删除',
+        onOk: async () => {
+          await window.term.tabHistoryDelete(id)
+          await this.refresh()
+        }
+      })
+      return
+    }
+    // 行内任意位置点击（非按钮）= 恢复
+    const row = tgt.closest('.mg-row') as HTMLElement | null
+    if (row && row.dataset.tabId) {
+      const entry = this.entries.find((x) => x.tabId === row.dataset.tabId)
+      if (entry) {
+        this.close()
+        this.hooks.onRestore(entry)
+      }
+    }
+  }
+
+  private onClear(): void {
+    const list = this.grouped[this.activeBucket]
+    if (list.length === 0) return
+    const bucketLabel = BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? ''
+    const ids = list.map((e) => e.tabId)
+    confirmDialog({
+      title: `清空${bucketLabel}的历史？`,
+      message: `将清空<b>${bucketLabel}</b>的 <b>${ids.length}</b> 条历史记录，已打开的标签不受影响。`,
+      okLabel: '清空',
+      onOk: async () => {
+        await window.term.tabHistoryDeleteMany(ids)
+        await this.refresh()
+      }
+    })
+  }
+}

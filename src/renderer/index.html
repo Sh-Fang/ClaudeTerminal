@@ -37,6 +37,13 @@
         <section class="side-section side-open">
           <div class="side-section-label">
             打开的分组<span class="line"></span>
+            <button id="historyOpenBtn" class="side-head-btn" type="button" title="标签历史（7 天内）" aria-label="标签历史">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                <path d="M3 4v5h5"/>
+                <path d="M12 7v5l3 2"/>
+              </svg>
+            </button>
             <button id="sidebarCollapseBtn" class="side-head-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m15 6-6 6 6 6"/>
@@ -204,6 +211,33 @@
         <div class="mg-empty" id="mg-empty" hidden>
           <div>还没有已保存的分组。</div>
           <div class="sub">右键打开的分组「保存分组」就会出现在这里。</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="historyScrim" class="scrim" hidden>
+      <div class="modal modal-manage modal-history" role="dialog" aria-modal="true" aria-labelledby="hist-title">
+        <div class="mg-head">
+          <div>
+            <h2 id="hist-title">标签历史</h2>
+            <p class="sub">最近 7 天内打开过的标签，按最近使用时间排序。</p>
+          </div>
+          <button id="hist-close" class="mg-close-btn" type="button" aria-label="关闭">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="hist-layout">
+          <nav class="hist-nav" id="hist-nav" aria-label="按时间分组"></nav>
+          <div class="hist-pane">
+            <div class="mg-body" id="hist-body"></div>
+            <div class="mg-empty" id="hist-empty" hidden>
+              <div>7 天内没有打开过标签的记录。</div>
+              <div class="sub">每次新建标签都会自动留底。</div>
+            </div>
+          </div>
+        </div>
+        <div class="hist-foot">
+          <button id="hist-clear" class="btn btn-ghost-danger" type="button" title="清空全部历史">清空全部历史</button>
         </div>
       </div>
     </div>

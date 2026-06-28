@@ -11,6 +11,14 @@ import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
 import { isSafeExternalUrl } from './url-safety'
+import {
+  clearTabHistory,
+  deleteManyTabHistory,
+  deleteTabHistory,
+  listTabHistory,
+  upsertTabHistory,
+  type HistoryEntry
+} from './tab-history'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -138,5 +146,23 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.on('pty:kill', (_e, p: { id: number }) => {
     killPty(p.id)
+  })
+
+  ipcMain.handle('tabHistory:list', () => listTabHistory())
+  ipcMain.handle('tabHistory:upsert', (_e, entry: HistoryEntry) => {
+    upsertTabHistory(entry)
+    return true
+  })
+  ipcMain.handle('tabHistory:delete', (_e, tabId: string) => {
+    deleteTabHistory(tabId)
+    return true
+  })
+  ipcMain.handle('tabHistory:deleteMany', (_e, tabIds: string[]) => {
+    deleteManyTabHistory(tabIds)
+    return true
+  })
+  ipcMain.handle('tabHistory:clear', () => {
+    clearTabHistory()
+    return true
   })
 }

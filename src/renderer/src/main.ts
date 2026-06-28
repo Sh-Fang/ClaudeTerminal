@@ -20,6 +20,7 @@ import { icon } from './svg-icons'
 import { SavedManager, type ManageGroupView } from './saved-manager'
 import { UsageIndicator } from './usage-indicator'
 import { SessionInfoBar } from './session-info'
+import { HistoryManager, type HistoryEntry } from './history-manager'
 
 const usageIndicator = new UsageIndicator()
 
@@ -40,6 +41,7 @@ const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn') as HTML
 const sidebarHandleEl = document.getElementById('sidebarHandle') as HTMLDivElement
 const savedSectionEl = document.getElementById('savedSection') as HTMLElement
 const savedToggleBtn = document.getElementById('savedToggle') as HTMLButtonElement
+const historyOpenBtn = document.getElementById('historyOpenBtn') as HTMLButtonElement
 
 // ─── 状态 ───────────────────────────────────────────────────────────
 interface Group {
@@ -181,6 +183,29 @@ function scheduleSave(): void {
   }, 300)
 }
 
+// ─── 标签历史落底 ──────────────────────────────────────────────────
+// 每次"打开标签 / 激活标签 / 会话栈变化"都把 tab 当前状态写入历史，给崩溃后找回用。
+// 写盘走主进程同步落盘（atomic rename），调用频率上靠这里做轻量节流：同一 tab 1.5s 内
+// 至多写一次（除非强制）；新建/恢复/会话事件等关键时机用 force=true 立刻落。
+const historyFlushAt = new Map<string, number>()
+function recordTabHistory(tab: TerminalTab, groupName: string, force = false): void {
+  const now = Date.now()
+  const last = historyFlushAt.get(tab.id) ?? 0
+  if (!force && now - last < 1500) return
+  historyFlushAt.set(tab.id, now)
+  void window.term.tabHistoryUpsert({
+    tabId: tab.id,
+    tabName: tab.name,
+    groupName,
+    cwd: tab.cwd,
+    autoLaunchCC: tab.autoLaunchCC,
+    sessions: tab.sessions.map((s) => ({ ...s })),
+    activeSessionId: tab.activeSessionId,
+    openedAt: new Date(now).toISOString(),
+    lastSeenAt: new Date(now).toISOString()
+  })
+}
+
 // ─── 启动 cc ───────────────────────────────────────────────────────
 async function launchCC(tab: TerminalTab): Promise<void> {
   if (!tab.autoLaunchCC) return
@@ -267,6 +292,8 @@ function makeTab(group: Group, opts: {
   )
   group.tabs.push(tabRef)
   tabRef.mount(hostsEl)
+  // 新建/恢复出来的 tab 立刻落历史，崩溃前哪怕一秒没动也能找回
+  recordTabHistory(tabRef, group.name, true)
   return tabRef
 }
 
@@ -419,6 +446,7 @@ function activateTab(tabId: string): void {
   activateUI(tabId)
   sessionInfo.nudge()
   scheduleSave()
+  recordTabHistory(ctx.tab, ctx.group.name)
 }
 
 function disposeTabInternal(group: Group, tab: TerminalTab): void {
@@ -1111,6 +1139,8 @@ const offSession = window.term.onSessionEvent((ev) => {
   sidebar.render()
   toolbar.render()
   void refreshSessionMeta(tab)
+  // 会话栈变了立刻落历史：force=true 确保即便刚刚才落过也再写一次新的 sessions
+  recordTabHistory(tab, ctx.group.name, true)
 })
 
 // ─── 状态徽标事件 ────────────────────────────────────────────────
@@ -1322,6 +1352,40 @@ const savedManager = new SavedManager({
   onRestoreSelect: (id) => openRestoreSelect(id),
   getSidebarLimit: () => settings.savedSidebarLimit
 })
+
+// ─── 标签历史窗口 ────────────────────────────────────────────────
+async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
+  // 优先复用已存在的同 cwd 分组（用户语义上：标签回到原分组），找不到就新建一个
+  let g = groups.find((x) => x.cwd === entry.cwd)
+  if (!g) g = ensureGroup({ name: entry.groupName || entry.cwd, cwd: entry.cwd })
+  // tabId 已在 live：直接激活即可，不重复打开
+  if (g.tabs.some((t) => t.id === entry.tabId)) {
+    activeTabId = entry.tabId
+    activateUI(entry.tabId)
+    toast(`已切到「${entry.tabName}」`)
+    return
+  }
+  const tab = makeTab(g, {
+    id: entry.tabId,
+    name: entry.tabName,
+    sessions: entry.sessions,
+    activeSessionId: entry.activeSessionId,
+    autoLaunchCC: entry.autoLaunchCC,
+    dirty: true
+  })
+  activeTabId = tab.id
+  sidebar.render()
+  activateUI(tab.id)
+  await spawnTabPty(tab)
+  scheduleSave()
+  toast(`已从历史恢复「${entry.tabName}」`)
+}
+
+const historyManager = new HistoryManager({
+  onRestore: (entry) => void restoreFromHistory(entry)
+})
+
+historyOpenBtn?.addEventListener('click', () => void historyManager.open())
 
 // ─── 启动恢复 ────────────────────────────────────────────────────
 // 轻量模式：只读 settings + savedGroups，groups/activeTabId 一律不恢复。

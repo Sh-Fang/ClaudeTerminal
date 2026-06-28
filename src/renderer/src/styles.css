@@ -961,6 +961,93 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .mg-empty .sub { font-size: 12px; margin-top: 6px; }
 
+/* ─── 标签历史窗口：左 nav 时间分组 + 右内容 + 底部 footer ─── */
+.modal-history .hist-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+.modal-history .hist-nav {
+  width: 168px;
+  flex-shrink: 0;
+  padding: 16px 8px 16px 18px;
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.modal-history .hist-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--body);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+.modal-history .hist-nav-item:hover { background: var(--hover); color: var(--ink); }
+.modal-history .hist-nav-item.active {
+  background: var(--active-bg, var(--hover));
+  color: var(--ink);
+  font-weight: 600;
+}
+.modal-history .hist-nav-item .count {
+  font-size: 11px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+.modal-history .hist-nav-item.active .count { color: var(--body); }
+.modal-history .hist-nav-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.modal-history .hist-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.modal-history .hist-pane .mg-body { padding: 14px 24px 12px; }
+.modal-history .hist-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 10px 24px 14px;
+  border-top: 1px solid var(--hairline);
+}
+.btn-ghost-danger {
+  background: transparent;
+  color: var(--mute);
+  border: 1px solid transparent;
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.btn-ghost-danger:hover {
+  color: var(--danger, #d33);
+  background: var(--danger-bg, rgba(220, 60, 60, 0.06));
+  border-color: var(--danger, #d33);
+}
+.btn-ghost-danger:disabled {
+  color: var(--mute);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  opacity: 0.5;
+}
+
 .mg-divider {
   margin: 12px 4px 8px;
   padding: 4px 0;

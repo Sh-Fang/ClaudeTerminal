@@ -131,6 +131,18 @@ export interface SessionUsage {
   ctxApprox?: boolean
 }
 
+export interface HistoryEntry {
+  tabId: string
+  tabName: string
+  groupName: string
+  cwd: string
+  autoLaunchCC: boolean
+  sessions: SessionRecord[]
+  activeSessionId?: string
+  openedAt: string
+  lastSeenAt: string
+}
+
 export interface TermBridge {
   create(opts: { cols: number; rows: number; cwd?: string; tabId?: string }): Promise<number>
   send(id: number, data: string): void
@@ -166,6 +178,11 @@ export interface TermBridge {
   onExit(cb: (id: number, exitCode: number) => void): () => void
   onSessionEvent(cb: (e: SessionEvent) => void): () => void
   onStateEvent(cb: (e: StateEvent) => void): () => void
+  tabHistoryList(): Promise<HistoryEntry[]>
+  tabHistoryUpsert(entry: HistoryEntry): Promise<boolean>
+  tabHistoryDelete(tabId: string): Promise<boolean>
+  tabHistoryDeleteMany(tabIds: string[]): Promise<boolean>
+  tabHistoryClear(): Promise<boolean>
 }
 
 const api: TermBridge = {
@@ -226,7 +243,12 @@ const api: TermBridge = {
     const h = (_e: IpcRendererEvent, p: StateEvent) => cb(p)
     ipcRenderer.on('state:event', h)
     return () => ipcRenderer.off('state:event', h)
-  }
+  },
+  tabHistoryList: () => ipcRenderer.invoke('tabHistory:list'),
+  tabHistoryUpsert: (entry) => ipcRenderer.invoke('tabHistory:upsert', entry),
+  tabHistoryDelete: (tabId) => ipcRenderer.invoke('tabHistory:delete', tabId),
+  tabHistoryDeleteMany: (tabIds) => ipcRenderer.invoke('tabHistory:deleteMany', tabIds),
+  tabHistoryClear: () => ipcRenderer.invoke('tabHistory:clear')
 }
 
 contextBridge.exposeInMainWorld('term', api)
