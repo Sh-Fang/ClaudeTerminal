@@ -260,24 +260,8 @@ export class TerminalTab {
       if (e.button === 2) e.stopPropagation()
     }, true)
 
-    // alt-screen（cc TUI）下 xterm 默认把滚轮转成 cursor key（↑/↓）发给 PTY，
-    // cc 把它当方向键 → 在输入框里移动光标，是个明显的回归。我们已剥掉鼠标追踪
-    // 序列，cc 收不到滚轮 mouse report，alt-screen 本就没 scrollback 可滚。
-    // 解决：在 alt-screen 下拦截 xterm 的默认转换，自己把滚轮换成 PgUp/PgDn 发给
-    // PTY —— cc 的应用层用 PgUp/PgDn 翻看历史输出，且 cc 输入框不消费这俩键。
-    // alt-screen 下：每个 wheel notch（约 100px deltaY）只发 1 个 PgUp/PgDn——
-    // 已经是 cc 历史查看器能接受的最小粒度。cc 本身按页跳，做不到真正的"行级"
-    // 连续滚动，所以这是当前能给的最细体验。
-    this.host.addEventListener('wheel', (e) => {
-      const buffer = this.term.buffer.active
-      const isAltScreen = buffer && buffer.type === 'alternate'
-      if (!isAltScreen) return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      if (this.ptyId == null) return
-      const key = e.deltaY < 0 ? '\x1b[5~' : '\x1b[6~' // PgUp / PgDn
-      window.term.send(this.ptyId, key)
-    }, { capture: true, passive: false })
+    // 滚轮不拦：cc 启用鼠标追踪后，xterm 把 wheel 上报成 mouse report，cc 自己
+    // 处理为行级滚动；普通 pwsh 下 xterm 走本地 scrollback。两套都对，不需要我们插手。
 
     // Windows Terminal 风格：有选区→复制，无选区→粘贴
     this.host.addEventListener('contextmenu', (e) => {
@@ -455,7 +439,7 @@ export class TerminalTab {
   }
 
   writeFromPty(data: string): void {
-    this.term.write(stripMouseTracking(data))
+    this.term.write(data)
   }
 
   handlePtyExit(exitCode: number): void {
@@ -516,21 +500,6 @@ export class TerminalTab {
     try { this.term.dispose() } catch {}
     this.host.remove()
   }
-}
-
-// 剥掉 PTY 数据流里的"鼠标追踪开关"序列，让 xterm 永不进入鼠标追踪模式。
-// 否则 cc 等 TUI 会发 \x1b[?1003h（any-motion 模式），xterm 把所有左键拖动都
-// 当 mouse report 发回 PTY → 完全不产生本地选区 → Ctrl+C 找不到内容可复制。
-// 命中的 DEC private modes：
-//   ?9    X10 mouse / ?1000 normal / ?1001 highlight / ?1002 button-event
-//   ?1003 any-event / ?1004 focus-event / ?1005 utf-8 ext / ?1006 SGR ext
-//   ?1015 urxvt ext / ?1016 SGR pixel
-// 同时剥开(h)与关(l)两端：开剥掉避免进入，关剥掉避免 cc 退出时"还原"开。
-// 副作用：cc TUI 里鼠标点击/拖动交互失效（cc 实际操作靠键盘，影响很小），
-// 拖选 / 复制 / 滚轮 scrollback 全部恢复成普通终端体验。
-const MOUSE_TRACK_RE = /\x1b\[\?(9|1000|1001|1002|1003|1004|1005|1006|1015|1016)[hl]/g
-function stripMouseTracking(data: string): string {
-  return data.replace(MOUSE_TRACK_RE, '')
 }
 
 // 把若干文件路径拼成 PowerShell 命令行风格的字符串。
