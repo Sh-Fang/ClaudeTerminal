@@ -52,10 +52,24 @@ interface Group {
   tabs: TerminalTab[]
 }
 
+// 纯 pwsh 分组：所有标签都没勾"自动启动 cc"。没绑定 cc 会话栈，本质就是普通终端，
+// 关掉就关掉、下次重开就是空白，没有保存价值。
+function isPureNonCcGroup(g: Group): boolean {
+  return g.tabs.length > 0 && g.tabs.every((t) => !t.autoLaunchCC)
+}
+
+// 单个标签是否"可丢弃"：没勾"自动启动 cc"且没有任何会话栈记录。
+// 关闭这种标签不会丢失任何 cc 会话历史，跳过二次确认更顺手。
+function isTabExpendable(t: TerminalTab): boolean {
+  return !t.autoLaunchCC && t.sessions.length === 0
+}
+
 // 分组是否"脏"：组内有未保存标签，或组元信息（name/cwd）与已保存的不一致，
-// 或根本没有对应的已保存条目。
+// 或根本没有对应的已保存条目。纯 pwsh 分组永远视为"不脏"——没东西可保存。
 function isGroupDirty(g: Group): boolean {
-  if (g.tabs.some((t) => t.dirty)) return true
+  if (isPureNonCcGroup(g)) return false
+  // 只有"绑了 cc"的 tab 的 dirty 才传染到分组——纯 pwsh tab 改了也无所谓
+  if (g.tabs.some((t) => t.dirty && t.autoLaunchCC)) return true
   const saved = savedGroups.find((s) => s.srcId === g.id)
   if (!saved) return true
   if (saved.snapshot.name !== g.name) return true
@@ -466,22 +480,28 @@ function closeTab(tabId: string): void {
   if (!ctx) return
   const { group, tab } = ctx
   const isLast = group.tabs.length === 1
+  const finalize = (): void => {
+    disposeTabInternal(group, tab)
+    if (group.tabs.length === 0) {
+      const idx = groups.indexOf(group)
+      if (idx >= 0) groups.splice(idx, 1)
+    }
+    sidebar.render()
+    toolbar.render()
+    scheduleSave()
+  }
+  // 纯 pwsh 标签且不是分组的最后一个 → 关掉无任何损失，跳过确认
+  // （是最后一个仍弹确认，因为会顺带关闭整个分组——这是一个更"重"的操作）
+  if (isTabExpendable(tab) && !isLast) {
+    finalize()
+    return
+  }
   confirmDialog({
     title: `关闭标签「${tab.name}」？`,
     message: `该标签下有 <b>${tab.sessions.length}</b> 条会话，关闭后该标签将从分组移除。` +
       (isLast ? '<br/>这是分组「' + escapeHtml(group.name) + '」的最后一个标签，关闭后<b>分组也会被关闭</b>。' : ''),
     okLabel: '关闭标签',
-    onOk: () => {
-      disposeTabInternal(group, tab)
-      // 空分组自动收尾
-      if (group.tabs.length === 0) {
-        const idx = groups.indexOf(group)
-        if (idx >= 0) groups.splice(idx, 1)
-      }
-      sidebar.render()
-      toolbar.render()
-      scheduleSave()
-    }
+    onOk: finalize
   })
 }
 
@@ -635,6 +655,7 @@ function saveTab(tabId: string): void {
 function closeGroup(groupId: string): void {
   const g = findGroup(groupId)
   if (!g) return
+  const pureNonCc = isPureNonCcGroup(g)
   const saved = savedGroups.some((s) => s.srcId === g.id) && !isGroupDirty(g)
   const busyCount = g.tabs.filter((t) => t.status === 'busy' || t.status === 'attention').length
   const busyHint = busyCount > 0
@@ -653,6 +674,12 @@ function closeGroup(groupId: string): void {
     toolbar.render()
     scheduleSave()
     toast(`已关闭分组「${g.name}」`)
+  }
+  // 纯 pwsh 分组 + 无 busy → 直接关闭，confirmCloseUnsaved 也无视
+  //（该设置保护的是 cc 会话数据，纯 pwsh 没数据可丢）
+  if (pureNonCc && busyCount === 0) {
+    doClose()
+    return
   }
   // 未保存分组 + 用户关掉了二次确认 + 无 busy 标签 → 直接关闭不打扰。
   // 已保存分组（可恢复）保持原确认；有 busy 标签则强制确认，避免误中断运行中的任务。
