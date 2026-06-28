@@ -1,4 +1,4 @@
-# 生成应用图标：和 titlebar 上的"终端 SVG"同款 —— 圆角窗框 + > 提示符 + 下划线。
+# 生成应用图标：圆角 ink 黑背景 + 白色 outline 终端图形居中。
 # 输出 resources/icon.png（256x256）与 resources/icon.ico（多尺寸 16/32/48/64/128/256）。
 # 用法：pwsh -NoProfile -File scripts/generate-icon.ps1
 
@@ -22,41 +22,54 @@ function New-IconBitmap {
   $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
   $g.Clear([System.Drawing.Color]::Transparent)
 
-  $ink = [System.Drawing.Color]::FromArgb(255, 23, 23, 23)
-  $stroke = New-Object System.Drawing.Pen $ink, ($Size * 0.083)
+  $scale = $Size / 24.0
+  $ink = [System.Drawing.Color]::FromArgb(255, 23, 23, 23)        # #171717 (DESIGN ink)
+  $white = [System.Drawing.Color]::FromArgb(255, 255, 255, 255)
+
+  # ── 1. 圆角 ink 黑背景：(0,0)-(24,24) rx=5.5（Big Sur 风格，约 23%） ──
+  $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $bgR = 5.5 * $scale * 2
+  $bgSize = 24 * $scale
+  $bgPath.AddArc(0, 0, $bgR, $bgR, 180, 90)
+  $bgPath.AddArc($bgSize - $bgR, 0, $bgR, $bgR, 270, 90)
+  $bgPath.AddArc($bgSize - $bgR, $bgSize - $bgR, $bgR, $bgR, 0, 90)
+  $bgPath.AddArc(0, $bgSize - $bgR, $bgR, $bgR, 90, 90)
+  $bgPath.CloseFigure()
+  $bgBrush = New-Object System.Drawing.SolidBrush $ink
+  $g.FillPath($bgBrush, $bgPath)
+  $bgBrush.Dispose()
+  $bgPath.Dispose()
+
+  # ── 2. 白色 outline 终端图形（居中，原始 SVG 同款 viewBox 坐标） ──
+  # 笔触：相对 viewBox 的 stroke-width≈2 → Size/24*2 ≈ Size*0.083
+  $strokeWidth = [Math]::Max($Size * 0.07, 1.2)
+  $stroke = New-Object System.Drawing.Pen $white, $strokeWidth
   $stroke.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
   $stroke.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $stroke.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
 
-  # 圆角窗框：viewBox 24×24 → 缩放到 Size，rect (2.5,4)-(21.5,20) rx 2.5
-  $scale = $Size / 24.0
-  $x = 2.5 * $scale
-  $y = 4 * $scale
-  $w = 19 * $scale
-  $h = 16 * $scale
-  $r = 2.5 * $scale * 2
-  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $path.AddArc($x, $y, $r, $r, 180, 90)
-  $path.AddArc($x + $w - $r, $y, $r, $r, 270, 90)
-  $path.AddArc($x + $w - $r, $y + $h - $r, $r, $r, 0, 90)
-  $path.AddArc($x, $y + $h - $r, $r, $r, 90, 90)
-  $path.CloseFigure()
-  $g.DrawPath($stroke, $path)
+  # 终端框：(2.5, 4) - (21.5, 20)，rx=2.5（viewBox 24×24 内居中，上下/左右边距各 4/2.5）
+  $tx = 2.5 * $scale
+  $ty = 4 * $scale
+  $tw = 19 * $scale
+  $th = 16 * $scale
+  $tr = 2.5 * $scale * 2
+  $tpath = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $tpath.AddArc($tx, $ty, $tr, $tr, 180, 90)
+  $tpath.AddArc($tx + $tw - $tr, $ty, $tr, $tr, 270, 90)
+  $tpath.AddArc($tx + $tw - $tr, $ty + $th - $tr, $tr, $tr, 0, 90)
+  $tpath.AddArc($tx, $ty + $th - $tr, $tr, $tr, 90, 90)
+  $tpath.CloseFigure()
+  $g.DrawPath($stroke, $tpath)
+  $tpath.Dispose()
 
-  # ">" 提示符 polyline: (6.5,9) - (10,12) - (6.5,15)
-  $p1 = New-Object System.Drawing.PointF (6.5 * $scale), (9 * $scale)
-  $p2 = New-Object System.Drawing.PointF (10 * $scale), (12 * $scale)
-  $p3 = New-Object System.Drawing.PointF (6.5 * $scale), (15 * $scale)
-  $g.DrawLine($stroke, $p1, $p2)
-  $g.DrawLine($stroke, $p2, $p3)
-
-  # 下划线 line: (12.5,15) - (17.5,15)
-  $p4 = New-Object System.Drawing.PointF (12.5 * $scale), (15 * $scale)
-  $p5 = New-Object System.Drawing.PointF (17.5 * $scale), (15 * $scale)
-  $g.DrawLine($stroke, $p4, $p5)
+  # > 提示符 polyline：(6.5, 9) - (10, 12) - (6.5, 15)
+  $g.DrawLine($stroke, (6.5 * $scale), (9 * $scale), (10 * $scale), (12 * $scale))
+  $g.DrawLine($stroke, (10 * $scale), (12 * $scale), (6.5 * $scale), (15 * $scale))
+  # 下划线 line：(12.5, 15) - (17.5, 15)
+  $g.DrawLine($stroke, (12.5 * $scale), (15 * $scale), (17.5 * $scale), (15 * $scale))
 
   $stroke.Dispose()
-  $path.Dispose()
   $g.Dispose()
   return $bmp
 }
@@ -77,12 +90,10 @@ foreach ($s in $sizes) {
 $icoPath = Join-Path $resDir 'icon.ico'
 $ms = New-Object System.IO.MemoryStream
 $bw = New-Object System.IO.BinaryWriter $ms
-# ICONDIR
 $bw.Write([uint16]0)               # reserved
 $bw.Write([uint16]1)               # type = 1 (icon)
 $bw.Write([uint16]$sizes.Count)    # count
 
-# 每个 PNG 临时编码为字节
 $pngBytes = @()
 foreach ($bmp in $bitmaps) {
   $tmp = New-Object System.IO.MemoryStream
@@ -91,7 +102,6 @@ foreach ($bmp in $bitmaps) {
   $tmp.Dispose()
 }
 
-# ICONDIRENTRY × N
 $offset = 6 + 16 * $sizes.Count
 for ($i = 0; $i -lt $sizes.Count; $i++) {
   $s = $sizes[$i]
@@ -106,7 +116,6 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
   $offset += $pngBytes[$i].Length
 }
 
-# 写所有 PNG 数据
 foreach ($bytes in $pngBytes) { $bw.Write($bytes) }
 
 [System.IO.File]::WriteAllBytes($icoPath, $ms.ToArray())
