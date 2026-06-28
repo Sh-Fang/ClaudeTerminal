@@ -27,11 +27,32 @@ const OFFSET_FIELD_OFFSET = 0
 const FWIDE_FIELD_OFFSET = 16
 
 export function readClipboardSelection(): ClipboardRead {
-  const files = readDropFiles()
+  // 优先 CF_HDROP（一次拿多文件）；拿不到再走 FileNameW/FileName 兜底（单文件）。
+  // 某些 Electron/Windows 组合下 readBuffer('CF_HDROP') 会返回空 buffer，
+  // 但 read('FileNameW') 这条路径稳定，能保证"复制了文件 → 粘贴出路径"。
+  let files = readDropFiles()
+  if (files.length === 0) files = readSingleFileName()
   if (files.length > 0) return { kind: 'files', files }
   const text = clipboard.readText()
   if (text) return { kind: 'text', text }
   return { kind: 'empty' }
+}
+
+// 兜底：clipboard.read('FileNameW') 返回首文件路径（宽字符串），
+// 'FileName' 是 ANSI 字符串。两个都试一遍，谁有用谁。
+function readSingleFileName(): string[] {
+  if (process.platform !== 'win32') return []
+  for (const fmt of ['FileNameW', 'FileName']) {
+    try {
+      const s = clipboard.read(fmt)
+      if (s && s.trim()) {
+        // FileNameW 偶尔末尾带 \0，清掉
+        const cleaned = s.replace(/\0+$/g, '').trim()
+        if (cleaned) return [cleaned]
+      }
+    } catch {}
+  }
+  return []
 }
 
 export function writeClipboardText(text: string): boolean {
@@ -45,8 +66,10 @@ export function writeClipboardText(text: string): boolean {
 function readDropFiles(): string[] {
   if (process.platform !== 'win32') return []
   try {
-    const formats = clipboard.availableFormats()
-    if (!formats.includes('CF_HDROP') && !formats.some((f) => /FileName/i.test(f))) return []
+    // 不再用 availableFormats() 预筛选：Electron 在不同版本/环境下，
+    // availableFormats 可能返回 MIME 名（text/plain）而非 Win32 原生格式名（CF_HDROP），
+    // 预筛选会误把"复制了文件"判成"剪贴板里没有 files"。直接尝试 readBuffer，
+    // 失败/buffer 不合法自然回退到 readText，零代价。
     let buf: Buffer | undefined
     try { buf = clipboard.readBuffer('CF_HDROP') } catch {}
     if (!buf || buf.length < DROPFILES_HEADER_BYTES) return []
