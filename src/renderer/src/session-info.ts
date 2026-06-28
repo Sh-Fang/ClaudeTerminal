@@ -40,9 +40,11 @@ export class SessionInfoBar {
   private branch: string | null = null
   private usage: SessionUsage | null = null
   private tick = 0
+  private polling = false
+  private timer: number | null = null
 
   constructor(private hooks: SessionInfoHooks) {
-    window.setInterval(() => void this.poll(), TICK_MS)
+    this.timer = window.setInterval(() => void this.poll(), TICK_MS)
   }
 
   // 切换标签 / 会话时主动催一次，立即刷新（不等下个 tick）
@@ -50,7 +52,26 @@ export class SessionInfoBar {
     void this.poll()
   }
 
+  dispose(): void {
+    if (this.timer != null) {
+      window.clearInterval(this.timer)
+      this.timer = null
+    }
+  }
+
   private async poll(): Promise<void> {
+    // 并发护栏：poll 内部 await 两个 IPC，慢仓库下可能跨过下个 tick。若不挡，
+    // 多个 poll 重叠执行会互相覆盖 branch/usage/tick，导致闪烁与陈旧数据。
+    if (this.polling) return
+    this.polling = true
+    try {
+      await this.pollOnce()
+    } finally {
+      this.polling = false
+    }
+  }
+
+  private async pollOnce(): Promise<void> {
     const a = this.hooks.getActive()
     if (!a) {
       this.lastKey = ''

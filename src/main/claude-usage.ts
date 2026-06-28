@@ -83,9 +83,11 @@ function readToken(): { token: string } | { error: string } {
 function netUsage(token: string): Promise<{ status: number; body: string; err?: string }> {
   return new Promise((resolve) => {
     let done = false
+    let timer: NodeJS.Timeout | null = null
     const finish = (v: { status: number; body: string; err?: string }): void => {
       if (done) return
       done = true
+      if (timer) { clearTimeout(timer); timer = null }
       resolve(v)
     }
     try {
@@ -102,8 +104,11 @@ function netUsage(token: string): Promise<{ status: number; body: string; err?: 
         res.on('error', (e: Error) => finish({ status: 0, body: '', err: e.message }))
       })
       req.on('error', (e) => finish({ status: 0, body: '', err: e.message }))
-      // 超时兜底，避免代理挂掉时永久 pending
-      setTimeout(() => finish({ status: 0, body: '', err: '请求超时' }), 10_000)
+      // 超时兜底：只清定时器并 resolve，不主动 abort 请求——abort 在某些代理/TLS
+      // 异常下可能引发底层 socket 错误，求稳不碰；请求自然结束后因 done=true 被忽略。
+      timer = setTimeout(() => {
+        finish({ status: 0, body: '', err: '请求超时' })
+      }, 10_000)
       req.end()
     } catch (e) {
       finish({ status: 0, body: '', err: (e as Error).message })
@@ -176,11 +181,15 @@ export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
   // 2) 退路（首次还没跑过任何 cc 时的引导）：直连 OAuth usage API，需要能直连或走代理。
   if (!force && cache && Date.now() - cache.fetchedAt < TTL_MS) return cache
   if (inflight) return inflight
-  inflight = fetchFresh().then((r) => {
-    // 仅成功结果进缓存；失败不污染缓存，下次仍会重试
-    if (r.ok) cache = r
-    inflight = null
-    return r
-  })
+  inflight = fetchFresh()
+    .then((r) => {
+      // 仅成功结果进缓存；失败不污染缓存，下次仍会重试
+      if (r.ok) cache = r
+      return r
+    })
+    .finally(() => {
+      // 用 finally 兜底：即便 fetchFresh 将来某天抛出，也不会让 inflight 永久卡住
+      inflight = null
+    })
   return inflight
 }

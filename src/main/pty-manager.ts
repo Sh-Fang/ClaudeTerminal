@@ -73,6 +73,10 @@ export function resizePty(id: number, cols: number, rows: number): void {
   } catch {}
 }
 
+// 注意：曾试过在 proc.kill() 之后用 `taskkill /T /F` 杀进程树以清理孤儿子进程，
+// 但在 Windows 上会把 node-pty 还在用的 ConPTY/pipe 连接突然切断，触发未捕获的
+// "software caused connection abort"(WSAECONNABORTED) 导致主进程崩溃。
+// 而且 ConPTY 关闭时本就会终止挂在其上的子进程，taskkill 既多余又危险，故不再使用。
 export function killPty(id: number): void {
   const s = sessions.get(id)
   if (!s) return

@@ -5,6 +5,7 @@ import { killAll } from './pty-manager'
 import { ensureHookAssets } from './hook-assets'
 import { SessionEventWatcher } from './session-events'
 import { StateEventWatcher } from './state-events'
+import { isSafeExternalUrl } from './url-safety'
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
@@ -64,9 +65,21 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
+  // 终端输出里的链接（xterm web-links 等）触发 window.open 时，只放行 http(s)，
+  // 挡掉 file: / 自定义协议等可被恶意内容利用的 scheme。
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 禁止应用自身被导航走（始终停留在打包的 index.html / dev server）。
+  // 外部链接应走上面的 openExternal，而不是替换掉渲染进程页面。
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const allowed = process.env['ELECTRON_RENDERER_URL']
+    if (allowed && url.startsWith(allowed)) return
+    if (url.startsWith('file://')) return
+    e.preventDefault()
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {

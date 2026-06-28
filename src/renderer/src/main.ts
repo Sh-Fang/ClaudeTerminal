@@ -1154,6 +1154,7 @@ window.addEventListener('beforeunload', () => {
   offExit()
   offSession()
   offState()
+  sessionInfo.dispose()
   for (const g of groups) for (const t of g.tabs) t.dispose()
 })
 

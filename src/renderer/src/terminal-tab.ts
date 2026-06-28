@@ -412,6 +412,12 @@ export class TerminalTab {
         cwd: this.cwd,
         tabId: this.id
       })
+      // create 期间 tab 可能已被 dispose（此时 ptyId 还是 null，dispose 杀不到）：
+      // 立刻 kill 这个新建的 PTY，否则它会变成泄漏的 ConPTY+pwsh 进程。
+      if (this.disposed) {
+        window.term.kill(id)
+        return
+      }
       this.ptyId = id
       if (this.pendingInput) {
         window.term.send(id, this.pendingInput)

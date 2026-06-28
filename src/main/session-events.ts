@@ -1,5 +1,15 @@
 import type { BrowserWindow } from 'electron'
-import { existsSync, mkdirSync, readdirSync, statSync, watch, readFile, type FSWatcher } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  watch,
+  openSync,
+  readSync,
+  closeSync,
+  type FSWatcher
+} from 'node:fs'
 import { join } from 'node:path'
 import { UUID_RE } from './claude-paths'
 import { isSessionSource } from './session-constants'
@@ -7,6 +17,27 @@ import { isSessionSource } from './session-constants'
 interface FileState {
   offset: number
   debounce: NodeJS.Timeout | null
+}
+
+// 从文件按字节区间 [start, end) 读出，再 utf8 解码。
+// 关键：offset/size 来自 statSync().size，是「字节」偏移；hook 每次 append 整行
+// （行尾是 ASCII 换行），故区间端点必落在字符边界上，按字节切是安全的。
+// 切勿先 readFile('utf8') 再用字节下标 slice 字符串——含中文 cwd 时字节数>字符数，
+// offset 会逐渐漂移，导致新会话事件被静默丢弃。
+function readByteRange(path: string, start: number, end: number): string {
+  const len = end - start
+  if (len <= 0) return ''
+  let fd = -1
+  try {
+    fd = openSync(path, 'r')
+    const buf = Buffer.alloc(len)
+    const n = readSync(fd, buf, 0, len, start)
+    return buf.toString('utf8', 0, n)
+  } catch {
+    return ''
+  } finally {
+    if (fd >= 0) try { closeSync(fd) } catch {}
+  }
 }
 
 export class SessionEventWatcher {
@@ -70,13 +101,11 @@ export class SessionEventWatcher {
     const start = state.offset
     state.offset = size
 
-    readFile(full, { encoding: 'utf8' }, (err, raw) => {
-      if (err) return
-      const chunk = raw.slice(start, size)
-      const tabId = name.slice(0, -'.jsonl'.length)
-      const lines = chunk.split(/\r?\n/).filter((l) => l.length > 0)
-      for (const line of lines) this.parseAndEmit(tabId, line)
-    })
+    const chunk = readByteRange(full, start, size)
+    if (!chunk) return
+    const tabId = name.slice(0, -'.jsonl'.length)
+    const lines = chunk.split(/\r?\n/).filter((l) => l.length > 0)
+    for (const line of lines) this.parseAndEmit(tabId, line)
   }
 
   private parseAndEmit(tabId: string, line: string): void {
