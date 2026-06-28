@@ -29,8 +29,6 @@ export class SettingsPanel {
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
   private pickCwdBtn = document.getElementById('set-default-cwd-pick') as HTMLButtonElement
-  private updHint = document.getElementById('set-disable-update-status') as HTMLDivElement
-  private upUpdHintTimer: number | null = null
   private lastDisableUpd: boolean | null = null
 
   private navButtons = Array.from(
@@ -137,43 +135,14 @@ export class SettingsPanel {
   }
 
   // 设置里勾了「禁止自动升级」但系统环境变量还没写（如默认勾选、从未触发过写入）→
-  // 补写一次，让 hint 与勾选状态一致，避免「明明勾了却显示未生效」。
+  // 补写一次，保持设置与系统状态一致。
   private async ensureUpdConsistency(): Promise<void> {
     try {
       const cur = await window.term.readDisableAutoupdater()
       if (this.hooks.getSettings().disableAutoupdater && cur !== '1') {
         await this.syncSystemEnv(true)
-        return
       }
-    } catch {
-      // 读取失败就退回普通 hint 刷新
-    }
-    await this.refreshUpdHint()
-  }
-
-  private async refreshUpdHint(): Promise<void> {
-    try {
-      const cur = await window.term.readDisableAutoupdater()
-      if (cur === '1') {
-        this.updHint.textContent = '✓ 已在 Windows 用户环境变量中设置（所有新启动的 cc 都生效）'
-        this.updHint.className = 'set-hint ok'
-      } else if (cur === null) {
-        this.updHint.textContent = '未在系统环境变量中设置'
-        this.updHint.className = 'set-hint'
-      } else {
-        this.updHint.textContent = `系统中已设为 "${cur}"（非 1）— 注意已有冲突值`
-        this.updHint.className = 'set-hint warn'
-      }
-    } catch {
-      this.updHint.textContent = ''
-      this.updHint.className = 'set-hint'
-    }
-  }
-  private flashHint(text: string, ok: boolean): void {
-    this.updHint.textContent = text
-    this.updHint.className = ok ? 'set-hint ok' : 'set-hint warn'
-    if (this.upUpdHintTimer) window.clearTimeout(this.upUpdHintTimer)
-    this.upUpdHintTimer = window.setTimeout(() => void this.refreshUpdHint(), 1800)
+    } catch {}
   }
 
   private bindFromSettings(s: Settings): void {
@@ -265,13 +234,7 @@ export class SettingsPanel {
   }
 
   private async syncSystemEnv(enabled: boolean): Promise<void> {
-    this.updHint.textContent = enabled ? '正在写入用户环境变量…' : '正在移除用户环境变量…'
-    this.updHint.className = 'set-hint'
-    const res = await window.term.applyDisableAutoupdater(enabled)
-    if (res.ok) {
-      this.flashHint(enabled ? '✓ 已写入系统环境变量' : '✓ 已从系统环境变量移除', true)
-    } else {
-      this.flashHint(`✗ 操作失败：${res.message ?? '未知错误'}`, false)
-    }
+    // 行为保留：写入/移除 Windows 用户环境变量；UI 上不再回显结果
+    try { await window.term.applyDisableAutoupdater(enabled) } catch {}
   }
 }

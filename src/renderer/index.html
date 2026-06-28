@@ -254,7 +254,7 @@
     </div>
 
     <div id="settingsScrim" class="scrim" hidden>
-      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-label="设置">
         <div class="settings-layout">
           <nav class="settings-nav" aria-label="设置分区">
             <button class="set-nav-item active" data-section="appearance" type="button">
@@ -280,8 +280,6 @@
           </nav>
 
           <div class="settings-pane">
-            <h2 id="set-title" class="set-pane-title">设置</h2>
-
             <div class="set-section" data-section="appearance">
               <div class="set-row">
                 <label for="set-font-family">字体族</label>
@@ -329,11 +327,9 @@
                   <button class="seg-item" data-val="5" type="button" role="radio">5s</button>
                 </div>
               </div>
-              <div class="field-check">
-                <label>
-                  <input id="set-confirm-close" type="checkbox" />
-                  <span>关闭未保存的分组前二次确认</span>
-                </label>
+              <div class="set-row set-row-toggle">
+                <label for="set-confirm-close">关闭未保存的分组前二次确认</label>
+                <input id="set-confirm-close" type="checkbox" />
               </div>
             </div>
 
@@ -359,11 +355,9 @@
                 <label for="set-scrollback">回滚缓冲（行）</label>
                 <input id="set-scrollback" type="number" min="100" max="100000" step="500" />
               </div>
-              <div class="field-check">
-                <label>
-                  <input id="set-cursor-blink" type="checkbox" />
-                  <span>光标闪烁</span>
-                </label>
+              <div class="set-row set-row-toggle">
+                <label for="set-cursor-blink">光标闪烁</label>
+                <input id="set-cursor-blink" type="checkbox" />
               </div>
             </div>
 
@@ -380,11 +374,9 @@
                   </button>
                 </div>
               </div>
-              <div class="field-check">
-                <label>
-                  <input id="set-default-cc" type="checkbox" />
-                  <span>新建标签默认勾选「自动启动 Claude Code」</span>
-                </label>
+              <div class="set-row set-row-toggle">
+                <label for="set-default-cc">新建标签默认自动启动 Claude Code</label>
+                <input id="set-default-cc" type="checkbox" />
               </div>
             </div>
 
@@ -397,19 +389,13 @@
                   <button id="set-claude-detect" class="btn btn-secondary" type="button">自动检测</button>
                 </div>
               </div>
-              <div class="field-check">
-                <label>
-                  <input id="set-disable-update" type="checkbox" />
-                  <span>禁止 cc 自动升级（写 <code>DISABLE_AUTOUPDATER=1</code> 到 Windows 用户环境变量，所有终端生效）</span>
-                </label>
-                <div id="set-disable-update-status" class="set-hint"></div>
+              <div class="set-row set-row-toggle">
+                <label for="set-disable-update">禁止 cc 自动升级</label>
+                <input id="set-disable-update" type="checkbox" />
               </div>
-              <div class="field-check">
-                <label>
-                  <input id="set-show-usage" type="checkbox" />
-                  <span>底部状态栏显示 Claude 用量（5h / 周 利用率与重置时间）</span>
-                </label>
-                <div class="set-hint">读取本机 cc 登录凭据调用账号用量接口，仅本地使用、不外发；每 3 分钟刷新一次。</div>
+              <div class="set-row set-row-toggle">
+                <label for="set-show-usage">底部状态栏显示 Claude 用量</label>
+                <input id="set-show-usage" type="checkbox" />
               </div>
             </div>
 

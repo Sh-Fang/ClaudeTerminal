@@ -844,9 +844,43 @@ button.saved-toggle:hover { color: var(--ink); }
   color: var(--body);
   cursor: pointer;
 }
+/* iOS / macOS 风格 toggle 滑块：appearance:none 把 checkbox 改造成自定义外观，
+   伪元素做圆球，CSS-only，不动 HTML / JS 也不影响 :checked 行为。 */
 .field-check input[type='checkbox'] {
-  width: 14px; height: 14px;
-  accent-color: var(--link);
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--hairline-strong);
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+  transition: background 0.18s ease;
+}
+.field-check input[type='checkbox']::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s ease;
+}
+.field-check input[type='checkbox']:checked { background: var(--ink); }
+.field-check input[type='checkbox']:checked::before { transform: translateX(13px); }
+.field-check input[type='checkbox']:hover { filter: brightness(0.96); }
+.field-check input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.field-check input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .field-check code {
   font-family: var(--mono);
@@ -1253,13 +1287,6 @@ button.saved-toggle:hover { color: var(--ink); }
   -ms-overflow-style: none;
 }
 .settings-pane::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.set-pane-title {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.4px;
-  margin: 0 0 18px;
-}
-
 .set-section { display: block; }
 .set-section[hidden] { display: none; }
 
@@ -1332,6 +1359,39 @@ button.saved-toggle:hover { color: var(--ink); }
 .set-row input:focus,
 .set-row select:focus {
   border-color: var(--ink);
+}
+
+/* toggle 行：label 在上、滑块在下；滑块要回到固定尺寸，不继承上面 input 的 100%/36px */
+.set-row-toggle input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--hairline-strong);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.18s ease;
+}
+.set-row-toggle input[type='checkbox']::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s ease;
+}
+.set-row-toggle input[type='checkbox']:checked { background: var(--ink); }
+.set-row-toggle input[type='checkbox']:checked::before { transform: translateX(14px); }
+.set-row-toggle input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 .settings-modal .actions {
   margin-top: 20px;
