@@ -57,17 +57,20 @@
             </div>
           </div>
         </section>
-        <!-- 已保存的分组：固定在底部，点标题可收起 -->
+        <!-- 已保存的分组：固定在底部，点标题可收起；右上角入口直达"展开管理" -->
         <section class="side-section side-saved" id="savedSection">
-          <button class="side-section-label saved-toggle" id="savedToggle" type="button" title="收起 / 展开已保存的分组">
-            <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
-            已保存的分组<span class="line"></span>
-          </button>
+          <div class="side-section-label saved-head">
+            <button class="saved-toggle" id="savedToggle" type="button" title="收起 / 展开已保存的分组">
+              <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+              已保存的分组
+            </button>
+            <span class="line"></span>
+            <button id="manageSavedBtn" class="side-head-btn" type="button" title="管理全部已保存的分组" aria-label="展开管理">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+          </div>
           <div class="side-saved-body">
             <div id="savedList"></div>
-            <div class="manage-saved-btn" id="manageSavedBtn" title="管理全部已保存的分组">
-              <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span>展开管理
-            </div>
           </div>
         </section>
         <!-- Claude 账号用量：固定在侧边栏最底部 -->

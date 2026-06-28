@@ -672,12 +672,23 @@ function closeGroup(groupId: string): void {
   })
 }
 
+// "勾选恢复" 弹窗里追加的特殊操作项：恢复结束顺手新开一个空白标签。
+const PICK_ACTION_NEW_BLANK = '__new_blank__'
+
 // 真正的恢复：按 tabIds 把保存里的标签实例化进 live 分组。
 // 已经在 live 分组里（按 id 命中）的标签会被跳过。
-async function restoreSavedTabs(savedId: string, tabIds: string[]): Promise<void> {
+// 若 ids 里含 PICK_ACTION_NEW_BLANK，恢复完再 makeTab 一个新空标签，并立刻
+// autoSync 到 saved snapshot —— 用户希望"在恢复弹窗里勾的新标签，默认就是已保存"。
+async function restoreSavedTabs(
+  savedId: string,
+  tabIds: string[],
+  blankName?: string
+): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
-  const wanted = new Set(tabIds)
+  const addBlank = tabIds.includes(PICK_ACTION_NEW_BLANK)
+  const realIds = tabIds.filter((id) => id !== PICK_ACTION_NEW_BLANK)
+  const wanted = new Set(realIds)
   const picks = s.snapshot.tabs.filter((t) => wanted.has(t.id))
 
   let g = s.srcId ? findGroup(s.srcId) : undefined
@@ -699,17 +710,35 @@ async function restoreSavedTabs(savedId: string, tabIds: string[]): Promise<void
     })
     created.push(tab)
   }
+  // 新建空白标签：优先用用户输入名，没输入就用字母自动起（与 promptNewTabInGroup 一致）
+  let blank: TerminalTab | null = null
+  if (addBlank) {
+    const nm = blankName?.trim() || String.fromCharCode(65 + g.tabs.length)
+    blank = makeTab(g, {
+      name: nm,
+      autoLaunchCC: settings.defaults.autoLaunchCC,
+      dirty: false
+    })
+    created.push(blank)
+    // 立刻写入 saved snapshot，保持分组"已保存"状态（用户期望：在恢复里新建的默认就保存）
+    autoSyncTabToSaved(blank, g)
+  }
   if (!activeTabId) {
     const first = created[0] ?? g.tabs[0]
     if (first) activeTabId = first.id
   }
   sidebar.render()
   toolbar.render()
+  savedManager.render()
   if (activeTabId) activateUI(activeTabId)
   for (const t of created) await spawnTabPty(t)
   scheduleSave()
+  // toast 文案区分：纯新建 / 恢复+新建 / 纯恢复
+  const restoredN = created.length - (addBlank ? 1 : 0)
   if (created.length === 0) toast(`分组「${s.name}」已经打开`)
-  else toast(`已恢复「${s.name}」的 ${created.length} 个标签`)
+  else if (restoredN === 0 && addBlank) toast(`在「${s.name}」新建了 1 个空白标签`)
+  else if (addBlank) toast(`已恢复「${s.name}」${restoredN} 个标签 + 1 个新空白`)
+  else toast(`已恢复「${s.name}」的 ${restoredN} 个标签`)
 }
 
 function restoreSavedAll(savedId: string): void {
@@ -738,17 +767,21 @@ function openRestoreSelect(savedId: string): void {
       defaultChecked: !inLive
     }
   })
-  if (items.every((i) => i.disabled)) {
-    // 全部已恢复 → 直接切过去
-    restoreSavedAll(savedId)
-    return
-  }
+  // 末尾追加"新建空白标签"操作项：用户可能只想恢复分组同时顺手开一个空标签。
+  // inputPlaceholder 让那行渲染成可输入框，用户可直接打字命名；不输入则用默认字母。
+  items.push({
+    id: PICK_ACTION_NEW_BLANK,
+    label: '',
+    meta: '默认即已保存',
+    defaultChecked: false,
+    inputPlaceholder: '+ 新建空白标签（直接输入名字）'
+  })
   openPickTabs({
     title: `恢复「${s.name}」的标签`,
     sub: '勾选要恢复的标签。已在当前分组中的标签会被跳过。',
     items,
     okLabel: '恢复',
-    onOk: (ids) => void restoreSavedTabs(savedId, ids)
+    onOk: (ids, inputs) => void restoreSavedTabs(savedId, ids, inputs[PICK_ACTION_NEW_BLANK])
   })
 }
 

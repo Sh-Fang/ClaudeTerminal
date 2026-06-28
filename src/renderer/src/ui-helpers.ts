@@ -233,13 +233,17 @@ export interface PickItem {
   meta?: string
   disabled?: boolean
   defaultChecked?: boolean
+  // 给该行渲染一个文本输入框替代静态 label：用户可以直接输入（如"新建空白标签"
+  // 这种行可填名字）。输入框非空时会自动勾选 checkbox。
+  // onOk 第二参数 inputs[id] 拿到 input.value.trim()。
+  inputPlaceholder?: string
 }
 export interface PickTabsCfg {
   title: string
   sub?: string
   items: PickItem[]
   okLabel?: string
-  onOk: (selectedIds: string[]) => void
+  onOk: (selectedIds: string[], inputs: Record<string, string>) => void
   onCancel?: () => void
 }
 const pickScrim = document.getElementById('pickScrim') as HTMLDivElement
@@ -290,15 +294,32 @@ export function openPickTabs(cfg: PickTabsCfg): void {
   pkItems = cfg.items
   pkList.innerHTML = ''
   for (const it of cfg.items) {
-    const row = document.createElement('label')
+    // 含 inputPlaceholder 的行不能用 <label>（点 input 会触发 label 的隐式 toggle，
+    // 干扰光标定位）。改用 <div>，自己在 checkbox 上绑 change。
+    const tag = it.inputPlaceholder ? 'div' : 'label'
+    const row = document.createElement(tag)
     row.className = 'pk-row' + (it.disabled ? ' is-disabled' : '')
+    if (it.id.startsWith('__')) row.dataset.rowAction = '1'
     const checked = it.defaultChecked !== false && !it.disabled
+    const labelHtml = it.inputPlaceholder
+      ? `<input type="text" class="pk-input" data-pk-input-id="${escapeHtml(it.id)}" placeholder="${escapeHtml(it.inputPlaceholder)}" autocomplete="off" spellcheck="false" />`
+      : `<span class="pk-label">${escapeHtml(it.label)}</span>`
     row.innerHTML = `
       <input type="checkbox" data-pk-id="${escapeHtml(it.id)}" ${checked ? 'checked' : ''} ${it.disabled ? 'disabled' : ''} />
-      <span class="pk-label">${escapeHtml(it.label)}</span>
+      ${labelHtml}
       ${it.meta ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>` : ''}
     `
     row.addEventListener('change', pkUpdateCount)
+    // 文本输入框：非空时自动勾上同行 checkbox，省去用户两步操作
+    if (it.inputPlaceholder) {
+      const textInput = row.querySelector('.pk-input') as HTMLInputElement | null
+      const checkbox = row.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+      textInput?.addEventListener('input', () => {
+        if (!checkbox) return
+        checkbox.checked = textInput.value.trim().length > 0
+        pkUpdateCount()
+      })
+    }
     pkList.appendChild(row)
   }
   pkUpdateCount()
@@ -320,9 +341,16 @@ pkCancel.addEventListener('click', () => {
 pkOk.addEventListener('click', () => {
   const ids = pkSelected()
   if (ids.length === 0) return
+  // 把含 inputPlaceholder 的行的输入值收集起来一并回调
+  const inputs: Record<string, string> = {}
+  for (const it of pkItems) {
+    if (!it.inputPlaceholder) continue
+    const inp = pkList.querySelector(`input[data-pk-input-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+    if (inp) inputs[it.id] = inp.value.trim()
+  }
   const cb = pkCb
   pkClose()
-  cb?.(ids)
+  cb?.(ids, inputs)
 })
 bindScrimDismiss(pickScrim, () => {
   const cb = pkCancelCb

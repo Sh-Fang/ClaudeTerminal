@@ -2,7 +2,7 @@
 // 主程通过 hooks 暴露最小接口，本类只负责 UI 渲染与交互。
 
 import { icon } from './svg-icons'
-import { escapeHtml, formatTs, shortPath, bindScrimDismiss } from './ui-helpers'
+import { escapeHtml, formatTs, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
 
 export interface ManageTabView {
   id: string
@@ -137,8 +137,17 @@ export class SavedManager {
     const tabDel = tgt.closest('[data-tab-delete]') as HTMLElement | null
     if (tabDel) {
       const [savedId, tabId] = (tabDel.dataset.tabDelete ?? '').split('::')
-      if (savedId && tabId) this.hooks.onDeleteTab(savedId, tabId)
-      this.render()
+      if (!savedId || !tabId) return
+      const tabName = tabDel.closest('.mg-tab')?.querySelector('.mg-tab-name')?.textContent?.trim() || '该标签'
+      confirmDialog({
+        title: `从保存里移除「${escapeHtml(tabName)}」？`,
+        message: '只把该标签从保存记录里删除，已打开的实例不受影响。',
+        okLabel: '删除',
+        onOk: () => {
+          this.hooks.onDeleteTab(savedId, tabId)
+          this.render()
+        }
+      })
       return
     }
     const del = tgt.closest('[data-delete]') as HTMLElement | null

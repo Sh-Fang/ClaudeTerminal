@@ -39,6 +39,9 @@ export class SessionInfoBar {
   private lastKey = ''
   private branch: string | null = null
   private usage: SessionUsage | null = null
+  // 上一次成功拿到的模型名。新会话/刚切换会话时 cc 还没上报 usage，用它兜底
+  // 避免状态栏空一段。cc 进程内默认模型很少切，所以基本是准确的。
+  private stickyModel: string | null = null
   private tick = 0
   private polling = false
   private timer: number | null = null
@@ -95,6 +98,7 @@ export class SessionInfoBar {
       if (a.sessionId) {
         const u = await window.term.claudeSessionUsage(a.sessionId)
         this.usage = u.exists ? u : null
+        if (u.exists && u.modelLabel) this.stickyModel = u.modelLabel
       } else {
         this.usage = null
       }
@@ -110,22 +114,28 @@ export class SessionInfoBar {
   private paint(): void {
     const parts: string[] = []
     const u = this.usage
+    const a = this.hooks.getActive()
+    const hasActive = !!a?.sessionId
     // 顺序：ctx（进度条）· 模型 · git 分支
-    if (u && typeof u.ctxPercent === 'number') {
-      const p = u.ctxPercent
+    // 只要有 active session 就展示 ctx 与模型骨架——新会话 cc 还没上报时也不能空着，
+    // ctx 默认 0%，模型用 stickyModel 兜底（同一 cc 进程默认模型通常不变），
+    // 都没有再退到占位 "Claude"。
+    if (hasActive) {
+      const hasCtx = u && typeof u.ctxPercent === 'number'
+      const p = hasCtx ? (u!.ctxPercent as number) : 0
       const lv = ctxLevel(p)
-      const tip =
-        u.ctxTokens != null
-          ? ` title="上下文 ${u.ctxTokens.toLocaleString()} / ${(u.ctxWindow ?? 0).toLocaleString()} tokens${u.ctxApprox ? '（窗口为估算，未读到会话快照）' : ''}"`
-          : ''
+      const tip = hasCtx && u!.ctxTokens != null
+        ? ` title="上下文 ${u!.ctxTokens!.toLocaleString()} / ${(u!.ctxWindow ?? 0).toLocaleString()} tokens${u!.ctxApprox ? '（窗口为估算，未读到会话快照）' : ''}"`
+        : ' title="新会话，等待 cc 上报上下文用量"'
       parts.push(
         `<span class="sbi-ctx"${tip}>ctx` +
           `<span class="sbi-ctx-track"><i class="sbi-ctx-fill ${lv}" style="width:${p}%"></i></span>` +
           `<span class="sbi-ctx-val ${lv}">${p}%</span>` +
           `</span>`
       )
+      const model = u?.modelLabel ?? this.stickyModel ?? 'Claude'
+      parts.push(`<span class="sbi-model">${escapeHtml(model)}</span>`)
     }
-    if (u?.modelLabel) parts.push(`<span class="sbi-model">${escapeHtml(u.modelLabel)}</span>`)
     if (this.branch)
       parts.push(
         `<span class="sbi-branch" title="${escapeHtml(this.branch)}">${BRANCH_ICON}<span class="sbi-branch-name">${escapeHtml(clip(this.branch, 48))}</span></span>`

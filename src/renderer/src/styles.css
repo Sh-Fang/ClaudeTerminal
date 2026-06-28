@@ -234,11 +234,19 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
 .side-section-label .line { flex: 1; height: 1px; background: var(--hairline); }
 
 /* 已保存区标题：整行可点折叠 */
+/* saved-head 行：折叠按钮 + line + 管理按钮，与 .side-section-label 同款排版 */
 button.saved-toggle {
-  width: 100%;
   border: none;
   background: transparent;
   cursor: pointer;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition: color 0.12s;
 }
 button.saved-toggle:hover { color: var(--ink); }
@@ -419,19 +427,6 @@ button.saved-toggle:hover { color: var(--ink); }
   font-size: 11px;
   color: var(--mute);
 }
-
-.manage-saved-btn {
-  margin: 4px 2px 8px;
-  padding: 6px 9px;
-  border-radius: var(--r-sm);
-  color: var(--mute);
-  font-size: 12px;
-  display: flex; align-items: center; justify-content: center; gap: 7px;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-}
-.manage-saved-btn:hover { background: var(--canvas-soft-2); color: var(--ink); }
-.manage-saved-btn .ic { display: inline-grid; place-items: center; line-height: 1; }
 
 .new-group-btn {
   margin: 6px 2px 4px;
@@ -953,6 +948,27 @@ button.saved-toggle:hover { color: var(--ink); }
 .pk-row input[type='checkbox'] { width: 14px; height: 14px; accent-color: var(--link); flex: 0 0 14px; }
 .pk-row .pk-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-row .pk-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); flex: 0 0 auto; }
+.pk-row[data-row-action='1'] {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hairline);
+}
+.pk-row[data-row-action='1'] .pk-label { color: var(--ink); font-weight: 500; }
+.pk-row .pk-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color 0.12s;
+}
+.pk-row .pk-input::placeholder { color: var(--mute); }
+.pk-row .pk-input:focus { border-color: var(--ink); }
 
 /* ─── Manage modal（已保存的分组管理） ────────────────────────────── */
 .modal.modal-manage {
