@@ -37,6 +37,11 @@
         <section class="side-section side-open">
           <div class="side-section-label">
             打开的分组<span class="line"></span>
+            <button id="newGroupBtn" class="side-head-btn" type="button" title="新建分组" aria-label="新建分组">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
             <button id="historyOpenBtn" class="side-head-btn" type="button" title="标签历史（7 天内）" aria-label="标签历史">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 3-6.7"/>
@@ -52,11 +57,10 @@
           </div>
           <div class="side-open-scroll">
             <div id="groupList"></div>
-            <div class="new-group-btn" id="newGroupBtn" title="新建分组">
-              <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>新建分组
-            </div>
           </div>
         </section>
+        <!-- 横向拉条：调整「已保存」区高度（即同时调整「打开」区剩余高度的占比） -->
+        <div id="savedResizer" class="saved-resizer" title="拖动调整已保存区高度" aria-hidden="true"></div>
         <!-- 已保存的分组：固定在底部，点标题可收起；右上角入口直达"展开管理" -->
         <section class="side-section side-saved" id="savedSection">
           <div class="side-section-label saved-head">
@@ -186,9 +190,7 @@
         <h2 id="pk-title">恢复标签</h2>
         <p class="sub" id="pk-sub"></p>
         <div class="pk-toolbar">
-          <button id="pk-all" type="button" class="link-btn">全选</button>
-          <span class="dot-sep">·</span>
-          <button id="pk-none" type="button" class="link-btn">取消全选</button>
+          <button id="pk-toggle-all" type="button" class="link-btn">全选</button>
           <span id="pk-count" class="pk-count"></span>
         </div>
         <div id="pk-list" class="pk-list"></div>
@@ -204,8 +206,9 @@
         <div class="mg-head">
           <div>
             <h2 id="mg-title">管理已保存的分组</h2>
-            <p class="sub">拖动调整顺序；前 <b id="mg-limit-n">4</b> 个会展示在侧边栏。点名称可重命名，展开可管理标签。</p>
+            <p class="sub">按名称自动排序。点名称可重命名，展开可管理标签。</p>
           </div>
+          <input id="mg-search" class="mg-search" type="search" placeholder="搜索：分组名 / 路径 / 标签名（支持模糊匹配）" autocomplete="off" spellcheck="false" />
           <button id="mg-close" class="mg-close-btn" type="button" aria-label="关闭">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
@@ -225,6 +228,7 @@
             <h2 id="hist-title">标签历史</h2>
             <p class="sub">最近 7 天内打开过的标签，按最近使用时间排序。</p>
           </div>
+          <input id="hist-search" class="mg-search" type="search" placeholder="搜索：分组名 / 路径 / 标签名（支持模糊匹配）" autocomplete="off" spellcheck="false" />
           <button id="hist-close" class="mg-close-btn" type="button" aria-label="关闭">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
@@ -310,17 +314,6 @@
 
             <div class="set-section" data-section="general" hidden>
               <div class="set-row">
-                <label>侧边栏显示的「已保存分组」数量（0 = 仅在管理页）</label>
-                <div class="seg-group" id="set-saved-limit" role="radiogroup" aria-label="已保存分组数量">
-                  <button class="seg-item" data-val="0" type="button" role="radio">0</button>
-                  <button class="seg-item" data-val="1" type="button" role="radio">1</button>
-                  <button class="seg-item" data-val="2" type="button" role="radio">2</button>
-                  <button class="seg-item" data-val="3" type="button" role="radio">3</button>
-                  <button class="seg-item" data-val="4" type="button" role="radio">4</button>
-                  <button class="seg-item" data-val="5" type="button" role="radio">5</button>
-                </div>
-              </div>
-              <div class="set-row">
                 <label>完成/待办绿点停留时间</label>
                 <div class="seg-group" id="set-downgrade-sec" role="radiogroup" aria-label="绿点停留时间">
                   <button class="seg-item" data-val="1" type="button" role="radio">1s</button>
@@ -333,6 +326,10 @@
               <div class="set-row set-row-toggle">
                 <label for="set-confirm-close">关闭未保存的分组前二次确认</label>
                 <input id="set-confirm-close" type="checkbox" />
+              </div>
+              <div class="set-row set-row-toggle">
+                <label for="set-show-floater">开启悬浮窗（屏幕角落显示待查看 / 待决策 / 运行中 数）</label>
+                <input id="set-show-floater" type="checkbox" />
               </div>
             </div>
 

@@ -1,4 +1,5 @@
-# 生成应用图标：圆角 ink 黑背景 + 白色 outline 终端图形居中。
+# 生成应用图标：与 titlebar 左上角 SVG 同款 ——
+# 圆角 ink 黑背景 + 白色「>」+ 下划线（不画终端外框）。
 # 输出 resources/icon.png（256x256）与 resources/icon.ico（多尺寸 16/32/48/64/128/256）。
 # 用法：pwsh -NoProfile -File scripts/generate-icon.ps1
 
@@ -26,42 +27,30 @@ function New-IconBitmap {
   $ink = [System.Drawing.Color]::FromArgb(255, 23, 23, 23)        # #171717 (DESIGN ink)
   $white = [System.Drawing.Color]::FromArgb(255, 255, 255, 255)
 
-  # ── 1. 圆角 ink 黑背景：(0,0)-(24,24) rx=5.5（Big Sur 风格，约 23%） ──
+  # ── 1. 圆角 ink 黑背景：与 titlebar SVG 同款 (1,2)-(22,20) rx=5.5
+  # 上下 2px、左右 1px 的留白来自 titlebar 视觉妥协（接近边但不贴），icon 尺寸下肉眼难辨。
   $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $bgX = 1.0 * $scale
+  $bgY = 2.0 * $scale
+  $bgW = 22.0 * $scale
+  $bgH = 20.0 * $scale
   $bgR = 5.5 * $scale * 2
-  $bgSize = 24 * $scale
-  $bgPath.AddArc(0, 0, $bgR, $bgR, 180, 90)
-  $bgPath.AddArc($bgSize - $bgR, 0, $bgR, $bgR, 270, 90)
-  $bgPath.AddArc($bgSize - $bgR, $bgSize - $bgR, $bgR, $bgR, 0, 90)
-  $bgPath.AddArc(0, $bgSize - $bgR, $bgR, $bgR, 90, 90)
+  $bgPath.AddArc($bgX, $bgY, $bgR, $bgR, 180, 90)
+  $bgPath.AddArc($bgX + $bgW - $bgR, $bgY, $bgR, $bgR, 270, 90)
+  $bgPath.AddArc($bgX + $bgW - $bgR, $bgY + $bgH - $bgR, $bgR, $bgR, 0, 90)
+  $bgPath.AddArc($bgX, $bgY + $bgH - $bgR, $bgR, $bgR, 90, 90)
   $bgPath.CloseFigure()
   $bgBrush = New-Object System.Drawing.SolidBrush $ink
   $g.FillPath($bgBrush, $bgPath)
   $bgBrush.Dispose()
   $bgPath.Dispose()
 
-  # ── 2. 白色 outline 终端图形（居中，原始 SVG 同款 viewBox 坐标） ──
-  # 笔触：相对 viewBox 的 stroke-width≈2 → Size/24*2 ≈ Size*0.083
-  $strokeWidth = [Math]::Max($Size * 0.07, 1.2)
+  # ── 2. 白色「>」+ 下划线（与 titlebar SVG 一致：stroke-width 2.4）
+  $strokeWidth = [Math]::Max($Size / 24.0 * 2.4, 1.2)
   $stroke = New-Object System.Drawing.Pen $white, $strokeWidth
   $stroke.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
   $stroke.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $stroke.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-
-  # 终端框：(2.5, 4) - (21.5, 20)，rx=2.5（viewBox 24×24 内居中，上下/左右边距各 4/2.5）
-  $tx = 2.5 * $scale
-  $ty = 4 * $scale
-  $tw = 19 * $scale
-  $th = 16 * $scale
-  $tr = 2.5 * $scale * 2
-  $tpath = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $tpath.AddArc($tx, $ty, $tr, $tr, 180, 90)
-  $tpath.AddArc($tx + $tw - $tr, $ty, $tr, $tr, 270, 90)
-  $tpath.AddArc($tx + $tw - $tr, $ty + $th - $tr, $tr, $tr, 0, 90)
-  $tpath.AddArc($tx, $ty + $th - $tr, $tr, $tr, 90, 90)
-  $tpath.CloseFigure()
-  $g.DrawPath($stroke, $tpath)
-  $tpath.Dispose()
 
   # > 提示符 polyline：(6.5, 9) - (10, 12) - (6.5, 15)
   $g.DrawLine($stroke, (6.5 * $scale), (9 * $scale), (10 * $scale), (12 * $scale))

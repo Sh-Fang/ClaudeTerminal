@@ -208,7 +208,10 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
 .side-saved {
   flex: 0 0 auto;
   border-top: 1px solid var(--hairline);
-  max-height: 50%;            /* 最多占一半，剩余高度留给打开的分组 */
+  /* 高度由 --saved-h 控制；默认 40%，最小 80px 留得下一行半，最多吃到 sidebar 90% 上限 */
+  height: var(--saved-h, 40%);
+  min-height: 80px;
+  max-height: 90%;
 }
 .side-saved-body {
   flex: 1;
@@ -217,8 +220,39 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
   padding: 0 8px 8px;
 }
 .side-saved-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.side-saved.collapsed { max-height: none; }
+/* 折叠态：盖掉 height/min/max，只显标题行 */
+.side-saved.collapsed {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+}
 .side-saved.collapsed .side-saved-body { display: none; }
+
+/* 已保存区上方的水平拖拽条；折叠态隐藏 */
+.saved-resizer {
+  flex: 0 0 6px;
+  height: 6px;
+  margin: -3px 0;
+  cursor: row-resize;
+  z-index: 5;
+  position: relative;
+  background: transparent;
+}
+.saved-resizer::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+  background: transparent;
+  transition: background 0.15s;
+}
+.saved-resizer:hover::after,
+.saved-resizer.dragging::after { background: var(--hairline-strong); }
+.saved-resizer.disabled { pointer-events: none; opacity: 0; }
+body.row-resizing,
+body.row-resizing * { cursor: row-resize !important; user-select: none !important; }
 
 .side-section-label {
   font-family: var(--mono);
@@ -410,40 +444,24 @@ button.saved-toggle:hover { color: var(--ink); }
   font-family: var(--mono); font-size: 10px; color: var(--mute);
   margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.saved-restore {
-  flex: 0 0 auto; font-size: 12px; font-weight: 500; color: var(--ink);
+.saved-delete {
+  flex: 0 0 26px;
+  width: 26px; height: 26px;
   background: var(--canvas);
   border: 1px solid var(--hairline);
-  border-radius: var(--r-full);
-  padding: 3px 10px;
-  opacity: 0; transition: opacity 0.12s;
-  display: flex; align-items: center; gap: 5px;
-}
-.saved-row:hover .saved-restore { opacity: 1; }
-.saved-restore:hover { background: var(--canvas-soft); }
-
-.saved-overflow-hint {
-  padding: 6px 10px 4px;
-  font-size: 11px;
-  color: var(--mute);
-}
-
-.new-group-btn {
-  margin: 6px 2px 4px;
-  padding: 9px;
-  border: 1px dashed var(--hairline-strong);
   border-radius: var(--r-sm);
-  color: var(--body);
-  font-size: 13px;
-  display: flex; align-items: center; justify-content: center; gap: 7px;
+  color: var(--mute);
   cursor: pointer;
+  display: grid; place-items: center;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s, background 0.12s;
 }
-.new-group-btn:hover {
-  background: var(--canvas);
-  border-color: var(--ink);
-  color: var(--ink);
+.saved-row:hover .saved-delete { opacity: 1; }
+.saved-delete:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--canvas-soft);
 }
-.new-group-btn .ic { display: inline-grid; place-items: center; line-height: 1; }
 
 .side-empty {
   padding: 14px 12px;
@@ -601,9 +619,12 @@ button.saved-toggle:hover { color: var(--ink); }
 #hosts:has(.term-host.active) #hosts-empty { display: none; }
 .term-host {
   position: absolute;
-  inset: 0;
-  /* 底部多留 8px，避免 xterm fit 取整后最后一行贴到 statusbar 视觉分隔线 */
-  padding: 8px 12px 16px;
+  /* 直接吃满 #hosts；不要给 .term-host 加 padding —— FitAddon 用父元素
+     getComputedStyle().height 推算可用行数，border-box 下这个值含 padding，FitAddon 只
+     减 .xterm 自身的 padding(=0)，会多报 1 行给 cc 然后最后一行被 overflow:hidden 切掉。
+     真要留视觉边距，就改 #hosts 的 padding 或这里的 inset，绝对不要回到 padding 方案。
+     左边留 4px 视觉缓冲（不至于贴死侧栏分隔线）。 */
+  inset: 0 0 0 4px;
   box-sizing: border-box;
   display: none;
   overflow: hidden;
@@ -945,7 +966,6 @@ button.saved-toggle:hover { color: var(--ink); }
   margin: 8px 0 6px;
   font-size: 12px; color: var(--mute);
 }
-.pk-toolbar .dot-sep { color: var(--hairline-strong); }
 .pk-count { margin-left: auto; font-family: var(--mono); }
 .pk-list {
   max-height: 300px;
@@ -991,6 +1011,24 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .pk-row .pk-input::placeholder { color: var(--mute); }
 .pk-row .pk-input:focus { border-color: var(--ink); }
+.pk-row .pk-del {
+  flex: 0 0 24px;
+  width: 24px; height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--mute);
+  cursor: pointer;
+  display: grid; place-items: center;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s, background 0.12s;
+}
+.pk-row:hover .pk-del { opacity: 1; }
+.pk-row .pk-del:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--canvas);
+}
 
 /* ─── Manage modal（已保存的分组管理） ────────────────────────────── */
 .modal.modal-manage {
@@ -1018,12 +1056,34 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .mg-close-btn:hover { color: var(--ink); border-color: var(--hairline-strong); }
 
+.mg-head .mg-search {
+  flex: 0 1 320px;
+  align-self: center;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--canvas-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.mg-head .mg-search::placeholder { color: var(--mute); }
+.mg-head .mg-search:focus { border-color: var(--ink); background: var(--canvas); }
+/* 隐藏浏览器原生 type=search 的清除按钮（webkit），交互在 ESC / 删字符上 */
+.mg-head .mg-search::-webkit-search-cancel-button { -webkit-appearance: none; }
+
 .mg-body {
   flex: 1; overflow-y: auto;
   padding: 16px 24px 24px;
+  /* Firefox：滚动条整条隐藏 */
+  scrollbar-width: none;
 }
-.mg-body::-webkit-scrollbar { width: 8px; }
-.mg-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 4px; }
+/* Chromium/WebKit：把滚动条画 0 宽度但保留 overflow scroll 能力 */
+.mg-body::-webkit-scrollbar { width: 0; height: 0; }
+.mg-body::-webkit-scrollbar-thumb { background: transparent; }
 
 .mg-empty {
   padding: 60px 24px;
@@ -1120,18 +1180,6 @@ button.saved-toggle:hover { color: var(--ink); }
   opacity: 0.5;
 }
 
-.mg-divider {
-  margin: 12px 4px 8px;
-  padding: 4px 0;
-  font-family: var(--mono); font-size: 10px;
-  color: var(--mute);
-  text-transform: uppercase; letter-spacing: 0.6px;
-  border-top: 1px dashed var(--hairline-strong);
-  text-align: center;
-  position: relative;
-}
-.mg-divider::before, .mg-divider::after { content: ''; }
-
 .mg-row {
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
@@ -1144,20 +1192,10 @@ button.saved-toggle:hover { color: var(--ink); }
   border-color: var(--hairline-strong);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02);
 }
-.mg-row.dragging { opacity: 0.4; }
-.mg-row.drop-before { box-shadow: 0 -2px 0 0 var(--link); }
-.mg-row.drop-after { box-shadow: 0 2px 0 0 var(--link); }
-
 .mg-head-row {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 14px;
 }
-.mg-handle {
-  color: var(--mute); cursor: grab;
-  display: grid; place-items: center;
-  flex: 0 0 16px;
-}
-.mg-row.dragging .mg-handle { cursor: grabbing; }
 .mg-folder { color: var(--cyan-deep); display: grid; place-items: center; flex: 0 0 14px; }
 .mg-info { flex: 1; min-width: 0; }
 .mg-name {

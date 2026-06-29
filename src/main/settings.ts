@@ -30,10 +30,13 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean  // 「已保存的分组」区是否折叠到底部
-  savedSidebarLimit: number    // 侧边栏「已保存的分组」最多显示几个
+  sidebarSavedHeight: number  // 「已保存的分组」区的像素高度（0 = 用 CSS 默认 40%）
   statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
   confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
+  showFloater: boolean         // 开启常驻悬浮窗（显示待查看 / 待决策 / 运行中 数）
+  floaterX: number             // 悬浮窗最近一次屏幕位置（-1 = 未持久化）
+  floaterY: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -52,10 +55,13 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 268,
   sidebarCollapsed: false,
   savedCollapsed: false,
-  savedSidebarLimit: 4,
+  sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
   confirmCloseUnsaved: true,
-  showClaudeUsage: true
+  showClaudeUsage: true,
+  showFloater: false,
+  floaterX: -1,
+  floaterY: -1
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -107,12 +113,16 @@ function normalize(raw: unknown): Settings {
     sidebarWidth: clampNum(r.sidebarWidth, 180, 520, DEFAULT_SETTINGS.sidebarWidth),
     sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed,
     savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed,
-    savedSidebarLimit: clampNum(r.savedSidebarLimit, 0, 5, DEFAULT_SETTINGS.savedSidebarLimit),
+    sidebarSavedHeight: clampNum(r.sidebarSavedHeight, 0, 4000, DEFAULT_SETTINGS.sidebarSavedHeight),
     statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 5, DEFAULT_SETTINGS.statusDowngradeSec),
     confirmCloseUnsaved:
       typeof r.confirmCloseUnsaved === 'boolean' ? r.confirmCloseUnsaved : DEFAULT_SETTINGS.confirmCloseUnsaved,
     showClaudeUsage:
-      typeof r.showClaudeUsage === 'boolean' ? r.showClaudeUsage : DEFAULT_SETTINGS.showClaudeUsage
+      typeof r.showClaudeUsage === 'boolean' ? r.showClaudeUsage : DEFAULT_SETTINGS.showClaudeUsage,
+    showFloater:
+      typeof r.showFloater === 'boolean' ? r.showFloater : DEFAULT_SETTINGS.showFloater,
+    floaterX: clampNum(r.floaterX, -1, 100000, DEFAULT_SETTINGS.floaterX),
+    floaterY: clampNum(r.floaterY, -1, 100000, DEFAULT_SETTINGS.floaterY)
   }
 }
 

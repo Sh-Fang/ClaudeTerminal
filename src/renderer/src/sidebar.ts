@@ -23,7 +23,6 @@ export interface SavedView {
 export interface SidebarHooks {
   getGroups(): GroupView[]
   getSaved(): SavedView[]
-  getSavedLimit(): number
   getActiveTabId(): string | null
 
   activateTab(tabId: string): void
@@ -56,14 +55,14 @@ function groupStatus(g: GroupView): TabStatus {
 export class Sidebar {
   private listEl: HTMLDivElement
   private savedEl: HTMLDivElement
-  private newGroupBtn: HTMLDivElement
+  private newGroupBtn: HTMLButtonElement
   private manageBtn: HTMLDivElement
   private dragGroupId: string | null = null
 
   constructor(private hooks: SidebarHooks) {
     this.listEl = document.getElementById('groupList') as HTMLDivElement
     this.savedEl = document.getElementById('savedList') as HTMLDivElement
-    this.newGroupBtn = document.getElementById('newGroupBtn') as HTMLDivElement
+    this.newGroupBtn = document.getElementById('newGroupBtn') as HTMLButtonElement
     this.manageBtn = document.getElementById('manageSavedBtn') as HTMLDivElement
 
     this.listEl.addEventListener('click', (e) => this.onListClick(e))
@@ -92,7 +91,7 @@ export class Sidebar {
     if (groups.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
-      empty.textContent = '还没有分组，点下方「新建分组」开始。'
+      empty.textContent = '还没有分组，点右上角「+」新建。'
       this.listEl.appendChild(empty)
       return
     }
@@ -158,30 +157,26 @@ export class Sidebar {
       this.savedEl.appendChild(empty)
       return
     }
-    const visible = saved.slice(0, this.hooks.getSavedLimit())
-    for (const s of visible) {
+    // 不再按 limit 切片：已保存分组全量渲染，由 .side-saved-body 自身的 overflow:auto
+     // 容器内滚动；右上角"展开管理"按钮仍然可用，进入弹窗做重命名/删除/排序等批量操作。
+    for (const s of saved) {
       const el = document.createElement('div')
       el.className = 'saved-row'
       el.dataset.saved = s.id
       const savedCwd = s.cwd
         ? escapeHtml(s.cwd)
         : '<span class="path-placeholder">(默认目录)</span>'
+      // 整行点击 → 打开 pick 弹窗（restoreSaved 内部走的），删除走 pick 弹窗里
+      // 每个标签后面的小垃圾桶（删完最后一个就把整组也清掉）。原本侧栏行尾的
+      // 整组删除按钮去掉 —— 入口集中到一处，列表干净。
       el.innerHTML = `
         <div class="saved-ic">${icon('rotate-ccw')}</div>
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
           <div class="saved-sub">${s.tabCount} 个标签 · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
         </div>
-        <div class="saved-restore" data-restore="${escapeHtml(s.id)}">${icon('rotate-ccw', { size: 12 })} 恢复</div>
       `
       this.savedEl.appendChild(el)
-    }
-    const more = saved.length - visible.length
-    if (more > 0) {
-      const hint = document.createElement('div')
-      hint.className = 'saved-overflow-hint'
-      hint.textContent = `还有 ${more} 个隐藏，点右上角的「展开管理」查看。`
-      this.savedEl.appendChild(hint)
     }
   }
 
@@ -286,10 +281,8 @@ export class Sidebar {
 
   private onSavedClick(e: MouseEvent): void {
     const tgt = e.target as HTMLElement
-    const restore = tgt.closest('[data-restore]') as HTMLElement | null
     const row = tgt.closest('[data-saved]') as HTMLElement | null
-    const id = restore?.dataset.restore || row?.dataset.saved
-    if (id) this.hooks.restoreSaved(id)
+    if (row?.dataset.saved) this.hooks.restoreSaved(row.dataset.saved)
   }
 
   private onSavedCtxEvent(e: MouseEvent): void {

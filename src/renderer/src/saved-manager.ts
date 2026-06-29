@@ -2,7 +2,7 @@
 // 主程通过 hooks 暴露最小接口，本类只负责 UI 渲染与交互。
 
 import { icon } from './svg-icons'
-import { escapeHtml, formatTs, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
+import { escapeHtml, formatTs, fuzzyMatch, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
 
 export interface ManageTabView {
   id: string
@@ -22,13 +22,11 @@ export interface ManageGroupView {
 
 export interface SavedManagerHooks {
   getSaved(): ManageGroupView[]
-  onReorder(savedIds: string[]): void
   onRename(savedId: string, newName: string): void
   onDelete(savedId: string): void
   onDeleteTab(savedId: string, tabId: string): void
   onRestoreAll(savedId: string): void
   onRestoreSelect(savedId: string): void
-  getSidebarLimit(): number
 }
 
 export class SavedManager {
@@ -36,76 +34,97 @@ export class SavedManager {
   private body: HTMLDivElement
   private empty: HTMLDivElement
   private closeBtn: HTMLButtonElement
+  private searchInput: HTMLInputElement
   private expanded = new Set<string>()
-  private dragId: string | null = null
+  private searchQuery = ''
 
   constructor(private hooks: SavedManagerHooks) {
     this.scrim = document.getElementById('manageScrim') as HTMLDivElement
     this.body = document.getElementById('mg-body') as HTMLDivElement
     this.empty = document.getElementById('mg-empty') as HTMLDivElement
     this.closeBtn = document.getElementById('mg-close') as HTMLButtonElement
+    this.searchInput = document.getElementById('mg-search') as HTMLInputElement
     this.closeBtn.addEventListener('click', () => this.close())
     bindScrimDismiss(this.scrim, () => this.close())
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.scrim.hidden) this.close()
+      if (e.key === 'Escape' && !this.scrim.hidden) {
+        // 有搜索词时先清空搜索，再次 ESC 才关弹窗 —— 跟浏览器搜索框直觉一致
+        if (this.searchQuery) {
+          this.searchInput.value = ''
+          this.searchQuery = ''
+          this.render()
+          return
+        }
+        this.close()
+      }
+    })
+    this.searchInput.addEventListener('input', () => {
+      this.searchQuery = this.searchInput.value
+      this.render()
     })
     this.body.addEventListener('click', (e) => this.onBodyClick(e))
     this.body.addEventListener('blur', (e) => this.onBlur(e), true)
     this.body.addEventListener('keydown', (e) => this.onBodyKey(e))
-    this.body.addEventListener('dragstart', (e) => this.onDragStart(e))
-    this.body.addEventListener('dragover', (e) => this.onDragOver(e))
-    this.body.addEventListener('dragleave', (e) => this.onDragLeave(e))
-    this.body.addEventListener('drop', (e) => this.onDrop(e))
-    this.body.addEventListener('dragend', () => this.onDragEnd())
   }
 
-  open(): void {
+  // 打开管理弹窗；focusId 不空时自动展开该分组并滚动到位 ——
+  // 给侧边栏右键"管理本分组"用，省得用户进了弹窗还要再找一遍。
+  open(focusId?: string): void {
     this.scrim.hidden = false
+    if (focusId) this.expanded.add(focusId)
+    this.searchQuery = ''
+    this.searchInput.value = ''
     this.render()
+    if (!focusId) return
+    const row = this.body.querySelector(`.mg-row[data-saved-id="${focusId.replace(/["\\]/g, '\\$&')}"]`)
+    if (row) row.scrollIntoView({ block: 'center' })
   }
 
   close(): void {
     this.scrim.hidden = true
-    this.dragId = null
   }
 
   render(): void {
     if (this.scrim.hidden) return
-    const list = this.hooks.getSaved()
-    const limit = this.hooks.getSidebarLimit()
-    const limitEl = document.getElementById('mg-limit-n')
-    if (limitEl) limitEl.textContent = String(limit)
+    const all = this.hooks.getSaved()
+    const q = this.searchQuery.trim()
+    // 命中规则：分组名 / 路径 / 任一标签名 任一命中 = 整组保留
+    const list = q
+      ? all.filter((g) => fuzzyMatch(q, [g.name, g.cwd, ...g.tabs.map((t) => t.name)]))
+      : all
     this.body.innerHTML = ''
-    this.empty.hidden = list.length > 0
-    if (list.length === 0) return
-    for (let i = 0; i < list.length; i++) {
-      const visible = i < limit
-      if (i === limit) {
-        const sep = document.createElement('div')
-        sep.className = 'mg-divider'
-        sep.textContent = '以下分组仅在管理页可见'
-        this.body.appendChild(sep)
+    if (list.length === 0) {
+      this.empty.hidden = false
+      const first = this.empty.querySelector('div:first-child') as HTMLElement | null
+      const sub = this.empty.querySelector('.sub') as HTMLElement | null
+      if (q) {
+        if (first) first.textContent = '没有匹配的分组。'
+        if (sub) sub.textContent = '换个关键词试试，或清空搜索。'
+      } else {
+        if (first) first.textContent = '还没有已保存的分组。'
+        if (sub) sub.textContent = '右键打开的分组「保存分组」就会出现在这里。'
       }
-      this.body.appendChild(this.row(list[i], visible))
+      return
     }
+    this.empty.hidden = true
+    for (const g of list) this.body.appendChild(this.row(g, !!q))
   }
 
-  private row(g: ManageGroupView, visible: boolean): HTMLDivElement {
-    const expanded = this.expanded.has(g.id)
+  private row(g: ManageGroupView, forceExpand = false): HTMLDivElement {
+    // 搜索时强制展开，让用户一眼看到命中的是哪个标签
+    const expanded = forceExpand || this.expanded.has(g.id)
     const wrap = document.createElement('div')
-    wrap.className = 'mg-row' + (visible ? ' is-visible' : '') + (expanded ? ' is-expanded' : '')
-    wrap.draggable = true
+    // 侧边栏已经容器内滚动渲染全部，没有"可见 / 不可见"之分；统一一种外观即可。
+    wrap.className = 'mg-row is-visible' + (expanded ? ' is-expanded' : '')
     wrap.dataset.savedId = g.id
     const cwd = g.cwd ? escapeHtml(shortPath(g.cwd)) : '<span class="path-placeholder">(默认目录)</span>'
     wrap.innerHTML = `
       <div class="mg-head-row">
-        <span class="mg-handle" title="拖动排序">${icon('grip-vertical', { size: 16 })}</span>
         <span class="mg-folder">${icon('folder')}</span>
         <div class="mg-info">
           <div class="mg-name" data-rename="${escapeHtml(g.id)}" title="点击重命名">${escapeHtml(g.name)}</div>
           <div class="mg-meta">${cwd} · ${g.tabs.length} 个标签 · ${escapeHtml(formatTs(g.savedAt))}</div>
         </div>
-        ${visible ? '<span class="mg-badge" title="该分组会展示在侧边栏">侧边栏可见</span>' : ''}
         <button class="mg-btn" data-restore-select="${escapeHtml(g.id)}" title="选择恢复">${icon('rotate-ccw', { size: 14 })}</button>
         <button class="mg-btn mg-toggle" data-toggle="${escapeHtml(g.id)}" title="${expanded ? '收起标签' : '展开标签'}">${icon('chevron-down', { size: 14 })}</button>
         <button class="mg-btn mg-danger" data-delete="${escapeHtml(g.id)}" title="删除分组">${icon('trash', { size: 14 })}</button>
@@ -222,68 +241,4 @@ export class SavedManager {
     }
   }
 
-  // ─── 拖动排序 ────────────────────────────────────────────────
-  private onDragStart(e: DragEvent): void {
-    const row = (e.target as HTMLElement).closest('.mg-row') as HTMLElement | null
-    if (!row) return
-    this.dragId = row.dataset.savedId || null
-    row.classList.add('dragging')
-    e.dataTransfer?.setData('text/plain', this.dragId ?? '')
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
-  }
-
-  private onDragOver(e: DragEvent): void {
-    if (!this.dragId) return
-    const row = (e.target as HTMLElement).closest('.mg-row') as HTMLElement | null
-    if (!row || row.dataset.savedId === this.dragId) return
-    e.preventDefault()
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-    const rect = row.getBoundingClientRect()
-    const before = e.clientY < rect.top + rect.height / 2
-    this.clearDropMarks()
-    row.classList.add(before ? 'drop-before' : 'drop-after')
-  }
-
-  private onDragLeave(e: DragEvent): void {
-    const row = (e.target as HTMLElement).closest('.mg-row') as HTMLElement | null
-    if (!row) return
-    if (e.relatedTarget && row.contains(e.relatedTarget as Node)) return
-    row.classList.remove('drop-before', 'drop-after')
-  }
-
-  private onDrop(e: DragEvent): void {
-    if (!this.dragId) return
-    const row = (e.target as HTMLElement).closest('.mg-row') as HTMLElement | null
-    if (!row) return
-    e.preventDefault()
-    const targetId = row.dataset.savedId
-    const before = row.classList.contains('drop-before')
-    this.clearDropMarks()
-    if (!targetId || targetId === this.dragId) return
-
-    const order = Array.from(this.body.querySelectorAll('.mg-row'))
-      .map((el) => (el as HTMLElement).dataset.savedId)
-      .filter((id): id is string => !!id)
-    const fromIdx = order.indexOf(this.dragId)
-    if (fromIdx < 0) return
-    order.splice(fromIdx, 1)
-    let toIdx = order.indexOf(targetId)
-    if (toIdx < 0) return
-    if (!before) toIdx += 1
-    order.splice(toIdx, 0, this.dragId)
-    this.hooks.onReorder(order)
-    this.render()
-  }
-
-  private onDragEnd(): void {
-    this.dragId = null
-    this.clearDropMarks()
-    this.body.querySelectorAll('.mg-row.dragging').forEach((el) => el.classList.remove('dragging'))
-  }
-
-  private clearDropMarks(): void {
-    this.body.querySelectorAll('.drop-before, .drop-after').forEach((el) => {
-      el.classList.remove('drop-before', 'drop-after')
-    })
-  }
 }

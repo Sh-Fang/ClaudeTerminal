@@ -26,6 +26,27 @@ export interface SessionRecord {
 
 export type TabStatus = 'busy' | 'attention' | 'done' | 'idle' | 'error'
 
+// 调试开关：默认关。devtools 里执行 `window.__termDebug = true` 打开。
+// 打开后在切换 tab / fit / resize / startPty / 收到 PTY data 这些关键节点打日志，
+// 用来追"切回 tab 出现脏字 / 左移 / splash 错位"这类时序问题。
+// 关掉就完全 no-op，不影响性能。
+declare global { interface Window { __termDebug?: boolean; __termDebugDataChars?: number } }
+function dbg(...args: unknown[]): void {
+  if (typeof window === 'undefined' || !window.__termDebug) return
+  // 高精度时间戳 + 统一前缀，console 过滤搜 [term] 一次拉全
+  const t = performance.now().toFixed(1)
+  console.log(`[term] +${t}ms`, ...args)
+}
+// PTY chunk preview：默认前 64 个 codepoint，避免大段 ANSI 刷爆 console。
+// 不可见控制符 (< 0x20 / 0x7f) 渲染成 \x?? 转义，方便看到 ANSI 序列起止。
+function previewData(d: string): string {
+  const max = (typeof window !== 'undefined' && window.__termDebugDataChars) || 64
+  const s = d.length > max ? d.slice(0, max) + '…' : d
+  return s.replace(/[\x00-\x1f\x7f]/g, (c) =>
+    c === '\x1b' ? '\\x1b' : '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')
+  )
+}
+
 /*
  * ───────────────────────────────────────────────────────────────────
  * 输入子系统总览（bind* 的职责分工）
@@ -408,6 +429,7 @@ export class TerminalTab {
 
   async startPty(): Promise<void> {
     if (this.disposed) return
+    dbg(this.id, 'startPty: requesting create', { cols: this.term.cols, rows: this.term.rows, cwd: this.cwd })
     try {
       const id = await window.term.create({
         cols: this.term.cols,
@@ -422,6 +444,7 @@ export class TerminalTab {
         return
       }
       this.ptyId = id
+      dbg(this.id, 'startPty: created ptyId=' + id, { cols: this.term.cols, rows: this.term.rows })
       if (this.pendingInput) {
         window.term.send(id, this.pendingInput)
         this.pendingInput = ''
@@ -439,6 +462,12 @@ export class TerminalTab {
   }
 
   writeFromPty(data: string): void {
+    // 调试下打印每个 chunk 的长度 + 头 N 字符预览。控制符转义后看 ANSI 序列。
+    // 切 tab 出问题时拿这些 chunk 跟 setActive/refit 的时间戳比对就能定位"是不是
+    // resize 期间收到错位 chunk"。
+    if (typeof window !== 'undefined' && window.__termDebug) {
+      dbg(this.id, `data ${data.length}B`, previewData(data))
+    }
     this.term.write(data)
   }
 
@@ -463,8 +492,18 @@ export class TerminalTab {
   }
 
   refit(): void {
-    try { this.fit.fit() } catch {}
-    if (this.ptyId != null) window.term.resize(this.ptyId, this.term.cols, this.term.rows)
+    const before = { cols: this.term.cols, rows: this.term.rows }
+    try { this.fit.fit() } catch (e) { dbg(this.id, 'refit: fit threw', e) }
+    const after = { cols: this.term.cols, rows: this.term.rows }
+    if (before.cols !== after.cols || before.rows !== after.rows) {
+      dbg(this.id, 'refit: cols/rows changed', before, '->', after)
+    } else {
+      dbg(this.id, 'refit: cols/rows unchanged', after)
+    }
+    if (this.ptyId != null) {
+      dbg(this.id, `refit: push PTY resize ptyId=${this.ptyId}`, after)
+      window.term.resize(this.ptyId, this.term.cols, this.term.rows)
+    }
   }
 
   applySettings(s: Settings): void {
@@ -482,11 +521,21 @@ export class TerminalTab {
   }
 
   setActive(active: boolean): void {
+    dbg(this.id, `setActive(${active})`, { cols: this.term.cols, rows: this.term.rows })
     this.host.classList.toggle('active', active)
-    if (active) {
+    if (!active) return
+    // display:none → block 后浏览器要 1 帧才 reflow，立刻 refit 会拿到 0 / 旧高度，
+    // 算出错误 cols/rows 推给 PTY → cc 用错尺寸全屏重画 → ANSI 序列在 xterm 边界对不齐。
+    // 推迟到下一帧、布局稳定后再 fit。
+    requestAnimationFrame(() => {
+      dbg(this.id, 'setActive rAF: about to refit')
       this.refit()
-      setTimeout(() => this.term.focus(), 0)
-    }
+      // 切回 active 时强制 viewport 全量重画：绕开 WebGL renderer 的局部 dirty rect
+      // 漏算最左 1-2 cell 导致的"残像脏字"（手动往上滚再滚回来能消失就是这个原因）。
+      try { this.term.refresh(0, Math.max(0, this.term.rows - 1)) } catch {}
+      this.term.focus()
+      dbg(this.id, 'setActive rAF: done')
+    })
   }
 
   dispose(): void {

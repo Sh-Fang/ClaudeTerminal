@@ -15,10 +15,13 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean
-  savedSidebarLimit: number    // 侧边栏「已保存的分组」最多显示几个
+  sidebarSavedHeight: number   // 「已保存的分组」区像素高度（0 = 用 CSS 默认 40%）
   statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
   confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
+  showFloater: boolean         // 开启常驻悬浮窗
+  floaterX: number
+  floaterY: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,10 +40,13 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 268,
   sidebarCollapsed: false,
   savedCollapsed: false,
-  savedSidebarLimit: 4,
+  sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
   confirmCloseUnsaved: true,
-  showClaudeUsage: true
+  showClaudeUsage: true,
+  showFloater: false,
+  floaterX: -1,
+  floaterY: -1
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

@@ -1,5 +1,23 @@
 // 简单 UI 工具：context menu / modal / toast / confirm
 
+// 名称自然比较：参照 Windows 资源管理器的"按名称排序"。
+//  · 中文先转拼音（toneless）再比较 —— 否则 zh-Hans-CN collator 会把 latin 字符整体
+//    排到 CJK 后面（ICU 的 base 顺序），"Claude" 会跑到所有汉字之后。先转拼音让
+//    汉字也变成 latin 字符，再按 zh-Hans-CN 比较 → "Claude/c" 跟 "单/d" 按字母混排。
+//  · numeric:true 让 "1xx / 2xx / 10xx" 按数值大小排，而不是字典序 "1 / 10 / 2"。
+//  · sensitivity:base 大小写不敏感，与系统直觉一致。
+import { pinyin } from 'pinyin-pro'
+import { icon } from './svg-icons'
+const NAME_COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+function nameSortKey(s: string): string {
+  // toneType:'none' 去声调；type:'string' 返回空格连接的字符串。原串作为 tiebreak 后缀。
+  const py = pinyin(s, { toneType: 'none', type: 'string', nonZh: 'consecutive' })
+  return `${py.toLowerCase()}|${s.toLowerCase()}`
+}
+export function naturalNameCompare(a: string, b: string): number {
+  return NAME_COLLATOR.compare(nameSortKey(a), nameSortKey(b))
+}
+
 // 仅当 mousedown 与 mouseup（click）都落在 scrim 自身时触发关闭。
 // 防止用户在 modal 里按住选文字 → 拖到外部释放被误判为"点外部"。
 export function bindScrimDismiss(scrim: HTMLElement, onDismiss: () => void): void {
@@ -237,6 +255,10 @@ export interface PickItem {
   // 这种行可填名字）。输入框非空时会自动勾选 checkbox。
   // onOk 第二参数 inputs[id] 拿到 input.value.trim()。
   inputPlaceholder?: string
+  // 行尾的小垃圾桶：点击触发；和勾选 / label toggle 互不影响。
+  // 调用方自己负责二次确认 + 后续刷新（重新调一次 openPickTabs 即可热替换列表）。
+  onDelete?: () => void
+  deleteTitle?: string
 }
 export interface PickTabsCfg {
   title: string
@@ -250,8 +272,7 @@ const pickScrim = document.getElementById('pickScrim') as HTMLDivElement
 const pkTitle = document.getElementById('pk-title') as HTMLHeadingElement
 const pkSub = document.getElementById('pk-sub') as HTMLParagraphElement
 const pkList = document.getElementById('pk-list') as HTMLDivElement
-const pkAllBtn = document.getElementById('pk-all') as HTMLButtonElement
-const pkNoneBtn = document.getElementById('pk-none') as HTMLButtonElement
+const pkToggleAllBtn = document.getElementById('pk-toggle-all') as HTMLButtonElement
 const pkCount = document.getElementById('pk-count') as HTMLSpanElement
 const pkOk = document.getElementById('pk-ok') as HTMLButtonElement
 const pkCancel = document.getElementById('pk-cancel') as HTMLButtonElement
@@ -267,15 +288,24 @@ function pkSelected(): string[] {
     })
     .map((it) => it.id)
 }
+// action 行（id 以 '__' 开头，如"+ 新建空白标签"）：不参与"全选/计数/进度判定"，
+// 用户仍可单独勾选或通过输入文字自动勾上 —— 最终提交时照常归入 selectedIds。
+function pkIsAction(it: PickItem): boolean {
+  return it.id.startsWith('__')
+}
 function pkUpdateCount(): void {
-  const total = pkItems.filter((it) => !it.disabled).length
-  const cur = pkSelected().length
-  pkCount.textContent = total === 0 ? '' : `已选 ${cur} / ${total}`
-  pkOk.disabled = cur === 0
+  const totalReal = pkItems.filter((it) => !it.disabled && !pkIsAction(it)).length
+  const curReal = pkSelected().filter((id) => !id.startsWith('__')).length
+  const curAll = pkSelected().length   // ok 启用看的是总选中数（含 action 行）
+  pkCount.textContent = totalReal === 0 ? '' : `已选 ${curReal} / ${totalReal}`
+  pkOk.disabled = curAll === 0
+  // 合并按钮：实条目全选 → "取消全选"；否则 → "全选"。无可选实条目时禁用。
+  pkToggleAllBtn.textContent = totalReal > 0 && curReal === totalReal ? '取消全选' : '全选'
+  pkToggleAllBtn.disabled = totalReal === 0
 }
 function pkSetAll(checked: boolean): void {
   for (const it of pkItems) {
-    if (it.disabled) continue
+    if (it.disabled || pkIsAction(it)) continue
     const cb = pkList.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
     if (cb) cb.checked = checked
   }
@@ -304,12 +334,25 @@ export function openPickTabs(cfg: PickTabsCfg): void {
     const labelHtml = it.inputPlaceholder
       ? `<input type="text" class="pk-input" data-pk-input-id="${escapeHtml(it.id)}" placeholder="${escapeHtml(it.inputPlaceholder)}" autocomplete="off" spellcheck="false" />`
       : `<span class="pk-label">${escapeHtml(it.label)}</span>`
+    const deleteHtml = it.onDelete
+      ? `<button type="button" class="pk-del" data-pk-del-id="${escapeHtml(it.id)}" title="${escapeHtml(it.deleteTitle ?? '从保存里删除')}" aria-label="删除">${icon('trash', { size: 13 })}</button>`
+      : ''
     row.innerHTML = `
       <input type="checkbox" data-pk-id="${escapeHtml(it.id)}" ${checked ? 'checked' : ''} ${it.disabled ? 'disabled' : ''} />
       ${labelHtml}
       ${it.meta ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>` : ''}
+      ${deleteHtml}
     `
     row.addEventListener('change', pkUpdateCount)
+    if (it.onDelete) {
+      const delBtn = row.querySelector(`button[data-pk-del-id="${cssAttr(it.id)}"]`) as HTMLButtonElement | null
+      delBtn?.addEventListener('click', (e) => {
+        // 阻止 label 的隐式 toggle 与 row 的冒泡
+        e.preventDefault()
+        e.stopPropagation()
+        it.onDelete?.()
+      })
+    }
     // 文本输入框：非空时自动勾上同行 checkbox，省去用户两步操作
     if (it.inputPlaceholder) {
       const textInput = row.querySelector('.pk-input') as HTMLInputElement | null
@@ -331,8 +374,15 @@ function pkClose(): void {
   pkCancelCb = null
   pkItems = []
 }
-pkAllBtn.addEventListener('click', () => pkSetAll(true))
-pkNoneBtn.addEventListener('click', () => pkSetAll(false))
+export function closePickTabs(): void {
+  pkClose()
+}
+pkToggleAllBtn.addEventListener('click', () => {
+  // 全选 / 取消的判定只看"实条目"，与 pkUpdateCount 保持一致；action 行不参与
+  const totalReal = pkItems.filter((it) => !it.disabled && !pkIsAction(it)).length
+  const curReal = pkSelected().filter((id) => !id.startsWith('__')).length
+  pkSetAll(curReal < totalReal)
+})
 pkCancel.addEventListener('click', () => {
   const cb = pkCancelCb
   pkClose()
@@ -357,6 +407,25 @@ bindScrimDismiss(pickScrim, () => {
   pkClose()
   cb?.()
 })
+
+// 子序列模糊匹配：needle 的字符按顺序依次出现在 haystack 即算命中（不要求相邻）。
+// 例："clat" 命中 "Claude Terminal"（c-l-a-...-t），大小写不敏感。
+// 跨多个 haystack 用任一命中 = 整体命中。
+export function fuzzyMatch(needle: string, haystacks: string | string[]): boolean {
+  const n = needle.trim().toLowerCase()
+  if (!n) return true
+  const list = Array.isArray(haystacks) ? haystacks : [haystacks]
+  for (const raw of list) {
+    if (!raw) continue
+    const h = raw.toLowerCase()
+    let i = 0
+    for (let k = 0; k < h.length && i < n.length; k++) {
+      if (h.charCodeAt(k) === n.charCodeAt(i)) i++
+    }
+    if (i === n.length) return true
+  }
+  return false
+}
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>

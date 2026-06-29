@@ -5,10 +5,12 @@ import { Toolbar } from './toolbar'
 import { SettingsPanel } from './settings-panel'
 import { DEFAULT_SETTINGS, type Settings } from './themes'
 import {
+  closePickTabs,
   confirmDialog,
   escapeHtml,
   formatTs,
   isConfirmOpen,
+  naturalNameCompare,
   openModal,
   openPickTabs,
   shortPath,
@@ -40,6 +42,7 @@ const sidebarResizer = document.getElementById('sidebarResizer') as HTMLDivEleme
 const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn') as HTMLButtonElement
 const sidebarHandleEl = document.getElementById('sidebarHandle') as HTMLDivElement
 const savedSectionEl = document.getElementById('savedSection') as HTMLElement
+const savedResizer = document.getElementById('savedResizer') as HTMLDivElement
 const savedToggleBtn = document.getElementById('savedToggle') as HTMLButtonElement
 const historyOpenBtn = document.getElementById('historyOpenBtn') as HTMLButtonElement
 
@@ -107,17 +110,39 @@ let settingsSaveTimer: number | null = null
 
 function getSettings(): Settings { return settings }
 
+// 悬浮窗：统计 done / attention / busy 标签数 + 已打开分组下的标签总数。
+// 全 0 时悬浮窗自行退回展示 total（标签数），这里只负责老老实实推数。
+function pushFloaterCounts(): void {
+  if (!settings.showFloater) return
+  let done = 0, attention = 0, busy = 0, total = 0
+  for (const g of groups) {
+    for (const t of g.tabs) {
+      total++
+      const st = t.status ?? 'idle'
+      if (st === 'done') done++
+      else if (st === 'attention') attention++
+      else if (st === 'busy') busy++
+    }
+  }
+  window.term.floaterPush({ done, attention, busy, total })
+}
+
 function applySettingsToAll(): void {
   for (const g of groups) for (const t of g.tabs) t.applySettings(settings)
 }
 
 function updateSettings(s: Settings): void {
+  const prevFloater = settings.showFloater
   settings = s
   applySettingsToAll()
   usageIndicator.applySettings(settings.showClaudeUsage)
   // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
   sidebar.render()
   savedManager.render()
+  if (prevFloater !== settings.showFloater) {
+    window.term.floaterSetEnabled(settings.showFloater)
+  }
+  if (settings.showFloater) pushFloaterCounts()
   if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
   settingsSaveTimer = window.setTimeout(() => {
     settingsSaveTimer = null
@@ -312,6 +337,14 @@ function makeTab(group: Group, opts: {
 }
 
 async function spawnTabPty(tab: TerminalTab): Promise<void> {
+  // 等 setActive 里那帧 rAF 跑完再 startPty —— 此时 host 已 display:block 完成
+  // reflow、fit 算出真实 cols/rows、xterm 已 resize 到位。
+  // 否则 PTY 会用 mount 时 display:none 的 80×24 默认尺寸启动，cc 用 80×24 画
+  // splash 的同时 rAF refit 把 PTY 改成真实尺寸 → cc 收 SIGWINCH 边画边重排 →
+  // splash box-drawing 字符整屏错位（"切走再切回来就正常了"就是这个原因）。
+  if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, tab.id, 'spawnTabPty: awaiting rAF before startPty')
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, tab.id, 'spawnTabPty: rAF done, calling startPty')
   await tab.startPty()
   // 异步刷新 aiTitle / lastTs（首次出现就重渲染）
   void refreshSessionMeta(tab)
@@ -453,6 +486,7 @@ function activateTab(tabId: string): void {
   if (activeTabId === tabId) return
   const ctx = findTab(tabId)
   if (!ctx) return
+  if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, `activateTab ${activeTabId} -> ${tabId}`)
   activeTabId = tabId
   // 切走旧 tab → 取消其降级倒计时（保留绿点，下次再切回来重新计时）
   clearDowngradeTimer()
@@ -586,12 +620,60 @@ function mergeTabsIntoSnapshot(snapTabs: SavedTab[], liveTabs: TerminalTab[], sa
   return out
 }
 
+// 已保存条目之间按 tab.id 去重合并：用户操作期不应出现冲突 id；
+// 真有撞 id（早期跨设备数据），保留 savedAt 更新的那条。
+function mergeSavedTabLists(a: SavedTab[], b: SavedTab[]): SavedTab[] {
+  const map = new Map<string, SavedTab>()
+  for (const t of a) map.set(t.id, t)
+  for (const t of b) {
+    const ex = map.get(t.id)
+    if (!ex || (t.savedAt || '') > (ex.savedAt || '')) map.set(t.id, t)
+  }
+  return [...map.values()]
+}
+
+// 同名同路径合并：用户语义上就是一个分组。每次 saveGroup / 启动加载后调用，
+// 把重复的 saved 条目并到第一条，避免侧栏出现多个长得一模一样的卡片。
+function dedupSavedByNameCwd(): void {
+  const byKey = new Map<string, SavedGroup>()
+  const out: SavedGroup[] = []
+  for (const s of savedGroups) {
+    const key = `${s.name}\x00${s.cwd}`
+    const first = byKey.get(key)
+    if (!first) {
+      byKey.set(key, s)
+      out.push(s)
+      continue
+    }
+    first.snapshot.tabs = mergeSavedTabLists(first.snapshot.tabs, s.snapshot.tabs)
+    if ((s.savedAt || '') > (first.savedAt || '')) {
+      first.savedAt = s.savedAt
+      first.snapshot.name = s.snapshot.name
+      first.snapshot.cwd = s.snapshot.cwd
+    }
+    // srcId：优先保留指向当前活着的 live 分组，更便于后续 autoSync 命中
+    const firstAlive = !!(first.srcId && findGroup(first.srcId))
+    const sAlive = !!(s.srcId && findGroup(s.srcId))
+    if (!firstAlive && sAlive) first.srcId = s.srcId
+  }
+  savedGroups.splice(0, savedGroups.length, ...out)
+}
+
+// 查找用作"merge 目标"的已存在 saved 条目：先按 srcId 命中（已经绑过的最优），
+// 再按 name+cwd 命中（用户改名后又重新保存，或两个 live 分组撞同名）。
+function findSavedForGroup(g: Group): SavedGroup | undefined {
+  const bySrc = savedGroups.find((s) => s.srcId === g.id)
+  if (bySrc) return bySrc
+  return savedGroups.find((s) => s.name === g.name && s.cwd === g.cwd)
+}
+
 function saveGroup(groupId: string): void {
   const g = findGroup(groupId)
   if (!g) return
   const savedAt = new Date().toISOString()
-  const existing = savedGroups.find((s) => s.srcId === g.id)
+  const existing = findSavedForGroup(g)
   if (existing) {
+    existing.srcId = g.id
     existing.name = g.name
     existing.cwd = g.cwd
     existing.savedAt = savedAt
@@ -614,6 +696,7 @@ function saveGroup(groupId: string): void {
       srcId: g.id
     })
   }
+  dedupSavedByNameCwd()
   for (const t of g.tabs) t.dirty = false
   sidebar.render()
   savedManager.render()
@@ -626,7 +709,7 @@ function saveTab(tabId: string): void {
   if (!ctx) return
   const { group: g, tab } = ctx
   const savedAt = new Date().toISOString()
-  let saved = savedGroups.find((s) => s.srcId === g.id)
+  let saved = findSavedForGroup(g)
   if (!saved) {
     saved = {
       id: uid('sv_'),
@@ -637,6 +720,8 @@ function saveTab(tabId: string): void {
       srcId: g.id
     }
     savedGroups.unshift(saved)
+  } else {
+    saved.srcId = g.id
   }
   saved.snapshot.tabs = mergeTabsIntoSnapshot(saved.snapshot.tabs, [tab], savedAt)
   saved.savedAt = savedAt
@@ -645,6 +730,7 @@ function saveTab(tabId: string): void {
   saved.cwd = g.cwd
   saved.snapshot.name = g.name
   saved.snapshot.cwd = g.cwd
+  dedupSavedByNameCwd()
   tab.dirty = false
   sidebar.render()
   savedManager.render()
@@ -750,9 +836,14 @@ async function restoreSavedTabs(
     // 立刻写入 saved snapshot，保持分组"已保存"状态（用户期望：在恢复里新建的默认就保存）
     autoSyncTabToSaved(blank, g)
   }
-  if (!activeTabId) {
-    const first = created[0] ?? g.tabs[0]
-    if (first) activeTabId = first.id
+  // 恢复后焦点切到刚 created 的第一个 —— 用户语义就是"打开这个保存的分组进去看看"。
+  // created 为空（点恢复但所有 tab 已在 live 里）才回退到原有 active / 组内首个。
+  const firstCreated = created[0]
+  if (firstCreated) {
+    activeTabId = firstCreated.id
+  } else if (!activeTabId) {
+    const fb = g.tabs[0]
+    if (fb) activeTabId = fb.id
   }
   sidebar.render()
   toolbar.render()
@@ -791,7 +882,10 @@ function openRestoreSelect(savedId: string): void {
       label: t.name,
       meta: inLive ? '已在当前分组中' : `${t.sessions.length} 个会话`,
       disabled: inLive,
-      defaultChecked: !inLive
+      // 默认不勾 —— 用户语义是"看一下要恢复哪些"，避免直接全恢复
+      defaultChecked: false,
+      deleteTitle: '从保存里删除此标签',
+      onDelete: () => deleteSavedTabFromPicker(savedId, t.id, t.name)
     }
   })
   // 末尾追加"新建空白标签"操作项：用户可能只想恢复分组同时顺手开一个空标签。
@@ -809,6 +903,34 @@ function openRestoreSelect(savedId: string): void {
     items,
     okLabel: '恢复',
     onOk: (ids, inputs) => void restoreSavedTabs(savedId, ids, inputs[PICK_ACTION_NEW_BLANK])
+  })
+}
+
+// pick 弹窗里点单个标签的小垃圾桶 → 二次确认 → 从快照里抽掉。
+// 删空也保留分组卡片（用户语义：只删标签，不动分组本身；要删整组走右键菜单）。
+function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: string): void {
+  const s = savedGroups.find((x) => x.id === savedId)
+  if (!s) return
+  confirmDialog({
+    title: `从保存里移除「${tabName}」？`,
+    message: '只把该标签从保存记录里删除，已打开的实例不受影响。',
+    okLabel: '删除',
+    onOk: () => {
+      const idx = s.snapshot.tabs.findIndex((t) => t.id === tabId)
+      if (idx < 0) return
+      s.snapshot.tabs.splice(idx, 1)
+      sidebar.render()
+      savedManager.render()
+      scheduleSave()
+      if (s.snapshot.tabs.length === 0) {
+        // 没标签可选了，pick 弹窗也没意义了；分组卡片留着
+        closePickTabs()
+        toast(`「${s.name}」已没有保存的标签`)
+        return
+      }
+      // 弹窗里就地刷新一遍 —— 复用 openRestoreSelect，不闪不丢焦点。
+      openRestoreSelect(savedId)
+    }
   })
 }
 
@@ -843,6 +965,7 @@ function renameSaved(savedId: string): void {
     onOk: (v) => {
       s.name = v.name
       s.snapshot.name = v.name
+      dedupSavedByNameCwd()
       sidebar.render()
       savedManager.render()
       scheduleSave()
@@ -968,11 +1091,28 @@ function openGroupCtx(groupId: string, x: number, y: number): void {
   )
 }
 
+// 把标签手动标成 done（绿点），不启动倒计时；下次"切回"该 tab 才走 maybeStartDowngrade。
+// 已经在该 tab 上时不会自动切走，所以也不会起倒计时 —— 绿点一直留着直到你"再次进入"。
+function markTabPending(tabId: string): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  ctx.tab.status = 'done'
+  ctx.tab.note = undefined
+  // 若该 tab 上恰有一个倒计时正在跑（之前已 active），先取消；按用户语义"再次进入才计时"
+  if (downgradeTabId === tabId) clearDowngradeTimer()
+  sidebar.render()
+  toolbar.render()
+  scheduleSave()
+}
+
 function openTabCtx(tabId: string, x: number, y: number): void {
   const ctx = findTab(tabId)
   if (!ctx) return
   showCtxMenu(
     [
+      { label: '标记为待查看', icon: icon('check-square'), act: () => markTabPending(tabId) },
+      { label: '保存标签', icon: icon('save'), act: () => saveTab(tabId) },
+      { sep: true },
       {
         label: '重命名标签',
         icon: icon('edit'),
@@ -989,8 +1129,6 @@ function openTabCtx(tabId: string, x: number, y: number): void {
       },
       { label: '在本组新建标签', icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
       { sep: true },
-      { label: '保存标签', icon: icon('save'), act: () => saveTab(tabId) },
-      { sep: true },
       { label: '关闭标签', icon: icon('close'), danger: true, act: () => closeTab(tabId) }
     ],
     x,
@@ -999,6 +1137,8 @@ function openTabCtx(tabId: string, x: number, y: number): void {
 }
 
 function openSavedCtx(savedId: string, x: number, y: number): void {
+  // hover 已经能从 saved-row 上直接点删除（带二次确认），整行点击直达 pick 弹窗（
+  // 那里能删单个标签），日常用不到批量管理 → 不再在右键里挂"管理本分组"。
   showCtxMenu(
     [
       { label: '选择恢复', icon: icon('rotate-ccw'), act: () => openRestoreSelect(savedId) },
@@ -1023,15 +1163,17 @@ const sidebar = new Sidebar({
       tabs: g.tabs,
       dirty: isGroupDirty(g)
     })),
+  // 侧边栏渲染：按名称排序（中文拼音 + 数字自然），与管理弹窗保持一致
   getSaved: (): SavedView[] =>
-    savedGroups.map((s) => ({
-      id: s.id,
-      name: s.name,
-      cwd: shortPath(s.cwd),
-      tabCount: s.snapshot.tabs.length,
-      savedAt: formatTs(s.savedAt)
-    })),
-  getSavedLimit: () => settings.savedSidebarLimit,
+    [...savedGroups]
+      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        cwd: shortPath(s.cwd),
+        tabCount: s.snapshot.tabs.length,
+        savedAt: formatTs(s.savedAt)
+      })),
   getActiveTabId: () => activeTabId,
   activateTab,
   closeTab,
@@ -1056,6 +1198,16 @@ const sidebar = new Sidebar({
   restoreSaved: openRestoreSelect,
   openManageSaved: () => savedManager.open()
 })
+
+// 让悬浮窗的计数自动跟着 sidebar 状态同步：sidebar.render 是"任何 tab/分组发生变化"
+// 的统一汇聚点，包到它后面省去逐处插桩。
+{
+  const orig = sidebar.render.bind(sidebar)
+  sidebar.render = (): void => {
+    orig()
+    pushFloaterCounts()
+  }
+}
 
 const toolbar = new Toolbar({
   getActiveTab: () => {
@@ -1176,15 +1328,19 @@ const offSession = window.term.onSessionEvent((ev) => {
       return true
     })
   }
-  const existed = tab.sessions.find((s) => s.sessionId === ev.sessionId)
-  if (existed) {
+  const existedIdx = tab.sessions.findIndex((s) => s.sessionId === ev.sessionId)
+  if (existedIdx >= 0) {
+    const [existed] = tab.sessions.splice(existedIdx, 1)
     if (ev.ts && (!existed.lastTs || ev.ts > existed.lastTs)) existed.lastTs = ev.ts
-    if (tab.activeSessionId !== ev.sessionId) {
-      tab.activeSessionId = ev.sessionId
-      scheduleSave()
-      sidebar.render()
-      toolbar.render()
-    }
+    // resume 旧会话 → 把它挪到数组末尾（toolbar 倒序展示时即栈顶），
+    // 反映"最近活跃"次序；之前只切 activeSessionId 不重排，导致栈顶永远是最后新建的那条。
+    tab.sessions.push(existed)
+    tab.activeSessionId = ev.sessionId
+    autoSyncTabToSaved(tab, ctx.group)
+    scheduleSave()
+    sidebar.render()
+    toolbar.render()
+    recordTabHistory(tab, ctx.group.name, true)
     return
   }
   tab.sessions.push({
@@ -1207,6 +1363,13 @@ const offSession = window.term.onSessionEvent((ev) => {
 const offState = window.term.onStateEvent((ev) => {
   const ctx = findTab(ev.tabId)
   if (!ctx) return
+  // 外部 hook 不允许把 done/attention 降级回 idle —— 这两个态承载"有事/已完成未查看"的信号，
+  // 降级是渲染层倒计时（用户切到该 tab 看过后才降）的独占权。
+  // 历史上 idle_prompt → idle 的 hook 就在这里翻车：cc Stop 60s 没人理会发 idle_prompt，
+  // 把绿点静默盖成灰点。hook 那条已删，这里再补一道闸防回归。
+  if (ev.state === 'idle' && (ctx.tab.status === 'done' || ctx.tab.status === 'attention')) {
+    return
+  }
   ctx.tab.status = ev.state
   ctx.tab.note = ev.message
   // 状态变了 → 重置该 tab 之前未触发的降级；若仍是当前 tab 且新态需降级，重启倒计时
@@ -1275,6 +1438,14 @@ function applySidebarLayout(): void {
   sidebarEl.classList.toggle('collapsed', settings.sidebarCollapsed)
   sidebarHandleEl.hidden = !settings.sidebarCollapsed
   savedSectionEl.classList.toggle('collapsed', settings.savedCollapsed)
+  // 已保存区高度：0 = 不写变量走 CSS 默认 40%；否则按像素值套用
+  if (settings.sidebarSavedHeight > 0) {
+    document.documentElement.style.setProperty('--saved-h', `${settings.sidebarSavedHeight}px`)
+  } else {
+    document.documentElement.style.removeProperty('--saved-h')
+  }
+  // 折叠态下拉条没意义：隐藏并禁用 pointer，避免误拖
+  savedResizer.classList.toggle('disabled', settings.savedCollapsed)
 }
 
 function persistSettings(): void {
@@ -1304,6 +1475,36 @@ sidebarResizer.addEventListener('mousedown', (e) => {
     window.removeEventListener('mouseup', onUp)
     persistSettings()
     activeContext()?.tab.refit()
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+})
+
+// 已保存 ↔ 打开 之间的水平拉条：调 .side-saved 高度，剩余给 .side-open（flex:1 自动吃满）
+savedResizer.addEventListener('mousedown', (e) => {
+  if (settings.savedCollapsed || settings.sidebarCollapsed) return
+  e.preventDefault()
+  document.body.classList.add('row-resizing')
+  savedResizer.classList.add('dragging')
+  const startY = e.clientY
+  const startH = savedSectionEl.getBoundingClientRect().height
+  const sidebarH = sidebarEl.getBoundingClientRect().height
+  // 留 100px 给「打开的分组」最少空间，避免被挤没
+  const minH = 80
+  const maxH = Math.max(minH, sidebarH - 100)
+  const onMove = (ev: MouseEvent): void => {
+    // 向上拖（clientY 变小）= 已保存区变大
+    const dy = startY - ev.clientY
+    const h = Math.max(minH, Math.min(maxH, Math.round(startH + dy)))
+    settings = { ...settings, sidebarSavedHeight: h }
+    document.documentElement.style.setProperty('--saved-h', `${h}px`)
+  }
+  const onUp = (): void => {
+    document.body.classList.remove('row-resizing')
+    savedResizer.classList.remove('dragging')
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    persistSettings()
   }
   window.addEventListener('mousemove', onMove)
   window.addEventListener('mouseup', onUp)
@@ -1347,39 +1548,32 @@ function lastTsOf(t: SavedTab): string | undefined {
 }
 
 const savedManager = new SavedManager({
+  // 管理弹窗渲染：按名称排序（与侧边栏一致）。底层 savedGroups 数组顺序不动 ——
+  // 排序在展示层做，已经不依赖手动拖动了。
   getSaved: (): ManageGroupView[] =>
-    savedGroups.map((s) => ({
-      id: s.id,
-      name: s.name,
-      cwd: s.cwd,
-      savedAt: s.savedAt,
-      tabs: s.snapshot.tabs.map((t) => ({
-        id: t.id,
-        name: t.name,
-        sessions: t.sessions.length,
-        savedAt: t.savedAt,
-        lastTs: lastTsOf(t)
-      }))
-    })),
-  onReorder: (ids) => {
-    const map = new Map(savedGroups.map((s) => [s.id, s]))
-    const next: SavedGroup[] = []
-    for (const id of ids) {
-      const s = map.get(id)
-      if (s) next.push(s)
-    }
-    // 兜底：补回任何漏掉的
-    for (const s of savedGroups) if (!ids.includes(s.id)) next.push(s)
-    savedGroups.splice(0, savedGroups.length, ...next)
-    sidebar.render()
-    scheduleSave()
-  },
+    [...savedGroups]
+      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        cwd: s.cwd,
+        savedAt: s.savedAt,
+        tabs: s.snapshot.tabs.map((t) => ({
+          id: t.id,
+          name: t.name,
+          sessions: t.sessions.length,
+          savedAt: t.savedAt,
+          lastTs: lastTsOf(t)
+        }))
+      })),
   onRename: (id, name) => {
     const s = savedGroups.find((x) => x.id === id)
     if (!s) return
     s.name = name
     s.snapshot.name = name
+    dedupSavedByNameCwd()
     sidebar.render()
+    savedManager.render()
     scheduleSave()
   },
   onDelete: (id) => {
@@ -1406,11 +1600,11 @@ const savedManager = new SavedManager({
     if (idx < 0) return
     s.snapshot.tabs.splice(idx, 1)
     sidebar.render()
+    savedManager.render()
     scheduleSave()
   },
   onRestoreAll: (id) => restoreSavedAll(id),
-  onRestoreSelect: (id) => openRestoreSelect(id),
-  getSidebarLimit: () => settings.savedSidebarLimit
+  onRestoreSelect: (id) => openRestoreSelect(id)
 })
 
 // ─── 标签历史窗口 ────────────────────────────────────────────────
@@ -1476,6 +1670,18 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
       }
     })
   }
+  // 历史数据可能有同名同路径的重复条目（之前没合并），启动时统一收拢
+  dedupSavedByNameCwd()
   sidebar.render()
   toolbar.render()
+  // 启动时按当前设置同步悬浮窗（主进程也会按自己读到的设置拉起；这里再保一道，
+  // 万一用户在 setting 文件里手改了也能立即生效）
+  window.term.floaterSetEnabled(settings.showFloater)
+  if (settings.showFloater) pushFloaterCounts()
+  // 悬浮窗里通过右键菜单"隐藏"时，主进程已经销毁窗口并落盘 showFloater=false，
+  // 这里同步刷新内存里的 settings 副本，避免设置面板还显示开。
+  window.term.onFloaterHidden(() => {
+    if (!settings.showFloater) return
+    settings = { ...settings, showFloater: false }
+  })
 })()

@@ -5,8 +5,8 @@ import { join } from 'node:path'
 
 export interface HookPaths {
   ccHooksJson: string
-  recordSessionPs1: string
-  recordStatePs1: string
+  sessionProbeJs: string
+  stateProbeJs: string
   eventsDir: string
   stateDir: string
   statusDir: string
@@ -87,52 +87,69 @@ function detectNodePath(): string {
   return 'node'
 }
 
-const PS1_SESSION = `# Claude Terminal · SessionStart hook
-$ErrorActionPreference='SilentlyContinue'
-$tab = $env:TERMINAL_TAB_ID
-if (-not $tab) { exit 0 }
-$dir = $env:TERMINAL_EVENTS_DIR
-if (-not $dir) { exit 0 }
-try {
-  $raw = [Console]::In.ReadToEnd()
-  if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
-  $in = $raw | ConvertFrom-Json
-} catch { exit 0 }
-$out = Join-Path $dir ($tab + '.jsonl')
-if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-$row = @{
-  sessionId = $in.session_id
-  cwd       = $in.cwd
-  source    = $in.source
-  ts        = (Get-Date).ToString('o')
-} | ConvertTo-Json -Compress
-Add-Content -Encoding utf8 -Path $out -Value $row
-exit 0
+// SessionStart hook（node）。原来用 pwsh，cc 偶尔报 "SessionStart:resume hook error / Failed
+// with non-blocking status code: No stderr output" —— 推测是 PS 冷启动慢 + Add-Content 在并发
+// IO 下抛了非终止异常 + $ErrorActionPreference 兜不住 → 非零退出 → cc 当 hook 失败 → .jsonl
+// 那行根本没写出去 → watcher 拿不到 → 渲染层栈不更新（"resume 后栈里没新会话"）。
+// 换 node：启动快、stdin 读法稳、appendFileSync 走 OS 原生 append 不会被 PS 那套 shareMode 卡。
+// 出错路径全部 swallow + 始终 exit 0 —— hook 失败不影响 cc 主流程。
+// dir 走 argv[2] 而不是 env：减少 1 条 env 依赖，少一个漂移点。
+const SESSION_PROBE_JS = `// Claude Terminal · SessionStart hook
+const fs = require('fs'); const path = require('path');
+const dir = process.argv[2];
+const tab = process.env.TERMINAL_TAB_ID || '';
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('error', () => {});
+process.stdin.on('end', () => {
+  try {
+    if (!dir || !tab) return;
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    const sid = (j && j.session_id) || '';
+    if (!sid) return;
+    const row = {
+      sessionId: sid,
+      cwd: (j && j.cwd) || '',
+      source: (j && j.source) || 'startup',
+      ts: new Date().toISOString()
+    };
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+    fs.appendFileSync(path.join(dir, tab + '.jsonl'), JSON.stringify(row) + '\\n', 'utf8');
+  } catch (e) {}
+});
 `
 
-// 状态 hook：state 来自 args[0]，message 取 stdin payload 的 .message 字段
-const PS1_STATE = `# Claude Terminal · 状态 hook
-$ErrorActionPreference='SilentlyContinue'
-$tab = $env:TERMINAL_TAB_ID
-if (-not $tab) { exit 0 }
-$dir = $env:TERMINAL_STATE_DIR
-if (-not $dir) { exit 0 }
-$state = if ($args.Length -gt 0) { $args[0] } else { 'idle' }
-$msg = $null
-try {
-  $raw = [Console]::In.ReadToEnd()
-  if (-not [string]::IsNullOrWhiteSpace($raw)) {
-    $in = $raw | ConvertFrom-Json
-    if ($in -and $in.message) { $msg = [string]$in.message }
-  }
-} catch {}
-$out = Join-Path $dir ($tab + '.json')
-if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-$obj = @{ state = $state; message = $msg; ts = (Get-Date).ToString('o') }
-$tmp = $out + '.tmp'
-$obj | ConvertTo-Json -Compress | Set-Content -Encoding utf8 -Path $tmp
-Move-Item -Force -Path $tmp -Destination $out
-exit 0
+// 状态 hook（node）。state 走 argv[3]（busy/done/attention/idle），dir 走 argv[2]。
+// 原子写：先写 .tmp 再 rename，避免 watcher 读到半截 JSON。
+const STATE_PROBE_JS = `// Claude Terminal · 状态 hook
+const fs = require('fs'); const path = require('path');
+const dir = process.argv[2];
+const state = process.argv[3] || 'idle';
+const tab = process.env.TERMINAL_TAB_ID || '';
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('error', () => {});
+process.stdin.on('end', () => {
+  try {
+    if (!dir || !tab) return;
+    let msg = null;
+    if (raw) {
+      try {
+        const j = JSON.parse(raw);
+        if (j && typeof j.message === 'string') msg = j.message;
+      } catch (e) {}
+    }
+    const obj = { state: state, message: msg, ts: new Date().toISOString() };
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+    const out = path.join(dir, tab + '.json');
+    const tmp = out + '.' + process.pid + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(obj), 'utf8');
+    fs.renameSync(tmp, out);
+  } catch (e) {}
+});
 `
 
 export function ensureHookAssets(): HookPaths {
@@ -146,27 +163,24 @@ export function ensureHookAssets(): HookPaths {
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true })
   if (!existsSync(statusDir)) mkdirSync(statusDir, { recursive: true })
 
-  const recordSessionPs1 = join(userData, 'record-session.ps1')
-  const recordStatePs1 = join(userData, 'record-state.ps1')
+  const sessionProbeJs = join(userData, 'session-probe.cjs')
+  const stateProbeJs = join(userData, 'state-probe.cjs')
   const statuslineJs = join(userData, 'statusline-probe.cjs')
-  writeFileSync(recordSessionPs1, PS1_SESSION, 'utf8')
-  writeFileSync(recordStatePs1, PS1_STATE, 'utf8')
+  writeFileSync(sessionProbeJs, SESSION_PROBE_JS, 'utf8')
+  writeFileSync(stateProbeJs, STATE_PROBE_JS, 'utf8')
   writeFileSync(statuslineJs, STATUSLINE_JS, 'utf8')
 
+  const nodePath = detectNodePath()
+  const sessionCmd = `"${nodePath}" "${sessionProbeJs}" "${eventsDir}"`
   const stateCmd = (st: string): string =>
-    `pwsh -NoProfile -File "${recordStatePs1}" ${st}`
-
-  // 经 sh 执行，Windows 路径在双引号里原样传给 node（与 hooks 同款写法）
-  const statuslineCmd = `"${detectNodePath()}" "${statuslineJs}" "${statusDir}"`
+    `"${nodePath}" "${stateProbeJs}" "${stateDir}" ${st}`
+  const statuslineCmd = `"${nodePath}" "${statuslineJs}" "${statusDir}"`
 
   const settings = {
     statusLine: { type: 'command', command: statuslineCmd },
     hooks: {
       SessionStart: [
-        {
-          matcher: '',
-          hooks: [{ type: 'command', command: `pwsh -NoProfile -File "${recordSessionPs1}"` }]
-        }
+        { matcher: '', hooks: [{ type: 'command', command: sessionCmd }] }
       ],
       UserPromptSubmit: [
         { matcher: '', hooks: [{ type: 'command', command: stateCmd('busy') }] }
@@ -179,13 +193,15 @@ export function ensureHookAssets(): HookPaths {
       ],
       Notification: [
         { matcher: 'permission_prompt', hooks: [{ type: 'command', command: stateCmd('attention') }] },
-        { matcher: 'elicitation_dialog', hooks: [{ type: 'command', command: stateCmd('attention') }] },
-        { matcher: 'idle_prompt', hooks: [{ type: 'command', command: stateCmd('idle') }] }
+        { matcher: 'elicitation_dialog', hooks: [{ type: 'command', command: stateCmd('attention') }] }
+        // 不挂 idle_prompt：cc Stop 后 ~60s 没人理就发 idle_prompt，若映射成 idle 会把
+        // 绿点（done）静默盖回灰点（idle），表现为"明明完成了但没绿点"。
+        // idle 只该由 renderer 的降级倒计时产生（用户切到 done tab 看过后才降）。
       ]
     }
   }
   const ccHooksJson = join(userData, 'cc-hooks.json')
   writeFileSync(ccHooksJson, JSON.stringify(settings, null, 2), 'utf8')
 
-  return { ccHooksJson, recordSessionPs1, recordStatePs1, eventsDir, stateDir, statusDir, statuslineJs }
+  return { ccHooksJson, sessionProbeJs, stateProbeJs, eventsDir, stateDir, statusDir, statuslineJs }
 }

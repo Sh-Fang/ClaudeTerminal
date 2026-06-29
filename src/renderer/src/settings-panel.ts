@@ -23,10 +23,10 @@ export class SettingsPanel {
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
   private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
-  private fSavedLimit = document.getElementById('set-saved-limit') as HTMLDivElement
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
+  private fShowFloater = document.getElementById('set-show-floater') as HTMLInputElement
   private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
   private pickCwdBtn = document.getElementById('set-default-cwd-pick') as HTMLButtonElement
   private lastDisableUpd: boolean | null = null
@@ -66,11 +66,10 @@ export class SettingsPanel {
     }
 
     this.initSeg(this.fTheme)
-    this.initSeg(this.fSavedLimit)
     this.initSeg(this.fDowngradeSec)
 
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
-    const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fShowUsage]
+    const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fShowUsage, this.fShowFloater]
     this.detectBtn.addEventListener('click', () => void this.runDetect())
     this.pickCwdBtn.addEventListener('click', () => void this.pickDefaultCwd())
     for (const el of live) {
@@ -158,10 +157,10 @@ export class SettingsPanel {
     this.fDefaultCC.checked = s.defaults.autoLaunchCC
     this.fClaudePath.value = s.claudePath
     this.fDisableUpd.checked = s.disableAutoupdater
-    this.setSeg(this.fSavedLimit, String(s.savedSidebarLimit))
     this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
     this.fConfirmClose.checked = s.confirmCloseUnsaved
     this.fShowUsage.checked = s.showClaudeUsage
+    this.fShowFloater.checked = s.showFloater
     this.lastDisableUpd = s.disableAutoupdater
   }
 
@@ -219,10 +218,10 @@ export class SettingsPanel {
       },
       claudePath: this.fClaudePath.value.trim(),
       disableAutoupdater: this.fDisableUpd.checked,
-      savedSidebarLimit: this.clamp(Number(this.getSeg(this.fSavedLimit)), 0, 5, cur.savedSidebarLimit),
       statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 5, cur.statusDowngradeSec),
       confirmCloseUnsaved: this.fConfirmClose.checked,
       showClaudeUsage: this.fShowUsage.checked,
+      showFloater: this.fShowFloater.checked,
       // 「默认新建分组路径」框即代表下次预填，写回时同步 lastUsedCwd 让它立即生效
       lastUsedCwd: this.fDefaultCwd.value
     }

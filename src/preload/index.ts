@@ -64,8 +64,8 @@ export interface StateEvent {
 
 export interface HookPaths {
   ccHooksJson: string
-  recordSessionPs1: string
-  recordStatePs1: string
+  sessionProbeJs: string
+  stateProbeJs: string
   eventsDir: string
   stateDir: string
   statusDir: string
@@ -87,10 +87,20 @@ export interface Settings {
   sidebarWidth: number
   sidebarCollapsed: boolean
   savedCollapsed: boolean
-  savedSidebarLimit: number
+  sidebarSavedHeight: number
   statusDowngradeSec: number
   confirmCloseUnsaved: boolean
   showClaudeUsage: boolean
+  showFloater: boolean
+  floaterX: number
+  floaterY: number
+}
+
+export interface FloaterCounts {
+  done: number       // 绿点：完成 / 待查看
+  attention: number  // 黄点：需要决策
+  busy: number       // 蓝点：运行中
+  total: number      // 全 0 时退回展示当前会话总数
 }
 
 export interface UsageWindow {
@@ -183,6 +193,17 @@ export interface TermBridge {
   tabHistoryDelete(tabId: string): Promise<boolean>
   tabHistoryDeleteMany(tabIds: string[]): Promise<boolean>
   tabHistoryClear(): Promise<boolean>
+  // 悬浮窗
+  floaterSetEnabled(on: boolean): void
+  floaterPush(counts: FloaterCounts): void
+  onFloaterCounts(cb: (c: FloaterCounts) => void): () => void
+  floaterFocusMain(): void
+  floaterHide(): void
+  // 悬浮窗右键弹菜单时，菜单可能比卡片宽 → 让主进程临时把窗口放大，关菜单再缩回
+  floaterResize(w: number, h: number): void
+  floaterSetFocusable(on: boolean): void
+  // 主窗口侧：悬浮窗被右键菜单关掉时通知一下，刷新内存里的 settings 副本
+  onFloaterHidden(cb: () => void): () => void
 }
 
 const api: TermBridge = {
@@ -248,7 +269,23 @@ const api: TermBridge = {
   tabHistoryUpsert: (entry) => ipcRenderer.invoke('tabHistory:upsert', entry),
   tabHistoryDelete: (tabId) => ipcRenderer.invoke('tabHistory:delete', tabId),
   tabHistoryDeleteMany: (tabIds) => ipcRenderer.invoke('tabHistory:deleteMany', tabIds),
-  tabHistoryClear: () => ipcRenderer.invoke('tabHistory:clear')
+  tabHistoryClear: () => ipcRenderer.invoke('tabHistory:clear'),
+  floaterSetEnabled: (on) => ipcRenderer.send('floater:setEnabled', !!on),
+  floaterPush: (counts) => ipcRenderer.send('floater:push', counts),
+  onFloaterCounts: (cb) => {
+    const h = (_e: IpcRendererEvent, c: FloaterCounts) => cb(c)
+    ipcRenderer.on('floater:counts', h)
+    return () => ipcRenderer.off('floater:counts', h)
+  },
+  floaterFocusMain: () => ipcRenderer.send('floater:focusMain'),
+  floaterHide: () => ipcRenderer.send('floater:hide'),
+  floaterResize: (w, h) => ipcRenderer.send('floater:resize', { w, h }),
+  floaterSetFocusable: (on) => ipcRenderer.send('floater:setFocusable', !!on),
+  onFloaterHidden: (cb) => {
+    const h = (): void => cb()
+    ipcRenderer.on('floater:hidden', h)
+    return () => ipcRenderer.off('floater:hidden', h)
+  }
 }
 
 contextBridge.exposeInMainWorld('term', api)

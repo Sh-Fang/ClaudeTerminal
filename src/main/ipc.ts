@@ -6,7 +6,7 @@ import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-hel
 import { ensureHookAssets, type HookPaths } from './hook-assets'
 import { readSessionMeta, readSessionUsage } from './jsonl-reader'
 import { readGitBranch } from './git-info'
-import { loadSettings, saveSettings } from './settings'
+import { loadSettings, saveSettings, type Settings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
@@ -19,6 +19,7 @@ import {
   upsertTabHistory,
   type HistoryEntry
 } from './tab-history'
+import { pushCountsToFloater, resizeFloater, setFloaterEnabled, setFloaterFocusable } from './floater'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -140,11 +141,20 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     writePty(p.id, p.data)
   })
 
+  // 环境变量开关：启动前 set TERM_DEBUG=1 打开主进程侧日志（resize/kill 时机）。
+  // 跟 renderer 的 window.__termDebug 配合看完整链路。
+  const ptyDbg = process.env.TERM_DEBUG === '1'
+  const ptyDbgLog = (...args: unknown[]): void => {
+    if (ptyDbg) console.log('[pty]', ...args)
+  }
+
   ipcMain.on('pty:resize', (_e, p: { id: number; cols: number; rows: number }) => {
+    ptyDbgLog(`resize id=${p.id} cols=${p.cols} rows=${p.rows}`)
     resizePty(p.id, p.cols, p.rows)
   })
 
   ipcMain.on('pty:kill', (_e, p: { id: number }) => {
+    ptyDbgLog(`kill id=${p.id}`)
     killPty(p.id)
   })
 
@@ -164,5 +174,49 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('tabHistory:clear', () => {
     clearTabHistory()
     return true
+  })
+
+  ipcMain.on('floater:setEnabled', (_e, on: boolean) => setFloaterEnabled(!!on))
+  ipcMain.on('floater:push', (_e, counts: unknown) => {
+    if (!counts || typeof counts !== 'object') return
+    const c = counts as Record<string, unknown>
+    const n = (v: unknown): number => {
+      const x = typeof v === 'number' ? v : Number(v)
+      return Number.isFinite(x) && x >= 0 ? Math.floor(x) : 0
+    }
+    pushCountsToFloater({
+      done: n(c.done),
+      attention: n(c.attention),
+      busy: n(c.busy),
+      total: n(c.total)
+    })
+  })
+  // 悬浮窗 focusable:false，自己 click 不能切焦点，转手让主进程把主窗口拉到前台
+  ipcMain.on('floater:focusMain', () => {
+    const w = getWindow()
+    if (!w || w.isDestroyed()) return
+    if (w.isMinimized()) w.restore()
+    w.show()
+    w.focus()
+  })
+  ipcMain.on('floater:resize', (_e, p: { w: number; h: number }) => {
+    if (!p || typeof p !== 'object') return
+    resizeFloater(Number(p.w), Number(p.h))
+  })
+  ipcMain.on('floater:setFocusable', (_e, on: boolean) => setFloaterFocusable(!!on))
+
+  ipcMain.on('floater:hide', () => {
+    setFloaterEnabled(false)
+    // 落盘 showFloater=false，下次启动也不会再拉起
+    try {
+      const cur = loadSettings()
+      saveSettings({ ...cur, showFloater: false } as Settings)
+    } catch {}
+    // 通知主渲染层同步内存 settings，免得设置面板还显示"开"
+    const mainWin = getWindow()
+    if (!mainWin || mainWin.isDestroyed()) return
+    const wc = mainWin.webContents
+    if (!wc || wc.isDestroyed()) return
+    try { wc.send('floater:hidden') } catch {}
   })
 }

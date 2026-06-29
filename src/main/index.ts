@@ -6,6 +6,8 @@ import { ensureHookAssets } from './hook-assets'
 import { SessionEventWatcher } from './session-events'
 import { StateEventWatcher } from './state-events'
 import { isSafeExternalUrl } from './url-safety'
+import { setFloaterEnabled, destroyFloater } from './floater'
+import { loadSettings } from './settings'
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
@@ -65,6 +67,9 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
+  // 主窗口一旦被销毁就把悬浮窗也带走 —— 悬浮窗 skipTaskbar，留着会卡住 window-all-closed
+  mainWindow.on('closed', () => { destroyFloater() })
+
   // 终端输出里的链接（xterm web-links 等）触发 window.open 时，只放行 http(s)，
   // 挡掉 file: / 自定义协议等可被恶意内容利用的 scheme。
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -101,6 +106,8 @@ app.whenReady().then(() => {
   registerPtyIpc(() => mainWindow)
   ipcMain.on('window:closeConfirmed', () => {
     allowClose = true
+    // 先关掉悬浮窗，否则它还活着会卡住 window-all-closed，app 退不出去
+    destroyFloater()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close()
   })
   const hp = ensureHookAssets()
@@ -109,6 +116,10 @@ app.whenReady().then(() => {
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()
+  // 启动时按设置决定是否拉起悬浮窗
+  try {
+    if (loadSettings().showFloater) setFloaterEnabled(true)
+  } catch {}
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -117,11 +128,18 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopWatchers()
+  destroyFloater()
   killAll()
-  if (process.platform !== 'darwin') app.quit()
+  // 用 app.exit 而非 app.quit：node-pty 的 conoutSocketWorker.dispose() 会挂一个
+  // FLUSH_DATA_INTERVAL=1000ms 的 setTimeout 等最后一段输出 flush 再关 worker，
+  // app.quit 是优雅退，会等事件循环排空 → 进程多挂 1s 才消失。
+  // 窗口已关、renderer 已退、子进程同步 kill 完了，那 1s flush 没人在读，直接跳过。
+  if (process.platform !== 'darwin') app.exit(0)
 })
 
 app.on('before-quit', () => {
+  // 走 app.exit 时不会触发这里；保留是兜底 —— 例如 second-instance 路径或外部 app.quit()
+  // 时仍能把 watcher/pty 清干净（重复调用 stopWatchers/killAll 是幂等的）。
   stopWatchers()
   killAll()
 })

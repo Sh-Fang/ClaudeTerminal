@@ -3,7 +3,7 @@
 // 切桶，左侧 nav 切换右侧列表。点行/恢复按钮 = 恢复成 live tab；垃圾桶 = 单条删除。
 
 import type { SessionRecord } from './terminal-tab'
-import { escapeHtml, formatTs, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
+import { escapeHtml, formatTs, fuzzyMatch, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
 import { icon } from './svg-icons'
 
 export interface HistoryEntry {
@@ -50,9 +50,11 @@ export class HistoryManager {
   private nav: HTMLElement
   private closeBtn: HTMLButtonElement
   private clearBtn: HTMLButtonElement
+  private searchInput: HTMLInputElement
   private entries: HistoryEntry[] = []
   private grouped: Record<Bucket, HistoryEntry[]> = { today: [], yesterday: [], earlier: [] }
   private activeBucket: Bucket = 'today'
+  private searchQuery = ''
 
   constructor(private hooks: HistoryManagerHooks) {
     this.scrim = document.getElementById('historyScrim') as HTMLDivElement
@@ -61,12 +63,27 @@ export class HistoryManager {
     this.nav = document.getElementById('hist-nav') as HTMLElement
     this.closeBtn = document.getElementById('hist-close') as HTMLButtonElement
     this.clearBtn = document.getElementById('hist-clear') as HTMLButtonElement
+    this.searchInput = document.getElementById('hist-search') as HTMLInputElement
     this.closeBtn.addEventListener('click', () => this.close())
     this.clearBtn.addEventListener('click', () => this.onClear())
     this.nav.addEventListener('click', (e) => this.onNavClick(e))
     bindScrimDismiss(this.scrim, () => this.close())
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.scrim.hidden) this.close()
+      if (e.key === 'Escape' && !this.scrim.hidden) {
+        if (this.searchQuery) {
+          this.searchInput.value = ''
+          this.searchQuery = ''
+          this.applySearchSideEffects()
+          this.render()
+          return
+        }
+        this.close()
+      }
+    })
+    this.searchInput.addEventListener('input', () => {
+      this.searchQuery = this.searchInput.value
+      this.applySearchSideEffects()
+      this.render()
     })
     this.body.addEventListener('click', (e) => this.onBodyClick(e))
   }
@@ -74,10 +91,24 @@ export class HistoryManager {
   async open(): Promise<void> {
     this.entries = await window.term.tabHistoryList()
     this.regroup()
+    this.searchQuery = ''
+    this.searchInput.value = ''
     // 打开时默认跳到第一个非空桶（用户最关心今天，但今天为空就跳昨天）
     this.activeBucket = this.firstNonEmptyBucket() ?? 'today'
     this.scrim.hidden = false
     this.render()
+  }
+
+  // 输入搜索词后：当前 active 桶被过滤空了就跳到第一个仍有命中的桶，
+  // 没有任何命中则保留当前 active（让 empty 提示展示）。
+  private applySearchSideEffects(): void {
+    if (this.filtered(this.activeBucket).length > 0) return
+    for (const b of BUCKETS) {
+      if (this.filtered(b.key).length > 0) {
+        this.activeBucket = b.key
+        return
+      }
+    }
   }
 
   close(): void {
@@ -108,6 +139,13 @@ export class HistoryManager {
     return null
   }
 
+  // 取过滤后的桶列表；空 query 直接返回原桶
+  private filtered(b: Bucket): HistoryEntry[] {
+    const q = this.searchQuery.trim()
+    if (!q) return this.grouped[b]
+    return this.grouped[b].filter((e) => fuzzyMatch(q, [e.groupName, e.tabName, e.cwd]))
+  }
+
   private render(): void {
     this.renderNav()
     this.renderList()
@@ -116,35 +154,46 @@ export class HistoryManager {
 
   private renderClearBtn(): void {
     const bucketLabel = BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? ''
+    // 搜索时禁用"清空" —— 避免误把整个桶里没显示的条目也清掉
+    const q = this.searchQuery.trim()
     const n = this.grouped[this.activeBucket].length
     this.clearBtn.hidden = false
     this.clearBtn.textContent = n > 0 ? `清空${bucketLabel}的历史 (${n})` : `清空${bucketLabel}的历史`
-    this.clearBtn.disabled = n === 0
+    this.clearBtn.disabled = n === 0 || !!q
+    this.clearBtn.title = q ? '清空时请先清除搜索词' : ''
   }
 
   private renderNav(): void {
-    this.nav.innerHTML = BUCKETS.map(
-      (b) => `
+    // 计数跟着搜索过滤走，让用户立刻看到哪个时间段有命中
+    this.nav.innerHTML = BUCKETS.map((b) => {
+      const n = this.filtered(b.key).length
+      return `
       <button type="button" class="hist-nav-item${b.key === this.activeBucket ? ' active' : ''}" data-bucket="${b.key}">
         <span>${b.label}</span>
-        <span class="count">${this.grouped[b.key].length}</span>
+        <span class="count">${n}</span>
       </button>
     `
-    ).join('')
+    }).join('')
   }
 
   private renderList(): void {
     this.body.innerHTML = ''
-    const list = this.grouped[this.activeBucket]
+    const list = this.filtered(this.activeBucket)
     const isEmpty = list.length === 0
     this.empty.hidden = !isEmpty
     if (isEmpty) {
       const e1 = this.empty.querySelector('div:first-child') as HTMLElement | null
-      // 区分"完全没历史"与"这个时间段没有"
-      if (this.entries.length === 0) {
+      const sub = this.empty.querySelector('.sub') as HTMLElement | null
+      const q = this.searchQuery.trim()
+      if (q) {
+        if (e1) e1.textContent = '没有匹配的历史记录。'
+        if (sub) sub.textContent = '换个关键词，或按 Esc 清空搜索。'
+      } else if (this.entries.length === 0) {
         if (e1) e1.textContent = '7 天内没有打开过标签的记录。'
+        if (sub) sub.textContent = '每次新建标签都会自动留底。'
       } else {
         if (e1) e1.textContent = '这个时间段没有标签记录。'
+        if (sub) sub.textContent = '每次新建标签都会自动留底。'
       }
       return
     }
