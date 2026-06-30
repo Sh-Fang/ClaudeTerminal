@@ -14,8 +14,8 @@ const cardEl = document.querySelector('.card') as HTMLDivElement
 
 interface CtxItem { label?: string; icon?: string; danger?: boolean; sep?: boolean; act?: () => void }
 
-const FLOATER_W = 140
-const FLOATER_H = 44
+const FLOATER_W = 130
+const FLOATER_H = 34
 const MENU_PAD = 6
 
 function buildCtx(items: CtxItem[]): void {
@@ -85,6 +85,11 @@ const ICON_EYE_OFF =
 
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault()
+  // 已经开着 → 再次右键当作关闭（toggle），不要在新位置重开导致闪烁
+  if (ctxEl.classList.contains('open')) {
+    closeCtx()
+    return
+  }
   showCtx(
     [
       { label: '打开主窗口', icon: ICON_OPEN, act: () => window.term?.floaterFocusMain?.() },
@@ -97,17 +102,13 @@ window.addEventListener('contextmenu', (e) => {
 })
 
 function render(c: FloaterCounts): void {
-  const parts: string[] = []
-  if (c.done > 0) parts.push(seg('done', c.done))
-  if (c.attention > 0) parts.push(seg('attention', c.attention))
-  if (c.busy > 0) parts.push(seg('busy', c.busy))
-  if (parts.length === 0) {
-    // 全 0：退回展示当前会话总数
-    parts.push(
-      `<span class="item"><span class="dot total"></span><span class="num">${c.total}</span><span class="label">标签</span></span>`
-    )
-  }
-  itemsEl.innerHTML = parts.join('')
+  // 顺序：黄(待决策) → 蓝(运行中) → 绿(待查看)。三块常驻不隐藏 0，
+  // 中间用竖条分隔。固定三列让数字位置稳定，扫一眼就能定位。
+  itemsEl.innerHTML = [
+    seg('attention', c.attention),
+    seg('busy', c.busy),
+    seg('done', c.done)
+  ].join('<span class="sep"></span>')
 }
 
 function seg(kind: 'done' | 'attention' | 'busy', n: number): string {

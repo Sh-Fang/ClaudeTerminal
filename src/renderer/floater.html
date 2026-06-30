@@ -14,36 +14,50 @@
         overflow: hidden;
         cursor: default;
       }
-      /* 卡片本身尺寸固定；窗口被右键菜单临时撑大时它不跟着拉伸。
+      /* 卡片：pill 风、深色半透明、固定 100×30 在左上角，不随窗口拉伸。
+         窗口被菜单撑大时，空出来的区域就是菜单的位置；card 永远是 pill 自己。
          去掉外 drop-shadow —— 窗口透明，阴影投在空气里看着像污渍 */
       .card {
         box-sizing: border-box;
         position: absolute;
         top: 0; left: 0;
-        width: 140px; height: 44px;
-        background: rgba(23, 23, 23, 0.92);
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 6px 12px;
-        display: flex; align-items: center; justify-content: center; gap: 12px;
+        width: 130px; height: 34px;
+        background: rgba(40, 40, 42, 0.94);
+        border-radius: 17px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 0 10px;
+        display: flex; align-items: center; justify-content: center;
         -webkit-app-region: drag;
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(12px);
+        color: #f5f5f5;
       }
-      /* 菜单打开时给卡片加个 no-drag 标记 —— 让 mousedown 能正常派发到 renderer，
-         否则点卡片会被 OS 当成拖动起点，关菜单的逻辑收不到事件 */
+      /* 菜单期间：切到 no-drag，让 mousedown 能正常派发到 renderer 关菜单
+         （drag 区域 OS 会把 mousedown 抢走） */
       .card.menu-open { -webkit-app-region: no-drag; }
-      #items { display: flex; align-items: center; gap: 12px; min-width: 0; overflow: hidden; }
-      .item { display: flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1; }
-      .dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+      #items {
+        display: flex; align-items: center; gap: 9px;
+        flex: 1; min-width: 0; overflow: hidden;
+        justify-content: center;
       }
-      .dot.done       { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.55); }
-      .dot.attention  { background: #eab308; box-shadow: 0 0 6px rgba(234,179,8,0.55); }
-      .dot.busy       { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,0.55); }
+      .item {
+        display: flex; align-items: center; gap: 5px;
+        font-size: 12px; line-height: 1;
+        flex: 0 0 auto;
+      }
+      .dot {
+        flex: 0 0 7px;
+        width: 7px; height: 7px; border-radius: 50%;
+      }
+      .dot.done       { background: #22c55e; }
+      .dot.attention  { background: #eab308; }
+      .dot.busy       { background: #3b82f6; }
       .dot.total      { background: #9ca3af; }
       .num { font-weight: 600; font-variant-numeric: tabular-nums; }
-      .label { color: #9ca3af; font-size: 11px; margin-left: 2px; }
+      .sep {
+        flex: 0 0 1px;
+        width: 1px; height: 14px;
+        background: rgba(255, 255, 255, 0.18);
+      }
 
       /* ── 右键菜单：与主界面 .ctx 同款（浅色） ── */
       .ctx {

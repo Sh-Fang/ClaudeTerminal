@@ -451,6 +451,9 @@ function activateUI(tabId: string): void {
 
 // 查看降级：用户切到 done/attention 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
 // 用意：误点切走时绿点仍保留；真正"我看过了"才消失。
+//
+// 焦点门：用户切到该标签但主窗口在后台（在别的 app 上工作）→ 不应该算"看过了"，
+// 不启动倒计时；倒计时进行中失去焦点 → 暂停；回到焦点 → 重新走完整 N 秒。
 let downgradeTimer: number | null = null
 let downgradeTabId: string | null = null
 let downgradeFromStatus: TerminalTab['status'] | null = null
@@ -462,6 +465,8 @@ function clearDowngradeTimer(): void {
 function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
   if (activeTabId !== tabId) return
   if (st !== 'done' && st !== 'attention') return
+  // 主窗口失焦时不启动倒计时；focus 事件回来时 resumeDowngradeIfNeeded 会再调一次
+  if (!document.hasFocus()) return
   clearDowngradeTimer()
   downgradeTabId = tabId
   downgradeFromStatus = st
@@ -481,6 +486,16 @@ function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
     scheduleSave()
   }, settings.statusDowngradeSec * 1000)
 }
+
+// 焦点回到主窗口：如果当前激活的 tab 正好处于 done/attention，按完整 N 秒重启倒计时
+function resumeDowngradeIfNeeded(): void {
+  if (!activeTabId) return
+  const ctx = findTab(activeTabId)
+  if (!ctx) return
+  maybeStartDowngrade(activeTabId, ctx.tab.status)
+}
+window.addEventListener('blur', clearDowngradeTimer)
+window.addEventListener('focus', resumeDowngradeIfNeeded)
 
 function activateTab(tabId: string): void {
   if (activeTabId === tabId) return

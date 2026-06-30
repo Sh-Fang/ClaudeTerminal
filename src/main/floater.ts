@@ -36,14 +36,44 @@ export function setFloaterFocusable(focus: boolean): void {
   }
 }
 
-export const FLOATER_W = 140
-export const FLOATER_H = 44
+export const FLOATER_W = 130
+export const FLOATER_H = 34
 
 function defaultPosition(): { x: number; y: number } {
   const disp = screen.getPrimaryDisplay()
   const wa = disp.workArea
   // 默认贴右上角，离边距 16px
   return { x: wa.x + wa.width - FLOATER_W - 16, y: wa.y + 16 }
+}
+
+// 当前 (x, y, w, h) 的矩形和任一显示器的 workArea 有像样的交叠就算"在屏内"。
+// 阈值取 24px：拖到屏幕边缘只露一个角的不算，避免下次更难找回。
+function rectVisible(x: number, y: number, w: number, h: number): boolean {
+  const MIN_VIS = 24
+  for (const d of screen.getAllDisplays()) {
+    const wa = d.workArea
+    const ix = Math.max(x, wa.x)
+    const iy = Math.max(y, wa.y)
+    const ax = Math.min(x + w, wa.x + wa.width)
+    const ay = Math.min(y + h, wa.y + wa.height)
+    if (ax - ix >= MIN_VIS && ay - iy >= MIN_VIS) return true
+  }
+  return false
+}
+
+// 用户语境：插了大屏把悬浮窗拖到大屏，关掉大屏后小屏看不到 —— 老坐标落在已经
+// 不存在的 display 上。检测到不可见就挪回主屏右上角并落盘。
+export function ensureFloaterOnScreen(): void {
+  if (!win || win.isDestroyed()) return
+  const [x, y] = win.getPosition()
+  const [w, h] = win.getSize()
+  if (rectVisible(x, y, w, h)) return
+  const pos = defaultPosition()
+  win.setBounds({ x: pos.x, y: pos.y, width: FLOATER_W, height: FLOATER_H })
+  try {
+    const cur = loadSettings()
+    saveSettings({ ...cur, floaterX: pos.x, floaterY: pos.y })
+  } catch {}
 }
 
 export function createFloater(): void {
@@ -53,7 +83,9 @@ export function createFloater(): void {
     return
   }
   const s = loadSettings()
-  const pos = (s.floaterX >= 0 && s.floaterY >= 0)
+  // 启动前先校验：保存的位置如果落在已经断开的显示器上，直接回退到默认主屏右上角
+  const wantSaved = s.floaterX >= 0 && s.floaterY >= 0
+  const pos = (wantSaved && rectVisible(s.floaterX, s.floaterY, FLOATER_W, FLOATER_H))
     ? { x: s.floaterX, y: s.floaterY }
     : defaultPosition()
   win = new BrowserWindow({
@@ -110,7 +142,14 @@ export function createFloater(): void {
   }
   win.on('moved', persistPos)
   win.on('close', persistPos)
-  win.on('closed', () => { win = null })
+  win.on('closed', () => {
+    screen.off('display-removed', ensureFloaterOnScreen)
+    screen.off('display-metrics-changed', ensureFloaterOnScreen)
+    win = null
+  })
+  // 监听显示器变化：拔屏 / 分辨率 / 缩放 / workArea 变了都来挪一次窗
+  screen.on('display-removed', ensureFloaterOnScreen)
+  screen.on('display-metrics-changed', ensureFloaterOnScreen)
 }
 
 export function destroyFloater(): void {
