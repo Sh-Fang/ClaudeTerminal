@@ -152,6 +152,9 @@ export interface ModalInput {
   okLabel?: string
   onPickCwd?: (currentValue: string) => Promise<string | null>
   onOk: (v: { name: string; cwd?: string; autoLaunchCC?: boolean; tabName?: string }) => void
+  // true 时：name 字段会跟随 cwd 自动变成路径最后一段；用户一旦动过 name 字段
+  // 就停止跟随，避免覆盖用户输入。
+  autoNameFromCwd?: boolean
 }
 const modalTitle = document.getElementById('modal-title') as HTMLHeadingElement
 const modalSub = document.getElementById('modal-sub') as HTMLParagraphElement
@@ -170,6 +173,20 @@ let modalCb: ModalInput['onOk'] | null = null
 let modalKind: ModalKind = 'new-group'
 let modalPickCb: ModalInput['onPickCwd'] | null = null
 let modalShowTabName = false
+let modalAutoName = false
+let modalNameUserEdited = false
+
+// 取路径最后一段作为默认分组名：D:\Document\工单处理\理科工单 → "理科工单"
+// 兼容正反斜杠和末尾斜杠；取不到时回退给空串
+function basenameOfPath(p: string): string {
+  const segs = p.split(/[\\/]+/).filter(Boolean)
+  return segs[segs.length - 1] ?? ''
+}
+function maybeSyncNameFromCwd(): void {
+  if (!modalAutoName || modalNameUserEdited) return
+  const base = basenameOfPath(modalCwd.value)
+  if (base) modalName.value = base
+}
 
 function syncTabNameVisibility(): void {
   const shouldShow = modalShowTabName && modalCC.checked && modalCCField.style.display !== 'none'
@@ -192,12 +209,25 @@ export function openModal(cfg: ModalInput): void {
   modalPickCb = cfg.onPickCwd ?? null
   modalCwdPick.style.display = modalPickCb ? '' : 'none'
   modalCb = cfg.onOk
+  // 自动按 cwd 末段填 name：首次打开就 sync 一次；后续按 cwd 变化继续 sync，
+  // 直到用户手动改了 name 为止。
+  modalAutoName = !!cfg.autoNameFromCwd
+  modalNameUserEdited = false
+  if (modalAutoName && modalCwd.value) {
+    const base = basenameOfPath(modalCwd.value)
+    if (base) modalName.value = base
+  }
   scrim.hidden = false
   setTimeout(() => {
     modalName.focus()
     modalName.select()
   }, 0)
 }
+
+// 用户在 name 字段动了任意一下 → 标记为已编辑，后续 cwd 变化不再覆盖
+modalName.addEventListener('input', () => { modalNameUserEdited = true })
+// cwd 字段无论"打字"还是"粘贴"都触发同步
+modalCwd.addEventListener('input', maybeSyncNameFromCwd)
 
 modalCC.addEventListener('change', syncTabNameVisibility)
 function closeModal(): void {
@@ -236,7 +266,10 @@ modalCwdPick.addEventListener('click', () => {
   modalCwdPick.disabled = true
   void cb(modalCwd.value)
     .then((picked) => {
-      if (picked) modalCwd.value = picked
+      if (picked) {
+        modalCwd.value = picked
+        maybeSyncNameFromCwd()
+      }
     })
     .catch(() => {})
     .finally(() => {

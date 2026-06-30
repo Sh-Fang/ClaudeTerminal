@@ -397,6 +397,7 @@ async function newGroup(): Promise<void> {
     showTabName: true,
     tabName: 'A',
     okLabel: '创建',
+    autoNameFromCwd: true,
     onPickCwd: (cur) => window.term.pickDirectory(cur || prefilledCwd),
     onOk: async (v) => {
       const cwd = v.cwd?.trim() || ''
