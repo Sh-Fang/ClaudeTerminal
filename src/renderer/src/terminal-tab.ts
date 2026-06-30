@@ -1,6 +1,5 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
@@ -130,7 +129,6 @@ export class TerminalTab {
   ptyId: number | null = null
   private pendingInput = ''
   private waitingForRestart = false
-  private webgl: WebglAddon | null = null
   private disposed = false
   private handlers: TermTabHandlers
 
@@ -208,16 +206,11 @@ export class TerminalTab {
     parent.appendChild(this.host)
     this.term.open(this.host)
     try { this.fit.fit() } catch {}
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => {
-        try { webgl.dispose() } catch {}
-      })
-      this.term.loadAddon(webgl)
-      this.webgl = webgl
-    } catch (e) {
-      console.warn('[term] WebGL renderer unavailable:', e)
-    }
+    // 渲染器：用 xterm 默认 DOM renderer，不挂 WebglAddon。
+    // WebGL renderer 在「非活动 tab display:none → 切回 display:block」时会把字形图集/
+    // 几何缓存搞脏并固化，表现为切回后下半屏整列左移 1 cell（一旦出现稳定复现，
+    // 与缩放无关，clearTextureAtlas 也压不住）。DOM renderer 不存在图集错位，cc 的
+    // 全屏高频重绘在 Electron 上肉眼无感，故彻底弃用 WebGL。
     // 输入子系统：右键、粘贴、选区缓存、IME 守卫（依赖 host 已经挂上 DOM）
     this.bindContextMenu()
     this.bindPasteHandler()
@@ -569,14 +562,8 @@ export class TerminalTab {
     requestAnimationFrame(() => {
       dbg(this.id, 'setActive rAF: about to refit')
       this.refit()
-      // 非整数 DPR（Windows 150% 缩放 → dpr=1.5）下，cell 的设备像素尺寸带亚像素，
-      // WebGL renderer 的字形纹理图集按整数像素栅格化、与 cell 网格错配；display:none→block
-      // 切回时这个错配被固化进图集缓存，表现为下半屏整列左移 1 cell（一旦出现就稳定复现）。
-      // refresh() 只重画不重建图集，救不回；必须 clearTextureAtlas 让所有字形按当前
-      // dimensions 重新栅格化，再 refresh 全量重画。
-      try { this.webgl?.clearTextureAtlas() } catch {}
-      // 切回 active 时强制 viewport 全量重画：绕开 WebGL renderer 的局部 dirty rect
-      // 漏算最左 1-2 cell 导致的"残像脏字"（手动往上滚再滚回来能消失就是这个原因）。
+      // 切回 active 时强制全量重画：display:none→block 后 xterm 不会自动重绘，
+      // 若 refit 没改变 cols/rows 就不触发 resize 重画，这里兜底刷一次确保内容显示。
       try { this.term.refresh(0, Math.max(0, this.term.rows - 1)) } catch {}
       this.term.focus()
       dbg(this.id, 'setActive rAF: done')
@@ -590,7 +577,6 @@ export class TerminalTab {
       window.term.kill(this.ptyId)
       this.ptyId = null
     }
-    try { this.webgl?.dispose() } catch {}
     try { this.term.dispose() } catch {}
     this.host.remove()
   }
