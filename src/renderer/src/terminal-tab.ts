@@ -47,6 +47,18 @@ function previewData(d: string): string {
   )
 }
 
+// OSC 52 的 Pd 是 UTF-8 字节流的 base64。atob 解出来是 latin1 字节串，必须再按
+// UTF-8 解码，否则中文 / emoji 复制出来全是乱码。失败返回空串（调用方据此不写剪贴板）。
+function decodeBase64Utf8(b64: string): string {
+  try {
+    const bin = atob(b64.replace(/\s+/g, ''))
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return ''
+  }
+}
+
 /*
  * ───────────────────────────────────────────────────────────────────
  * 输入子系统总览（bind* 的职责分工）
@@ -84,7 +96,8 @@ function previewData(d: string): string {
  *      每次 compositionend 都会 emit 第一次锁住的老内容，只能我们自己接管）
  *
  * 选区缓存  onSelectionChange → 非空时记录文本+时间戳
- *   cc 刷屏会清掉 xterm 实时选区，复制时 1.5s 内可回退到缓存
+ *   仅服务于应用层复制 xterm 自身选区（普通 shell）：实时选区被 clearSelection /
+ *   输出刷新清掉时，1.5s 内可回退到缓存。cc 等 TUI 的复制走 OSC52，不经这里。
  *
  * 出口
  *   sendInput(d) ─ 唯一出口，处理 waitingForRestart / pendingInput 兜底
@@ -93,6 +106,8 @@ function previewData(d: string): string {
  * 剪贴板读写（都优先走主进程 Electron clipboard，再回退浏览器 Clipboard API）
  *   写 writeToClipboard(text)
  *   读 readClipboardText()：files → 绝对路径串（含空格加引号）；text → 原样
+ *   OSC52  bindClipboardOsc ─ PTY 内 TUI(cc 等)发 ESC]52 写剪贴板，xterm 不内置 52，
+ *          自己接 → 解码 base64 → writeToClipboard。否则 cc 复制写不进系统剪贴板。
  * ───────────────────────────────────────────────────────────────────
  */
 
@@ -183,9 +198,10 @@ export class TerminalTab {
       })
     )
 
-    // 输入子系统：键盘 + 输出守卫（不依赖 mount，构造期间挂上）
+    // 输入子系统：键盘 + 输出守卫 + OSC52 剪贴板（不依赖 mount，构造期间挂上）
     this.bindKeyboard()
     this.bindOnData()
+    this.bindClipboardOsc()
   }
 
   mount(parent: HTMLElement): void {
@@ -271,6 +287,29 @@ export class TerminalTab {
     })
   }
 
+  // OSC 52 剪贴板写：cc 等 PTY 内 TUI 在鼠标追踪模式下自己管理选区，复制时不走
+  // 应用层的 copySelectionIfAny，而是发 ESC]52;Pc;Pd ST 让终端把内容落到系统剪贴板。
+  // xterm core 不内置 52（只注册了 0/1/2/4/8/10/11/12/104/110/111/112），不接的话
+  // cc 的复制永远写不进剪贴板 —— cc 发完仍乐观提示 "copied N chars"，但剪贴板里是空的，
+  // 表现为"提示复制成功、Win+V 却找不到，要试 3~4 次 cc 降级到本地剪贴板后才行"。
+  // 这里自己接：payload 形如 "Pc;Pd"，Pc=目标选择符(忽略)，Pd=base64(UTF-8) 或 '?'(查询)。
+  // 复用 writeToClipboard 走主进程 Electron clipboard，不受 navigator.clipboard 的焦点/权限限制。
+  private bindClipboardOsc(): void {
+    try {
+      this.term.parser.registerOscHandler(52, (data) => {
+        const sep = data.indexOf(';')
+        const payload = sep >= 0 ? data.slice(sep + 1) : data
+        // Pd='?' 是"读剪贴板"请求：出于安全不回应（避免 TUI 偷读剪贴板），直接吞掉
+        if (!payload || payload === '?') return true
+        const text = decodeBase64Utf8(payload)
+        if (text) void this.writeToClipboard(text)
+        return true // 已处理，阻止 xterm 把它当未知 OSC 继续往下抛
+      })
+    } catch (e) {
+      console.warn('[term] OSC52 clipboard handler register failed', e)
+    }
+  }
+
   private bindContextMenu(): void {
     // 右键完全交给 app 做复制/粘贴：capture 阶段拦掉右键的 mousedown 并 stopPropagation，
     // 阻止它向下传到 xterm 的 mousedown 监听 —— 否则 cc 在鼠标追踪模式下会收到右键的
@@ -331,7 +370,7 @@ export class TerminalTab {
 
   // ── 输入子系统 ─ 辅助 ──────────────────────────────────────
 
-  // 实时选区优先；否则在 1.5s 窗口内回退到缓存（cc 刷屏会清掉实时选区）
+  // 实时选区优先；为空时在 1.5s 窗口内回退到缓存（选区可能刚被 clearSelection / 输出刷新清掉）
   private pickSelection(): string {
     const live = this.term.getSelection()
     if (live) return live
@@ -530,6 +569,12 @@ export class TerminalTab {
     requestAnimationFrame(() => {
       dbg(this.id, 'setActive rAF: about to refit')
       this.refit()
+      // 非整数 DPR（Windows 150% 缩放 → dpr=1.5）下，cell 的设备像素尺寸带亚像素，
+      // WebGL renderer 的字形纹理图集按整数像素栅格化、与 cell 网格错配；display:none→block
+      // 切回时这个错配被固化进图集缓存，表现为下半屏整列左移 1 cell（一旦出现就稳定复现）。
+      // refresh() 只重画不重建图集，救不回；必须 clearTextureAtlas 让所有字形按当前
+      // dimensions 重新栅格化，再 refresh 全量重画。
+      try { this.webgl?.clearTextureAtlas() } catch {}
       // 切回 active 时强制 viewport 全量重画：绕开 WebGL renderer 的局部 dirty rect
       // 漏算最左 1-2 cell 导致的"残像脏字"（手动往上滚再滚回来能消失就是这个原因）。
       try { this.term.refresh(0, Math.max(0, this.term.rows - 1)) } catch {}
