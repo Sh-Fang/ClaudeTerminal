@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
 
 export interface TermTabHandlers {
@@ -213,12 +214,20 @@ export class TerminalTab {
     parent.appendChild(this.host)
     this.term.open(this.host)
     this.disableReflow()
+    // 渲染器：挂 WebGL（GPU 把字形烘成纹理图集、逐 cell blit，全屏高频重绘比 DOM 省 CPU）。
+    // 历史：WebGL 曾在「非活动 tab display:none → 切回 block」时把字形图集/几何缓存搞脏、
+    // 固化成下半屏整列左移 1 cell，因此弃用（63400e0，clearTextureAtlas 都压不住）。
+    // 本次去掉了切 tab 的冗余 same-size resize，重新挂回 A/B 验证：若那个左移随时序问题一并
+    // 消失就留用，否则 git 回退。context loss（GPU 重置 / 驱动崩）时 dispose 掉，xterm 会自动
+    // 回退 DOM renderer，不至于黑屏。
+    try {
+      const webgl = new WebglAddon()
+      webgl.onContextLoss(() => webgl.dispose())
+      this.term.loadAddon(webgl)
+    } catch (e) {
+      console.warn('[term] WebGL addon 加载失败，回退 DOM renderer', e)
+    }
     try { this.fit.fit() } catch {}
-    // 渲染器：用 xterm 默认 DOM renderer，不挂 WebglAddon。
-    // WebGL renderer 在「非活动 tab display:none → 切回 display:block」时会把字形图集/
-    // 几何缓存搞脏并固化，表现为切回后下半屏整列左移 1 cell（一旦出现稳定复现，
-    // 与缩放无关，clearTextureAtlas 也压不住）。DOM renderer 不存在图集错位，cc 的
-    // 全屏高频重绘在 Electron 上肉眼无感，故彻底弃用 WebGL。
     // 输入子系统：右键、粘贴、选区缓存、IME 守卫（依赖 host 已经挂上 DOM）
     this.bindContextMenu()
     this.bindPasteHandler()
