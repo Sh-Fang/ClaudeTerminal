@@ -133,6 +133,16 @@ export function createFloater(): void {
     pushCountsToFloater()
   })
 
+  // 崩溃自愈：悬浮窗是透明窗，渲染进程一旦非正常退出（GPU 重置 / 驱动抽风 / OOM），内容直接
+  // 消失，窗口看着就"自己不见了"，以前只能去设置里关开关再打开（本质是重建）才回来。这里监听
+  // 渲染进程退出，非 clean-exit 就自动 reload 把它救回来；重载后 did-finish-load 会重推计数。
+  win.webContents.on('render-process-gone', (_e, details) => {
+    if (!win || win.isDestroyed() || details.reason === 'clean-exit') return
+    try { win.webContents.reload() } catch {}
+  })
+  // 每次加载完成（含崩溃后 reload）都补推一份计数，避免救回来后是一张空卡片
+  win.webContents.on('did-finish-load', () => pushCountsToFloater())
+
   // 拖动结束 / 关闭前把坐标落盘
   const persistPos = (): void => {
     if (!win || win.isDestroyed()) return
