@@ -1,7 +1,9 @@
 import { execFile, execFileSync } from 'node:child_process'
 
 // 操作 Windows 用户级环境变量（HKCU\Environment）。
-// 写用 setx（会自动广播 WM_SETTINGCHANGE，新进程立即继承）。
+// 写用 setx（会广播 WM_SETTINGCHANGE，之后**新启动**的进程从注册表读到新值）。
+// 已经在跑的 Electron 主进程 process.env 是启动时的快照，setx 不会刷新它。
+// 新 pty 想读到最新 env 必须用 snapshotCurrentEnv() 现读注册表。
 // 删用 reg delete（setx 无法真正删除，只能写空字符串）。
 
 const NAME_RE = /^[A-Z_][A-Z0-9_]*$/i
@@ -49,6 +51,80 @@ export async function deleteUserEnv(name: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// —— 注册表环境变量快照 —— //
+// 主进程 process.env 是启动瞬间从 CreateProcess 拿到的一份拷贝，之后不会随
+// setx / 系统属性 / applyDisableAutoupdater 的写入而刷新。开新 pty 时如果直接把
+// process.env 塞给 conpty，用户看到的就是老 env。这里每次现读一份注册表覆盖到
+// process.env 之上，PATH 按 Windows 语义拼 machine + user。
+
+function parseRegQuery(output: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const line of output.split(/\r?\n/)) {
+    const m = line.match(/^\s+(\S+)\s+REG_(?:SZ|EXPAND_SZ|MULTI_SZ|DWORD)\s+(.*)$/)
+    if (m) result[m[1]] = m[2].replace(/\s+$/, '')
+  }
+  return result
+}
+
+// env 键在 Windows 上大小写不敏感（"Path" == "PATH"）；用普通对象存要手动去重，
+// 否则可能同时留下 Path 和 PATH 两把，行为未定义。
+function envGet(env: Record<string, string>, key: string): string | undefined {
+  const lower = key.toLowerCase()
+  for (const k of Object.keys(env)) if (k.toLowerCase() === lower) return env[k]
+  return undefined
+}
+
+function envSet(env: Record<string, string>, key: string, value: string): void {
+  const lower = key.toLowerCase()
+  for (const k of Object.keys(env)) {
+    if (k.toLowerCase() === lower) {
+      env[k] = value
+      return
+    }
+  }
+  env[key] = value
+}
+
+// REG_EXPAND_SZ 里的 %VAR% 需要按当前 env 展开；找不到就留原样，跟 cmd 行为一致。
+function expandVars(value: string, env: Record<string, string>): string {
+  return value.replace(/%([^%]+)%/g, (_m, name) => envGet(env, name) ?? `%${name}%`)
+}
+
+function readRegistryEnv(path: string): Record<string, string> {
+  try {
+    const out = execFileSync('reg', ['query', path], { encoding: 'utf8', windowsHide: true })
+    return parseRegQuery(out)
+  } catch {
+    return {}
+  }
+}
+
+export function snapshotCurrentEnv(): Record<string, string> {
+  const env: Record<string, string> = { ...(process.env as Record<string, string>) }
+  const machine = readRegistryEnv(
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+  )
+  const user = readRegistryEnv('HKCU\\Environment')
+
+  for (const [k, v] of Object.entries(machine)) {
+    if (k.toLowerCase() === 'path') continue
+    envSet(env, k, expandVars(v, env))
+  }
+  for (const [k, v] of Object.entries(user)) {
+    if (k.toLowerCase() === 'path') continue
+    envSet(env, k, expandVars(v, env))
+  }
+
+  const machinePath = machine['Path'] ?? machine['PATH']
+  const userPath = user['Path'] ?? user['PATH']
+  const parts: string[] = []
+  if (machinePath) parts.push(expandVars(machinePath, env))
+  if (userPath) parts.push(expandVars(userPath, env))
+  if (parts.length) envSet(env, 'Path', parts.join(';'))
+
+  return env
 }
 
 export async function applyDisableAutoupdater(enabled: boolean): Promise<{

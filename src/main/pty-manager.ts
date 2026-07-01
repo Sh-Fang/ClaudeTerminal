@@ -1,6 +1,7 @@
 import * as pty from '@lydell/node-pty'
 import { existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { snapshotCurrentEnv } from './sys-env'
 
 const PWSH_PRIMARY = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
 
@@ -44,7 +45,9 @@ export function createPty(
   const rows = opts.rows ?? 24
   const cwd = opts.cwd || process.env.USERPROFILE || process.cwd()
 
-  const env: Record<string, string> = { ...(process.env as Record<string, string>), ...(opts.env ?? {}) }
+  // 用 snapshotCurrentEnv 而不是 process.env：主进程 env 在启动时冻结，
+  // 用户/setx/applyDisableAutoupdater 改的注册表值感知不到，新 tab 会拿到过期 env。
+  const env: Record<string, string> = { ...snapshotCurrentEnv(), ...(opts.env ?? {}) }
 
   const proc = pty.spawn(resolvePwsh(), ['-NoLogo'], {
     name: 'xterm-256color',
