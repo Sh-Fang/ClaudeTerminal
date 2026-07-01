@@ -212,6 +212,7 @@ export class TerminalTab {
   mount(parent: HTMLElement): void {
     parent.appendChild(this.host)
     this.term.open(this.host)
+    this.disableReflow()
     try { this.fit.fit() } catch {}
     // 渲染器：用 xterm 默认 DOM renderer，不挂 WebglAddon。
     // WebGL renderer 在「非活动 tab display:none → 切回 display:block」时会把字形图集/
@@ -223,6 +224,46 @@ export class TerminalTab {
     this.bindPasteHandler()
     this.bindSelectionCache()
     this.bindIMEGuard()
+  }
+
+  // 关闭 xterm 的 resize reflow（重折行）。
+  // cc 是 normal-buffer 全屏 TUI（能往上滚看历史 → 不是 alt-screen），它靠 autowrap 换行的
+  // 宽行会被 xterm 标记为 wrapped（"一条逻辑长行折成几行"）。当 cols 真的变化时（拖窗口 /
+  // 多屏 dpr 变化），xterm 会对 scrollback 里这些 wrapped 历史行做 reflow：每行行首几个字符
+  // 被挪到上一行尾、错位逐行累积（sync→sy+nc）。而 cc 收到 SIGWINCH 只重画当前视口、不重画
+  // 已滚上去的历史行，于是错位固化在 buffer 里，refresh 只会把这份脏 buffer 原样重画。
+  // 关掉后：cols 变小只截断历史行右侧（xterm 无横向滚动），不再错位 —— 对以跑 cc 为主的终端稳赚。
+  //
+  // 分工要分清：切 tab 那种"必现"的错位不归本函数管 —— 它 cols 根本没变、走不到 xterm reflow。
+  // 那份真凶是 refit() 以前无脑发的 same-size PTY resize 惊动了 ConPTY 自己的 reflow（在数据
+  // 进 xterm 之前就做，本函数够不着），已在 refit() 里用"尺寸没变就不 resize"根治。本函数只负责
+  // "真·改变尺寸"时 xterm 这一侧的 reflow。与字体 / 连字 / DOM·WebGL 渲染器都无关。
+  //
+  // xterm 没有"保留 scrollback 又关 reflow"的公开开关：现代 ConPTY 下 Buffer 的
+  // _isReflowEnabled getter 恒为 true（_hasScrollback && backend==='conpty' && buildNumber>=21376）。
+  // 只能在 normal / alt 两个内部 Buffer 实例上，用实例数据属性遮蔽原型上的 getter。
+  // 私有 API：升级 xterm 时需复核 _core._bufferService.buffers 这条路径。
+  private disableReflow(): void {
+    try {
+      const core = (this.term as unknown as {
+        _core?: { _bufferService?: { buffers?: { normal?: object; alt?: object } } }
+      })._core
+      const buffers = core?._bufferService?.buffers
+      const targets = [buffers?.normal, buffers?.alt].filter(Boolean) as object[]
+      if (targets.length === 0) {
+        console.warn('[term] disableReflow: 未命中 buffer 路径，reflow 未关（xterm 私有结构可能已变）')
+        return
+      }
+      for (const buf of targets) {
+        Object.defineProperty(buf, '_isReflowEnabled', { value: false, configurable: true })
+      }
+      // 读回验证：确认遮蔽 getter 生效（仅在 __termDebug 下打印，排查"到底关没关上"）
+      const rbNormal = (buffers as { normal?: { _isReflowEnabled?: unknown } })?.normal?._isReflowEnabled
+      const rbAlt = (buffers as { alt?: { _isReflowEnabled?: unknown } })?.alt?._isReflowEnabled
+      dbg(this.id, `disableReflow: targets=${targets.length} normal._isReflowEnabled=${rbNormal} alt._isReflowEnabled=${rbAlt}`)
+    } catch (e) {
+      console.warn('[term] disableReflow failed', e)
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -575,12 +616,19 @@ export class TerminalTab {
     const before = { cols: this.term.cols, rows: this.term.rows }
     try { this.fit.fit() } catch (e) { dbg(this.id, 'refit: fit threw', e) }
     const after = { cols: this.term.cols, rows: this.term.rows }
-    if (before.cols !== after.cols || before.rows !== after.rows) {
+    const changed = before.cols !== after.cols || before.rows !== after.rows
+    if (changed) {
       dbg(this.id, 'refit: cols/rows changed', before, '->', after)
     } else {
       dbg(this.id, 'refit: cols/rows unchanged', after)
     }
-    if (this.ptyId != null) {
+    // 只在 xterm 网格真的变化时才把 resize 推给 PTY。
+    // 之前无脑每次 refit 都 resize：切 tab（尺寸没变）也会给 ConPTY 一个 same-size resize，
+    // 惊动 cc 重排并重发历史。ConPTY 有它自己的 reflow（在数据进 xterm 之前就做，xterm 的
+    // disableReflow 管不到），把已滚上去的宽表历史行重折成 sync→sy+nc 的错位灌进 buffer ——
+    // 这就是"关了 xterm reflow 仍在切 tab 时错位"的真凶。尺寸没变就不惊动 PTY；切回来由
+    // setActive 的 term.refresh 从干净的 xterm buffer 重画即可。
+    if (this.ptyId != null && changed) {
       dbg(this.id, `refit: push PTY resize ptyId=${this.ptyId}`, after)
       window.term.resize(this.ptyId, this.term.cols, this.term.rows)
     }
@@ -604,6 +652,9 @@ export class TerminalTab {
     dbg(this.id, `setActive(${active})`, { cols: this.term.cols, rows: this.term.rows })
     this.host.classList.toggle('active', active)
     if (!active) return
+    // 调试：把当前 active 的 term 挂到 window，方便在 devtools 里深挖 buffer 状态
+    // （如 __activeTerm._core._bufferService.buffers.normal._isReflowEnabled）
+    ;(window as unknown as { __activeTerm?: unknown }).__activeTerm = this.term
     // display:none → block 后浏览器要 1 帧才 reflow，立刻 refit 会拿到 0 / 旧高度，
     // 算出错误 cols/rows 推给 PTY → cc 用错尺寸全屏重画 → ANSI 序列在 xterm 边界对不齐。
     // 推迟到下一帧、布局稳定后再 fit。

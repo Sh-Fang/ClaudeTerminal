@@ -1452,8 +1452,17 @@ window.addEventListener('keydown', (e) => {
 })
 
 // ─── Resize ───────────────────────────────────────────────────────
+// 拖窗口时 ResizeObserver 会高频回调，逐帧 refit → 逐帧把 cols push 给 PTY → cc 每帧收
+// SIGWINCH 重画，既抖又费；每次 cols 变化还会惊动一次 ConPTY reflow（xterm 侧的 disableReflow
+// 够不着它）。这里 trailing 去抖：拖动过程只等 CSS 吃满，停手 ~120ms 后一次性 refit 到位，把中间
+// 一连串 resize 合并成一次，顺带把 ConPTY reflow 的触发次数压到最少。
+let roTimer: number | null = null
 const ro = new ResizeObserver(() => {
-  activeContext()?.tab.refit()
+  if (roTimer != null) window.clearTimeout(roTimer)
+  roTimer = window.setTimeout(() => {
+    roTimer = null
+    activeContext()?.tab.refit()
+  }, 120)
 })
 ro.observe(hostsEl)
 
