@@ -143,14 +143,8 @@ function updateSettings(s: Settings): void {
     window.term.floaterSetEnabled(settings.showFloater)
   }
   if (settings.showFloater) pushFloaterCounts()
-  if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
-  settingsSaveTimer = window.setTimeout(() => {
-    settingsSaveTimer = null
-    void window.term.saveSettings(settings).then((normed) => {
-      // 主进程归一化后回写，可能 clamp 了字段；保持本地一致
-      settings = normed
-    })
-  }, 300)
+  // 去抖落盘（含主进程归一化后回写，可能 clamp 了字段，保持本地一致）——与 persistSettings 同逻辑
+  persistSettings()
 }
 
 function uid(prefix: string): string {
