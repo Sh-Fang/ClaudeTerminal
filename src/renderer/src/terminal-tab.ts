@@ -2,7 +2,6 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
 
 export interface TermTabHandlers {
@@ -214,19 +213,14 @@ export class TerminalTab {
     parent.appendChild(this.host)
     this.term.open(this.host)
     this.disableReflow()
-    // 渲染器：挂 WebGL（GPU 把字形烘成纹理图集、逐 cell blit，全屏高频重绘比 DOM 省 CPU）。
-    // 历史：WebGL 曾在「非活动 tab display:none → 切回 block」时把字形图集/几何缓存搞脏、
-    // 固化成下半屏整列左移 1 cell，因此弃用（63400e0，clearTextureAtlas 都压不住）。
-    // 本次去掉了切 tab 的冗余 same-size resize，重新挂回 A/B 验证：若那个左移随时序问题一并
-    // 消失就留用，否则 git 回退。context loss（GPU 重置 / 驱动崩）时 dispose 掉，xterm 会自动
-    // 回退 DOM renderer，不至于黑屏。
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => webgl.dispose())
-      this.term.loadAddon(webgl)
-    } catch (e) {
-      console.warn('[term] WebGL addon 加载失败，回退 DOM renderer', e)
-    }
+    // 渲染器：用 xterm 默认的 DOM renderer，不挂 WebGL。
+    // WebGL 的实质收益是"GPU 把字形烘成纹理、逐 cell blit"，只在全屏高频重绘时省 CPU——本应用
+    // 以 cc 会话为主（中等输出 + 大量阅读/滚动），DOM renderer 毫无压力，用不上这份收益。
+    // 而 WebGL 在本应用有实打实的残影前科：63400e0 记录的"切 tab 后下半屏整列左移 1 cell"就是它
+    // 干的、clearTextureAtlas 都压不住；且本机 dpr=1.5 分数缩放正是纹理图集半像素对齐的高发坑。
+    // DOM 逐行重建、无纹理/几何缓存这层，渲染更可预测。故弃用 WebGL。
+    // （注：另有一种"快滚时列 0 顶格内容留竖脏缝"是 Chromium 合成器残留 tile、非渲染器问题，
+    //   DOM/WebGL 都有、且只在个别 cc 会话写坏的历史 buffer 上复现，与这里的取舍无关。）
     try { this.fit.fit() } catch {}
     // 输入子系统：右键、粘贴、选区缓存、IME 守卫（依赖 host 已经挂上 DOM）
     this.bindContextMenu()
