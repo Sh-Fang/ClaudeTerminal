@@ -20,8 +20,8 @@ export interface Settings {
   confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
   showFloater: boolean         // 开启常驻悬浮窗
-  floaterX: number
-  floaterY: number
+  floaterX: number | null
+  floaterY: number | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,8 +45,8 @@ export const DEFAULT_SETTINGS: Settings = {
   confirmCloseUnsaved: true,
   showClaudeUsage: true,
   showFloater: false,
-  floaterX: -1,
-  floaterY: -1
+  floaterX: null,
+  floaterY: null
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

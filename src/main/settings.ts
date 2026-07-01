@@ -35,8 +35,8 @@ export interface Settings {
   confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
   showFloater: boolean         // 开启常驻悬浮窗（显示待查看 / 待决策 / 运行中 数）
-  floaterX: number             // 悬浮窗最近一次屏幕位置（-1 = 未持久化）
-  floaterY: number
+  floaterX: number | null      // 悬浮窗最近一次屏幕位置（null = 未持久化，走默认位）
+  floaterY: number | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -60,8 +60,8 @@ export const DEFAULT_SETTINGS: Settings = {
   confirmCloseUnsaved: true,
   showClaudeUsage: true,
   showFloater: false,
-  floaterX: -1,
-  floaterY: -1
+  floaterX: null,
+  floaterY: null
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -76,6 +76,15 @@ function clampNum(v: unknown, min: number, max: number, fallback: number): numbe
   const n = typeof v === 'number' ? v : Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.min(max, Math.max(min, n))
+}
+// 悬浮窗坐标：null = 未持久化（走默认位）。必须允许负值 —— 副屏在主屏左/上时，
+// Windows 虚拟屏坐标 x/y 为负，旧的 [-1,100000] clamp 会把它夹成 -1 丢掉位置。
+// 兼容旧版哨兵 -1：历史数据用 -1 表示"未持久化"，归一成 null；真实窗口坐标几乎不可能恰为 -1。
+function coord(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n) || n === -1) return null
+  return Math.min(100000, Math.max(-100000, n))
 }
 
 function normalize(raw: unknown): Settings {
@@ -121,8 +130,8 @@ function normalize(raw: unknown): Settings {
       typeof r.showClaudeUsage === 'boolean' ? r.showClaudeUsage : DEFAULT_SETTINGS.showClaudeUsage,
     showFloater:
       typeof r.showFloater === 'boolean' ? r.showFloater : DEFAULT_SETTINGS.showFloater,
-    floaterX: clampNum(r.floaterX, -1, 100000, DEFAULT_SETTINGS.floaterX),
-    floaterY: clampNum(r.floaterY, -1, 100000, DEFAULT_SETTINGS.floaterY)
+    floaterX: coord(r.floaterX),
+    floaterY: coord(r.floaterY)
   }
 }
 

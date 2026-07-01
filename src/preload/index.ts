@@ -93,8 +93,8 @@ export interface Settings {
   confirmCloseUnsaved: boolean
   showClaudeUsage: boolean
   showFloater: boolean
-  floaterX: number
-  floaterY: number
+  floaterX: number | null
+  floaterY: number | null
 }
 
 export interface FloaterCounts {

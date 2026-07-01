@@ -84,9 +84,10 @@ export function createFloater(): void {
   }
   const s = loadSettings()
   // 启动前先校验：保存的位置如果落在已经断开的显示器上，直接回退到默认主屏右上角
-  const wantSaved = s.floaterX >= 0 && s.floaterY >= 0
-  const pos = (wantSaved && rectVisible(s.floaterX, s.floaterY, FLOATER_W, FLOATER_H))
-    ? { x: s.floaterX, y: s.floaterY }
+  // null = 未持久化 → 默认位；有值就校验是否落在某块现存屏内（拔屏后老坐标会失效）
+  const sx = s.floaterX, sy = s.floaterY
+  const pos = (sx != null && sy != null && rectVisible(sx, sy, FLOATER_W, FLOATER_H))
+    ? { x: sx, y: sy }
     : defaultPosition()
   win = new BrowserWindow({
     width: FLOATER_W,
