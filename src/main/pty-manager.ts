@@ -26,6 +26,12 @@ export interface CreateOpts {
   rows?: number
   cwd?: string
   env?: Record<string, string>
+  profilePath?: string
+}
+
+// pwsh 单引号字符串里嵌单引号：写两个单引号转义
+function quoteSingle(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`
 }
 
 export function createPty(
@@ -52,8 +58,16 @@ export function createPty(
   // 同时把 Input/Output 编码与 console code page 都置成 UTF-8。
   // 只设 OutputEncoding 时，pwsh 提示符里粘贴含中文的路径会按 ACP=936（GBK）解码
   // 我们传进去的 UTF-8 字节流，显示成乱码。chcp 65001 + InputEncoding 一起改才彻底。
+  //
+  // 顺带 dot-source shell-integration.ps1：给非 cc 命令的运行态检测装钩子。
+  // 必须一并塞进同一行 —— 否则用户拿到 prompt 后可能已经开始输入，profile 里覆盖
+  // 的 prompt / PSConsoleHostReadLine 就晚了一步，首条命令不会发 OSC 序列。
+  // profile 里的 __TERMINAL_SHELL_INTEG 防止重复加载，即便用户手动 . 也无副作用。
+  const profileSuffix = opts.profilePath
+    ? `; . ${quoteSingle(opts.profilePath)}`
+    : ''
   proc.write(
-    'chcp 65001 > $null; [Console]::OutputEncoding = [Console]::InputEncoding = [System.Text.Encoding]::UTF8\r'
+    `chcp 65001 > $null; [Console]::OutputEncoding = [Console]::InputEncoding = [System.Text.Encoding]::UTF8${profileSuffix}\r`
   )
 
   proc.onData((d) => onData(id, d))

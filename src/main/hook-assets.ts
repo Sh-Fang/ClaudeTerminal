@@ -11,6 +11,7 @@ export interface HookPaths {
   stateDir: string
   statusDir: string
   statuslineJs: string
+  pwshProfilePs1: string
 }
 
 // cc 每 ~300ms 调一次 statusLine 命令并从 stdin 喂 JSON（含 context_window / model）。
@@ -152,6 +153,61 @@ process.stdin.on('end', () => {
 });
 `
 
+// pwsh shell-integration profile：给非 cc 命令做「运行态」检测。
+// 借鉴 VS Code 的 shell integration，输出 OSC 133;A/B/C/D 和 OSC 633;E 序列。
+// renderer 侧用 xterm parser.registerOscHandler 接住:
+//   E;<cmd> → 记下即将执行的命令行（用于过滤是不是 cc）
+//   C       → 标记 shell-busy=true（蓝点）
+//   A / D   → 回到 prompt，shell-busy=false（灰点）
+// 只对 autoLaunchCC=false 的 tab 生效；cc 的状态仍由 hooks 主导，避免重复标注。
+// 用 [Console]::Write 直写 stdout，绕开 pwsh 输出流的 buffering，保证 OSC 立即到达 PTY。
+// 复用 pwsh 内建的 $function:prompt 和 PSReadLine 的 AddToHistoryHandler / PSConsoleHostReadLine，
+// 不改写用户已有的 profile，只在会话内追加钩子；env 变量 __TERMINAL_SHELL_INTEG 防止重复注入。
+const PWSH_PROFILE_PS1 = `# Claude Terminal · pwsh shell integration
+if ($env:__TERMINAL_SHELL_INTEG -ne '1') {
+    $env:__TERMINAL_SHELL_INTEG = '1'
+    $Global:__TerminalInFlight = $false
+
+    # 保留原 prompt，包一层：命令结束(D) + 提示开始(A) + 提示结束(B)
+    $Global:__TerminalOrigPrompt = $function:prompt
+    function Global:prompt {
+        $code = 0
+        if ($null -ne $LASTEXITCODE) { $code = $LASTEXITCODE }
+        elseif (-not $?) { $code = 1 }
+        if ($Global:__TerminalInFlight) {
+            [Console]::Write("\`e]133;D;$code\`a")
+            $Global:__TerminalInFlight = $false
+        }
+        [Console]::Write("\`e]133;A\`a")
+        $out = & $Global:__TerminalOrigPrompt
+        [Console]::Write("\`e]133;B\`a")
+        return $out
+    }
+
+    # 命令开始(C) + 命令行(E) 通过 PSReadLine 的 AddToHistoryHandler 触发。
+    # 该 handler 在用户按 Enter、命令进入 history 时被调用，正好在命令实际执行之前。
+    # \`n / \`r / ESC 都要清掉，避免破坏 OSC 序列或把控制符注入进 renderer 的 parser。
+    # 用 $Global: 保存原 handler：ScriptBlock 默认按运行时 scope 查变量，脚本退出后
+    # 局部 $prev 就没了；套 Global 保证 handler 每次调用都能取到。
+    try {
+        $Global:__TerminalPrevAddHistory = (Get-PSReadLineOption).AddToHistoryHandler
+        Set-PSReadLineOption -AddToHistoryHandler {
+            param([string]$line)
+            if ($line) {
+                $esc = $line -replace "\`e", '' -replace "\`n", ' ' -replace "\`r", ''
+                [Console]::Write("\`e]633;E;$esc\`a")
+                [Console]::Write("\`e]133;C\`a")
+                $Global:__TerminalInFlight = $true
+            }
+            if ($null -ne $Global:__TerminalPrevAddHistory) {
+                return & $Global:__TerminalPrevAddHistory $line
+            }
+            return $true
+        }
+    } catch {}
+}
+`
+
 export function ensureHookAssets(): HookPaths {
   const userData = app.getPath('userData')
   if (!existsSync(userData)) mkdirSync(userData, { recursive: true })
@@ -166,9 +222,11 @@ export function ensureHookAssets(): HookPaths {
   const sessionProbeJs = join(userData, 'session-probe.cjs')
   const stateProbeJs = join(userData, 'state-probe.cjs')
   const statuslineJs = join(userData, 'statusline-probe.cjs')
+  const pwshProfilePs1 = join(userData, 'shell-integration.ps1')
   writeFileSync(sessionProbeJs, SESSION_PROBE_JS, 'utf8')
   writeFileSync(stateProbeJs, STATE_PROBE_JS, 'utf8')
   writeFileSync(statuslineJs, STATUSLINE_JS, 'utf8')
+  writeFileSync(pwshProfilePs1, PWSH_PROFILE_PS1, 'utf8')
 
   const nodePath = detectNodePath()
   const sessionCmd = `"${nodePath}" "${sessionProbeJs}" "${eventsDir}"`
@@ -203,5 +261,5 @@ export function ensureHookAssets(): HookPaths {
   const ccHooksJson = join(userData, 'cc-hooks.json')
   writeFileSync(ccHooksJson, JSON.stringify(settings, null, 2), 'utf8')
 
-  return { ccHooksJson, sessionProbeJs, stateProbeJs, eventsDir, stateDir, statusDir, statuslineJs }
+  return { ccHooksJson, sessionProbeJs, stateProbeJs, eventsDir, stateDir, statusDir, statuslineJs, pwshProfilePs1 }
 }

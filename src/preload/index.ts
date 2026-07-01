@@ -70,6 +70,7 @@ export interface HookPaths {
   stateDir: string
   statusDir: string
   statuslineJs: string
+  pwshProfilePs1: string
 }
 
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-light'

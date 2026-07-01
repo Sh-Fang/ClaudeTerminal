@@ -12,6 +12,9 @@ export interface TermTabHandlers {
   onPtyStarted?: () => void
   // 用户在 busy 中按 ESC 撤回提示词时，Claude 不会发 hook，由 renderer 兜底重置
   onUserAbort?: () => void
+  // pwsh shell integration 上报：非 cc 命令的开始/结束（cmdLine 只在 start 时有值）。
+  // 由 pwsh profile 通过 OSC 133;C/D + OSC 633;E 序列驱动，用于给纯 pwsh tab 标注运行态。
+  onShellCommand?: (kind: 'start' | 'end', cmdLine?: string) => void
 }
 
 export interface SessionRecord {
@@ -142,6 +145,9 @@ export class TerminalTab {
   private suppressOnDataUntil = 0
   private static readonly POST_COMPOSE_SUPPRESS_MS = 100
 
+  // ── shell integration：OSC 633;E 上报的下一条命令行，落到 133;C 时消费
+  private pendingShellCmd: string | undefined
+
   constructor(
     opts: {
       id: string
@@ -200,6 +206,7 @@ export class TerminalTab {
     this.bindKeyboard()
     this.bindOnData()
     this.bindClipboardOsc()
+    this.bindShellIntegrationOsc()
   }
 
   mount(parent: HTMLElement): void {
@@ -300,6 +307,47 @@ export class TerminalTab {
       })
     } catch (e) {
       console.warn('[term] OSC52 clipboard handler register failed', e)
+    }
+  }
+
+  // OSC 133 / 633：pwsh shell-integration.ps1 发的 shell 命令生命周期信号。
+  //   OSC 133;A   prompt 开始 → 当作 idle 兜底
+  //   OSC 133;C   命令开始    → busy
+  //   OSC 133;D   命令结束    → idle
+  //   OSC 633;E;<cmdline>  命令行原文（在 C 之前发），用于过滤 cc 自身
+  //
+  // xterm 的 parser.registerOscHandler(id, cb)：cb 接到的 data 是「;」后剩下的字符串。
+  // 例如原序列 `\x1b]133;C\x07`，data = 'C'；`\x1b]633;E;claude --resume xxx\x07`，data = 'E;claude ...'。
+  // 返回 true 表示已处理，阻止 xterm 把它当未知 OSC 继续抛出。
+  //
+  // 只发布事件，不在这里判定 cc / 也不改 status —— main.ts 负责决策（要读 settings.claudePath、
+  // 要判 tab.autoLaunchCC / activeSessionId），把状态推到 sidebar。
+  private bindShellIntegrationOsc(): void {
+    try {
+      this.term.parser.registerOscHandler(133, (data) => {
+        const semi = data.indexOf(';')
+        const marker = (semi >= 0 ? data.slice(0, semi) : data).toUpperCase()
+        if (marker === 'C') {
+          const cmd = this.pendingShellCmd
+          this.pendingShellCmd = undefined
+          this.handlers.onShellCommand?.('start', cmd)
+        } else if (marker === 'D' || marker === 'A') {
+          // A / D 都视为「回到 prompt」→ 命令结束。首个 A 触发的 end 是空转，无副作用。
+          this.handlers.onShellCommand?.('end')
+        }
+        return true
+      })
+      this.term.parser.registerOscHandler(633, (data) => {
+        const semi = data.indexOf(';')
+        const marker = (semi >= 0 ? data.slice(0, semi) : data).toUpperCase()
+        if (marker === 'E') {
+          // E;<cmdline>  ——  保留全部原文，main.ts 里再做 cc 匹配
+          this.pendingShellCmd = semi >= 0 ? data.slice(semi + 1) : ''
+        }
+        return true
+      })
+    } catch (e) {
+      console.warn('[term] shell-integration OSC handler register failed', e)
     }
   }
 

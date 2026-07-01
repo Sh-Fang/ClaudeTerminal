@@ -99,8 +99,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         }
       }
       const env: Record<string, string> = {}
+      const hp = getHookPaths()
       if (opts?.tabId) {
-        const hp = getHookPaths()
         env.TERMINAL_TAB_ID = opts.tabId
         env.TERMINAL_EVENTS_DIR = hp.eventsDir
         env.TERMINAL_STATE_DIR = hp.stateDir
@@ -116,7 +116,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         try { wc.send(channel, payload) } catch {}
       }
       const id = createPty(
-        { cols: opts?.cols, rows: opts?.rows, cwd: opts?.cwd, env },
+        { cols: opts?.cols, rows: opts?.rows, cwd: opts?.cwd, env, profilePath: hp.pwshProfilePs1 },
         (sid, data) => safeSend('pty:data', { id: sid, data }),
         (sid, exitCode) => safeSend('pty:exit', { id: sid, exitCode })
       )

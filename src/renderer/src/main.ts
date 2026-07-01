@@ -163,6 +163,25 @@ function quotePs(s: string): string {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// 判断 shell-integration 上报的命令行是不是「启动 cc」——命中就跳过 shell-busy 标注，
+// 让 cc 自己的 hooks 单独驱动 busy/attention/done/error。
+// 覆盖：`claude ...`、`& 'C:\...\claude.exe' ...`、`& claude ...`、以及用户在 settings 里
+// 指定的 claudePath basename（改名后的 cc 也能识别）。扩展名 .exe/.cmd/.ps1/.bat 视为等价。
+function commandLineIsCcInvocation(cmd: string | undefined, claudePath: string): boolean {
+  if (!cmd) return false
+  const m = /^\s*(?:&\s+)?(?:'([^']*)'|"([^"]*)"|(\S+))/.exec(cmd)
+  if (!m) return false
+  const exe = (m[1] ?? m[2] ?? m[3] ?? '').toLowerCase()
+  if (!exe) return false
+  const base = exe.split(/[\\/]/).pop()!.replace(/\.(exe|cmd|ps1|bat)$/i, '')
+  if (base === 'claude') return true
+  if (claudePath) {
+    const cpBase = claudePath.toLowerCase().split(/[\\/]/).pop()?.replace(/\.(exe|cmd|ps1|bat)$/i, '') || ''
+    if (cpBase && base === cpBase) return true
+  }
+  return false
+}
+
 let cachedHookSettingsArg: string | null = null
 async function hookSettingsArg(): Promise<string> {
   if (cachedHookSettingsArg) return cachedHookSettingsArg
@@ -326,6 +345,26 @@ function makeTab(group: Group, opts: {
         tabRef.note = undefined
         sidebar.render()
         toolbar.render()
+      },
+      onShellCommand: (kind, cmd) => {
+        // A: cc tab（autoLaunchCC=true）状态完全交给 cc hooks，shell 事件不参与，避免重复标注。
+        if (tabRef.autoLaunchCC) return
+        // B: 过滤命令本身是启动 cc 的情况——用户在纯 pwsh tab 里手打 `claude` 也不上蓝点。
+        //   （字符串匹配漏了兜不住的其他形式，就让它按 shell-busy 显示也没关系，无副作用。）
+        if (kind === 'start' && commandLineIsCcInvocation(cmd, settings.claudePath)) return
+        if (kind === 'start') {
+          if (tabRef.status === 'busy') return
+          tabRef.status = 'busy'
+          tabRef.note = undefined
+        } else {
+          // 只把「自己刚起的 busy」降回 idle，不覆盖 error 之类
+          if (tabRef.status !== 'busy') return
+          tabRef.status = 'idle'
+          tabRef.note = undefined
+        }
+        sidebar.render()
+        toolbar.render()
+        // 状态变化极频繁（每条 pwsh 命令一对），不落 scheduleSave —— 状态本身不会持久化
       }
     }
   )
