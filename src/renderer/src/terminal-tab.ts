@@ -617,6 +617,10 @@ export class TerminalTab {
       this.ptyId = null
     }
     this.term.reset()
+    // reset() 会 new 出全新的 normal/alt Buffer 实例，mount 时打在旧实例上的 reflow 遮蔽随之失效
+    // （_isReflowEnabled 回落到原型 getter → conpty 下恒为 true）。必须对新实例重新遮蔽，否则
+    // 切/删会话后 reflow 静默复活，之后 cc 新产出的宽表历史遇到真·改宽会再次错位。
+    this.disableReflow()
     this.waitingForRestart = false
     await this.startPty()
   }
@@ -653,8 +657,13 @@ export class TerminalTab {
     opts.scrollback = s.terminal.scrollback
     opts.theme = themeForPreset(s.terminal.theme)
     this.host.style.background = backgroundFor(s.terminal.theme)
+    const before = { cols: this.term.cols, rows: this.term.rows }
     try { this.fit.fit() } catch {}
-    if (this.ptyId != null) window.term.resize(this.ptyId, this.term.cols, this.term.rows)
+    const changed = before.cols !== this.term.cols || before.rows !== this.term.rows
+    // 只在网格真的变化时才 resize PTY（改字号才会变；改主题/光标/闪烁不动网格）。
+    // 否则照发一个 same-size resize 会惊动 ConPTY 自己的 reflow，把宽表历史重折成错位
+    // ——与 refit() 是同一道防线。后台 tab（display:none）fit 必 no-op、更是纯 same-size。
+    if (this.ptyId != null && changed) window.term.resize(this.ptyId, this.term.cols, this.term.rows)
   }
 
   setActive(active: boolean): void {
@@ -668,6 +677,9 @@ export class TerminalTab {
     // 算出错误 cols/rows 推给 PTY → cc 用错尺寸全屏重画 → ANSI 序列在 xterm 边界对不齐。
     // 推迟到下一帧、布局稳定后再 fit。
     requestAnimationFrame(() => {
+      // 切到本 tab 后一帧内它可能已被关闭（dispose）：此时 term 已 dispose、host 已 remove，
+      // 下面的 fit/refresh 虽有兜底，但 focus() 会打在已销毁的 textarea 上抛未捕获异常，直接退出。
+      if (this.disposed) return
       dbg(this.id, 'setActive rAF: about to refit')
       this.refit()
       // 切回 active 时强制全量重画：display:none→block 后 xterm 不会自动重绘，
