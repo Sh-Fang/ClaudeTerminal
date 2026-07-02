@@ -75,6 +75,7 @@ export interface SessionUsage {
   exists: boolean
   model?: string // 原始 id，如 claude-opus-4-8
   modelLabel?: string // 美化后，如 Opus 4.8
+  effort?: string // 当前思考强度 low/medium/high/xhigh/max；模型不支持时为空
   ctxTokens?: number // 最近一次请求的上下文占用（input + cache）
   ctxWindow?: number // 上下文窗口（来自 cc / claude-hud 缓存，准确）
   ctxPercent?: number // 0~100
@@ -99,6 +100,7 @@ interface OwnStatus {
   window: number
   tokens: number
   model?: string // 已是 display_name（去掉 "(...context)" 后缀），如 Opus 4.8
+  effort?: string // low/medium/high/xhigh/max；模型不支持 effort 时为空
 }
 
 function readOwnStatus(sessionId: string): OwnStatus | null {
@@ -109,13 +111,15 @@ function readOwnStatus(sessionId: string): OwnStatus | null {
       window?: number
       tokens?: number
       model?: string
+      effort?: string
     }
     if (typeof c.percent !== 'number' || !c.window) return null
     return {
       percent: Math.min(100, Math.max(0, Math.round(c.percent))),
       window: c.window,
       tokens: typeof c.tokens === 'number' ? c.tokens : 0,
-      model: typeof c.model === 'string' && c.model ? c.model : undefined
+      model: typeof c.model === 'string' && c.model ? c.model : undefined,
+      effort: typeof c.effort === 'string' && c.effort ? c.effort : undefined
     }
   } catch {
     return null
@@ -172,6 +176,7 @@ export function readSessionUsage(sessionId: string): SessionUsage {
     exists: true,
     model: modelLabel,
     modelLabel,
+    effort: snap?.effort, // 仅探针快照有；transcript 兜底路径拿不到 effort（可接受）
     ctxTokens: ctx?.tokens,
     ctxWindow: ctx?.window,
     ctxPercent: ctx?.percent,

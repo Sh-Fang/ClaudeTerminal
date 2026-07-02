@@ -136,6 +136,7 @@ export interface SessionUsage {
   exists: boolean
   model?: string
   modelLabel?: string
+  effort?: string
   ctxTokens?: number
   ctxWindow?: number
   ctxPercent?: number

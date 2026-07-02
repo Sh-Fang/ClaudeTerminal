@@ -1,10 +1,38 @@
-import { escapeHtml } from './ui-helpers'
+import { escapeHtml, showCtxMenu } from './ui-helpers'
+
+// 左下角模型芯片的候选：按家族分组、每组列具体版本。
+// ── 维护点 ──：模型上新 / 退役时改这里。
+//   arg = 注入给 `/model` 的实参：家族"最新"用 alias（稳，永远指向最新）；要钉具体
+//   旧版本用完整 model id（可能随退役失效 —— 选到退役版 cc 会在终端自己报错，这是刻意
+//   的兜底，不拦）。match = 用当前展示的模型名（小写）子串匹配，给当前项打勾。
+interface ModelRow { label: string; arg: string; match: string }
+const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
+  { family: 'Opus', rows: [
+    { label: 'Opus 4.8', arg: 'claude-opus-4-8', match: 'opus 4.8' },
+    { label: 'Opus 4.7', arg: 'claude-opus-4-7', match: 'opus 4.7' },
+    { label: 'Opus 4.6', arg: 'claude-opus-4-6', match: 'opus 4.6' }
+  ] },
+  { family: 'Sonnet', rows: [
+    { label: 'Sonnet 4.6', arg: 'claude-sonnet-4-6', match: 'sonnet 4.6' },
+    { label: 'Sonnet 4.5', arg: 'claude-sonnet-4-5', match: 'sonnet 4.5' }
+  ] },
+  { family: 'Haiku', rows: [
+    { label: 'Haiku 4.5', arg: 'haiku', match: 'haiku' }
+  ] },
+  { family: 'Fable', rows: [
+    { label: 'Fable 5', arg: 'fable', match: 'fable' }
+  ] }
+]
+
+// 思考强度候选。max 是 session-only；cc 仅在模型支持 effort 时上报，故芯片会自动隐藏。
+const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // 与 preload SessionUsage 对齐（renderer 不跨进程 import）
 interface SessionUsage {
   exists: boolean
   model?: string
   modelLabel?: string
+  effort?: string
   ctxTokens?: number
   ctxWindow?: number
   ctxPercent?: number
@@ -14,6 +42,10 @@ interface SessionUsage {
 export interface SessionInfoHooks {
   // 当前激活标签的会话 id 与所在分组 cwd；无激活标签返回 null
   getActive(): { sessionId: string | null; cwd: string } | null
+  // 用户在模型菜单选了某一行 → 注入 `/model <arg>`（arg 为 alias 或完整 id），label 供 toast
+  requestModelSwitch(arg: string, label: string): void
+  // 用户在 effort 菜单选了某档 → 注入 `/effort <level>`
+  requestEffortSwitch(level: string): void
 }
 
 const TICK_MS = 3000 // 上下文会随对话增长，每 3s 刷新一次
@@ -34,6 +66,11 @@ function clip(s: string, max = 28): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
+// 首字母大写：effort 档位展示用（low → Low）。注入命令仍用原始小写。
+function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
 export class SessionInfoBar {
   private el = document.getElementById('sbSession') as HTMLSpanElement
   private lastKey = ''
@@ -48,6 +85,48 @@ export class SessionInfoBar {
 
   constructor(private hooks: SessionInfoHooks) {
     this.timer = window.setInterval(() => void this.poll(), TICK_MS)
+    // 事件委托：paint 每次重写 innerHTML 会冲掉直接绑定的监听，故绑在常驻容器上。
+    // stopPropagation 挡掉 ui-helpers 里"点空白关菜单"的 document handler，否则刚开就被关。
+    this.el.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement
+      const modelChip = t.closest('.sbi-model') as HTMLElement | null
+      if (modelChip) { e.stopPropagation(); this.openModelMenu(modelChip); return }
+      const effChip = t.closest('.sbi-effort') as HTMLElement | null
+      if (effChip) { e.stopPropagation(); this.openEffortMenu(effChip) }
+    })
+  }
+
+  private openModelMenu(anchor: HTMLElement): void {
+    const cur = (this.usage?.modelLabel ?? this.stickyModel ?? '').toLowerCase()
+    const r = anchor.getBoundingClientRect()
+    // y 传芯片顶部；showCtxMenu 会把菜单夹在视口内，芯片贴底时自动向上弹。
+    // 各家族之间插分隔线；当前项按 match 子串命中打勾。
+    showCtxMenu(
+      MODEL_GROUPS.flatMap((g, gi) => [
+        ...(gi > 0 ? [{ sep: true }] : []),
+        ...g.rows.map((row) => ({
+          label: row.label,
+          icon: cur.includes(row.match) ? '✓' : '',
+          act: () => this.hooks.requestModelSwitch(row.arg, row.label)
+        }))
+      ]),
+      r.left,
+      r.top
+    )
+  }
+
+  private openEffortMenu(anchor: HTMLElement): void {
+    const cur = (this.usage?.effort ?? '').toLowerCase()
+    const r = anchor.getBoundingClientRect()
+    showCtxMenu(
+      EFFORT_OPTIONS.map((lv) => ({
+        label: cap(lv),
+        icon: lv === cur ? '✓' : '',
+        act: () => this.hooks.requestEffortSwitch(lv)
+      })),
+      r.left,
+      r.top
+    )
   }
 
   // 切换标签 / 会话时主动催一次，立即刷新（不等下个 tick）
@@ -134,7 +213,15 @@ export class SessionInfoBar {
           `</span>`
       )
       const model = u?.modelLabel ?? this.stickyModel ?? 'Claude'
-      parts.push(`<span class="sbi-model">${escapeHtml(model)}</span>`)
+      parts.push(
+        `<span class="sbi-model" title="点击切换模型">${escapeHtml(model)}</span>`
+      )
+      // effort 芯片：仅在 cc 上报了 effort（模型支持思考强度）时展示，夹在模型与 git 分支之间。
+      const eff = u?.effort
+      if (eff)
+        parts.push(
+          `<span class="sbi-effort" title="点击切换思考强度 (effort)">${escapeHtml(cap(eff))}</span>`
+        )
     }
     if (this.branch)
       parts.push(

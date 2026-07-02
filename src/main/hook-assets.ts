@@ -39,6 +39,9 @@ process.stdin.on('end', () => {
     const out = {
       sessionId: sid,
       model: String(raw_model).replace(/\\s*\\([^)]*context[^)]*\\)/i, '').trim(),
+      // 当前思考强度（low/medium/high/xhigh/max）。cc 仅在模型支持 effort 时给该字段，
+      // 不支持时为空串 → 渲染层据此隐藏 effort 芯片。
+      effort: (j.effort && j.effort.level) || '',
       window: cw.context_window_size || 0,
       percent: Math.min(100, Math.max(0, Math.round(pct || 0))),
       tokens: tokens,

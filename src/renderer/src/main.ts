@@ -1268,12 +1268,55 @@ const toolbar = new Toolbar({
   onSessionCtx: openSessionCtx
 })
 
+// 外部切模型/思考强度（B 方案）：往当前活跃 tab 的 cc 注入斜杠命令。
+// 前置校验：无活跃会话、或 cc 正忙（busy=正回复会排队，attention=有权限弹窗会误答）都拒绝。
+function activeCcTabForInject(): TerminalTab | null {
+  const ctx = activeContext()
+  if (!ctx) return null
+  const { tab } = ctx
+  if (tab.ptyId == null || !tab.activeSessionId) {
+    toast('当前标签没有活跃的 Claude 会话')
+    return null
+  }
+  if (tab.status === 'busy' || tab.status === 'attention') {
+    toast('Claude 正忙，请等当前回合结束再切换')
+    return null
+  }
+  return tab
+}
+
+// 先 Ctrl-U(\x15) 清掉输入行里可能的半截文字，避免和命令拼在一起；再发命令 + 回车。
+function injectSlash(tab: TerminalTab, line: string): void {
+  window.term.send(tab.ptyId!, '\x15' + line + '\r')
+  tab.term.focus()
+  sessionInfo.nudge() // 模型/effort 由 cc statusline 秒级回报，催一次让状态栏早点回显
+}
+
+// /model 带参 → 直接切、不弹选择器；cc 会把它存成新会话默认，故切一次即持久，无需改 launchCC。
+// arg 为 alias（最新）或完整 model id（钉版本，退役会在终端报错）。
+function switchActiveModel(arg: string, label: string): void {
+  const tab = activeCcTabForInject()
+  if (!tab) return
+  injectSlash(tab, '/model ' + arg)
+  toast('已切换模型 → ' + label)
+}
+
+// /effort 带参直接设当前会话思考强度（不持久，属会话级）。
+function switchActiveEffort(level: string): void {
+  const tab = activeCcTabForInject()
+  if (!tab) return
+  injectSlash(tab, '/effort ' + level)
+  toast('已切换思考强度 → ' + level)
+}
+
 const sessionInfo = new SessionInfoBar({
   getActive: () => {
     const ctx = activeContext()
     if (!ctx) return null
     return { sessionId: ctx.tab.activeSessionId ?? null, cwd: ctx.group.cwd }
-  }
+  },
+  requestModelSwitch: switchActiveModel,
+  requestEffortSwitch: switchActiveEffort
 })
 
 // ─── Search popover ────────────────────────────────────────────────

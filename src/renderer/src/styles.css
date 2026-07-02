@@ -684,6 +684,15 @@ button.saved-toggle:hover { color: var(--ink); }
 .statusbar .sb-session .sbi-sep { color: var(--hairline); }
 .statusbar .sb-session .sbi-branch,
 .statusbar .sb-session .sbi-model { color: var(--mute); }
+.statusbar .sb-session .sbi-model,
+.statusbar .sb-session .sbi-effort {
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 2px;
+  border-radius: 4px; padding: 0 2px; margin: 0 -2px;
+}
+.statusbar .sb-session .sbi-effort { color: var(--mute); }
+.statusbar .sb-session .sbi-model:hover,
+.statusbar .sb-session .sbi-effort:hover { color: var(--fg); background: var(--hairline); }
 .statusbar .sb-session .sbi-branch {
   display: inline-flex; align-items: center; gap: 4px;
   min-width: 0;
