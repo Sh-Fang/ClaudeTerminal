@@ -46,16 +46,25 @@ export interface CtxItem {
   icon?: string
   danger?: boolean
   sep?: boolean
+  eyebrow?: string // 分组小标题：mono-uppercase 一行，不可点击
   act?: () => void
 }
 
-export function showCtxMenu(items: CtxItem[], x: number, y: number): void {
+let ctxCloseCb: (() => void) | null = null
+export function showCtxMenu(items: CtxItem[], x: number, y: number, onClose?: () => void): void {
   ctxEl.innerHTML = ''
   for (const it of items) {
     if (it.sep) {
       const s = document.createElement('div')
       s.className = 'ctx-sep'
       ctxEl.appendChild(s)
+      continue
+    }
+    if (it.eyebrow) {
+      const e = document.createElement('div')
+      e.className = 'ctx-eyebrow'
+      e.textContent = it.eyebrow
+      ctxEl.appendChild(e)
       continue
     }
     const el = document.createElement('div')
@@ -67,6 +76,7 @@ export function showCtxMenu(items: CtxItem[], x: number, y: number): void {
     })
     ctxEl.appendChild(el)
   }
+  ctxCloseCb = onClose ?? null
   // 先显示以测尺寸
   ctxEl.classList.add('open')
   const pad = 8
@@ -80,7 +90,9 @@ export function showCtxMenu(items: CtxItem[], x: number, y: number): void {
   ctxEl.style.top = `${ly}px`
 }
 export function closeCtxMenu(): void {
+  const wasOpen = ctxEl.classList.contains('open')
   ctxEl.classList.remove('open')
+  if (wasOpen && ctxCloseCb) { const cb = ctxCloseCb; ctxCloseCb = null; cb() }
 }
 
 document.addEventListener('click', (e) => {

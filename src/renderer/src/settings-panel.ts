@@ -1,5 +1,9 @@
 import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type CursorStyle } from './themes'
-import { bindScrimDismiss } from './ui-helpers'
+import { bindScrimDismiss, showCtxMenu } from './ui-helpers'
+import { icon } from './svg-icons'
+import { MODEL_GROUPS } from './session-info'
+
+const FOLLOW_CC_LABEL = '跟随 cc 默认'
 
 export interface SettingsPanelHooks {
   getSettings(): Settings
@@ -22,6 +26,7 @@ export class SettingsPanel {
   private fDefaultCwd = document.getElementById('set-default-cwd') as HTMLInputElement
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
   private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
+  private fDefaultModel = document.getElementById('set-default-model') as HTMLButtonElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
@@ -67,6 +72,10 @@ export class SettingsPanel {
 
     this.initSeg(this.fTheme)
     this.initSeg(this.fDowngradeSec)
+    this.fDefaultModel.addEventListener('click', (e) => {
+      e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
+      this.openModelPicker()
+    })
 
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath]
     const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fShowUsage, this.fShowFloater]
@@ -124,6 +133,48 @@ export class SettingsPanel {
     return this.segVals.get(group) ?? ''
   }
 
+  // arg = '' 视为"跟随 cc 默认"。用共享 MODEL_GROUPS 保证与左下芯片候选一致。
+  private paintModelPicker(): void {
+    const val = this.fDefaultModel.dataset.val ?? ''
+    const label =
+      val === ''
+        ? FOLLOW_CC_LABEL
+        : MODEL_GROUPS.flatMap((g) => g.rows).find((r) => r.arg === val)?.label ?? FOLLOW_CC_LABEL
+    const muted = val === '' ? ' mute' : ''
+    this.fDefaultModel.innerHTML =
+      `<span class="picker-label${muted}">${label}</span>` +
+      `<span class="picker-chev">${icon('chevron-down', { size: 14 })}</span>`
+  }
+
+  private openModelPicker(): void {
+    const cur = this.fDefaultModel.dataset.val ?? ''
+    const setVal = (v: string): void => {
+      if ((this.fDefaultModel.dataset.val ?? '') === v) return
+      this.fDefaultModel.dataset.val = v
+      this.paintModelPicker()
+      this.commitChange()
+    }
+    const items: import('./ui-helpers').CtxItem[] = [
+      { label: FOLLOW_CC_LABEL, icon: cur === '' ? '✓' : '', act: () => setVal('') },
+      { sep: true }
+    ]
+    MODEL_GROUPS.forEach((g, gi) => {
+      if (gi > 0) items.push({ sep: true })
+      items.push({ eyebrow: g.family })
+      for (const r of g.rows) {
+        items.push({
+          label: r.label,
+          icon: r.arg === cur ? '✓' : '',
+          act: () => setVal(r.arg)
+        })
+      }
+    })
+    const r = this.fDefaultModel.getBoundingClientRect()
+    // 菜单宽 ≈ picker 宽度，从下方展开；showCtxMenu 会自己夹进视口
+    this.fDefaultModel.classList.add('open')
+    showCtxMenu(items, r.left, r.bottom + 4, () => this.fDefaultModel.classList.remove('open'))
+  }
+
   private async pickDefaultCwd(): Promise<void> {
     const cur = this.fDefaultCwd.value.trim()
     const picked = await window.term.pickDirectory(cur || undefined)
@@ -155,6 +206,10 @@ export class SettingsPanel {
     this.fScrollback.value = String(s.terminal.scrollback)
     this.fDefaultCwd.value = s.lastUsedCwd || s.defaults.cwd
     this.fDefaultCC.checked = s.defaults.autoLaunchCC
+    // 未知的 model arg 兜底到空（跟随 cc 默认）—— 老配置里存了已退役 id 时不至于白屏
+    const known = new Set<string>(['', ...MODEL_GROUPS.flatMap((g) => g.rows.map((r) => r.arg))])
+    this.fDefaultModel.dataset.val = known.has(s.defaults.model) ? s.defaults.model : ''
+    this.paintModelPicker()
     this.fClaudePath.value = s.claudePath
     this.fDisableUpd.checked = s.disableAutoupdater
     this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
@@ -214,7 +269,8 @@ export class SettingsPanel {
       },
       defaults: {
         cwd: this.fDefaultCwd.value,
-        autoLaunchCC: this.fDefaultCC.checked
+        autoLaunchCC: this.fDefaultCC.checked,
+        model: this.fDefaultModel.dataset.val ?? ''
       },
       claudePath: this.fClaudePath.value.trim(),
       disableAutoupdater: this.fDisableUpd.checked,

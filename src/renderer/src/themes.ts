@@ -8,7 +8,10 @@ export interface Settings {
   font: { family: string; size: number; lineHeight: number }
   cursor: { style: CursorStyle; blink: boolean }
   terminal: { scrollback: number; theme: ThemePreset }
-  defaults: { cwd: string; autoLaunchCC: boolean }
+  // model = cc `--model <arg>` 实参：alias（如 'fable'/'haiku'）或完整 id（如
+  // 'claude-opus-4-8'）；空串 = 不带 --model，跟随 cc 默认。只在新建会话（非
+  // --resume）时生效，避免覆盖旧会话原有模型。
+  defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   disableAutoupdater: boolean
   lastUsedCwd: string
@@ -33,7 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cursor: { style: 'block', blink: true },
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
-  defaults: { cwd: '', autoLaunchCC: true },
+  defaults: { cwd: '', autoLaunchCC: true, model: '' },
   claudePath: '',
   disableAutoupdater: true,
   lastUsedCwd: '',

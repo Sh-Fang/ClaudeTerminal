@@ -296,7 +296,12 @@ async function launchCC(tab: TerminalTab): Promise<void> {
     const newId = crypto.randomUUID()
     tab.activeSessionId = newId
     scheduleSave()
-    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quotePs(tab.name)}${settingsArg}`
+    // 设置里选了默认模型 → 新会话开局带上 --model；--resume 分支刻意不带，
+    // 避免覆盖旧会话原有模型（cc 恢复后仍走它自己保存的默认，用户想改用左下芯片手动切）。
+    // 只允许字母数字/-/./_，防注入（同时也能挡住"跟随 cc 默认"的空串）
+    const model = settings.defaults.model
+    const modelArg = /^[A-Za-z0-9._-]+$/.test(model) ? ` --model ${model}` : ''
+    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quotePs(tab.name)}${modelArg}${settingsArg}`
   }
   window.term.send(tab.ptyId, cmd + '\r')
 }

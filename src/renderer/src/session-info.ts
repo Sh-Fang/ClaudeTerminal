@@ -5,8 +5,8 @@ import { escapeHtml, showCtxMenu } from './ui-helpers'
 //   arg = 注入给 `/model` 的实参：家族"最新"用 alias（稳，永远指向最新）；要钉具体
 //   旧版本用完整 model id（可能随退役失效 —— 选到退役版 cc 会在终端自己报错，这是刻意
 //   的兜底，不拦）。match = 用当前展示的模型名（小写）子串匹配，给当前项打勾。
-interface ModelRow { label: string; arg: string; match: string }
-const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
+export interface ModelRow { label: string; arg: string; match: string }
+export const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
   { family: 'Opus', rows: [
     { label: 'Opus 4.8', arg: 'claude-opus-4-8', match: 'opus 4.8' },
     { label: 'Opus 4.7', arg: 'claude-opus-4-7', match: 'opus 4.7' },

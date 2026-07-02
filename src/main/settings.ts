@@ -23,6 +23,9 @@ export interface Settings {
   defaults: {
     cwd: string
     autoLaunchCC: boolean
+    // model = cc `--model <arg>` 实参：alias（'fable'/'haiku'）或完整 id（'claude-opus-4-8'）；
+    // 空串 = 不带 --model，跟随 cc 默认。只在新建会话（非 --resume）时生效。
+    model: string
   }
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径
   disableAutoupdater: boolean  // true = spawn pwsh 时注入 DISABLE_AUTOUPDATER=1
@@ -48,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cursor: { style: 'block', blink: true },
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
-  defaults: { cwd: '', autoLaunchCC: true },
+  defaults: { cwd: '', autoLaunchCC: true, model: '' },
   claudePath: '',
   disableAutoupdater: true,
   lastUsedCwd: '',
@@ -111,7 +114,12 @@ function normalize(raw: unknown): Settings {
     },
     defaults: {
       cwd: typeof def.cwd === 'string' ? def.cwd : DEFAULT_SETTINGS.defaults.cwd,
-      autoLaunchCC: typeof def.autoLaunchCC === 'boolean' ? def.autoLaunchCC : DEFAULT_SETTINGS.defaults.autoLaunchCC
+      autoLaunchCC: typeof def.autoLaunchCC === 'boolean' ? def.autoLaunchCC : DEFAULT_SETTINGS.defaults.autoLaunchCC,
+      // 只收字母数字/-/./_，防止用户手改 settings.json 时把奇怪字符注入到 spawn 命令
+      model:
+        typeof def.model === 'string' && /^[A-Za-z0-9._-]*$/.test(def.model)
+          ? def.model
+          : DEFAULT_SETTINGS.defaults.model
     },
     claudePath: typeof r.claudePath === 'string' ? r.claudePath : DEFAULT_SETTINGS.claudePath,
     disableAutoupdater:

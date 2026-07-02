@@ -797,9 +797,9 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 #search-close:hover { color: #e5e5e5; background: #2a2a2a; }
 
-/* Context menu */
+/* Context menu — z 90 保证浮在 settings scrim (80) 之上；用作设置里 picker 菜单也是它 */
 .ctx {
-  position: fixed; z-index: 60; min-width: 188px;
+  position: fixed; z-index: 90; min-width: 188px;
   background: var(--canvas);
   border-radius: var(--r-md);
   box-shadow: var(--sh-5);
@@ -1444,6 +1444,57 @@ button.saved-toggle:hover { color: var(--ink); }
 .set-row input:focus,
 .set-row select:focus {
   border-color: var(--ink);
+}
+
+/* picker-select：form-input 尺寸的自定义下拉触发按钮，点击弹 .ctx 菜单。
+   用它替代原生 <select>，原生下拉在 Electron 里样式没法压平（尤其 optgroup），
+   自绘保证选项面板跟工具栏模型芯片的下拉视觉一致。 */
+.set-row .picker-select {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+  font-family: var(--sans);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.set-row .picker-select:hover { border-color: var(--hairline-strong); }
+.set-row .picker-select:focus,
+.set-row .picker-select.open { border-color: var(--ink); outline: none; }
+.set-row .picker-select .picker-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.set-row .picker-select .picker-label.mute { color: var(--mute); }
+.set-row .picker-select .picker-chev {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  color: var(--mute);
+}
+.set-row .picker-select:hover .picker-chev,
+.set-row .picker-select.open .picker-chev { color: var(--ink); }
+
+/* picker 菜单里的 family eyebrow：分组小标题，mono-uppercase 呼应设置里 label 的语气 */
+.ctx-eyebrow {
+  padding: 8px 10px 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  pointer-events: none;
 }
 
 /* toggle 行：label 在上、滑块在下；滑块要回到固定尺寸，不继承上面 input 的 100%/36px */
