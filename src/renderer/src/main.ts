@@ -1022,6 +1022,37 @@ function renameSaved(savedId: string): void {
   })
 }
 
+// 在新标签页中恢复该会话：同组 makeTab，把这条 session 记录挪进去当栈顶，
+// autoLaunchCC 触发 launchCC → 走 --resume 分支。原标签的栈记录保留不动，
+// 由用户自己判断是否要在原处删除；两处同时激活同一 sessionId 可能造成
+// jsonl 双写，属于已知边界，不主动拦。
+async function openSessionInNewTab(sessionId: string): Promise<void> {
+  const ctx = activeContext()
+  if (!ctx) return
+  const { group, tab } = ctx
+  const sess = tab.sessions.find((s) => s.sessionId === sessionId)
+  if (!sess) return
+  const name = tabNameForSession(sess)
+  const newTab = makeTab(group, {
+    name,
+    sessions: [{ ...sess }],
+    activeSessionId: sess.sessionId,
+    autoLaunchCC: true
+  })
+  group.collapsed = false
+  activeTabId = newTab.id
+  sidebar.render()
+  activateUI(newTab.id)
+  await spawnTabPty(newTab)
+  scheduleSave()
+  toast(`已在新标签打开会话「${name}」`)
+}
+
+function tabNameForSession(s: SessionRecord): string {
+  const raw = s.userTitle || s.aiTitle || `会话 ${s.sessionId.slice(0, 8)}`
+  return raw.length > 20 ? raw.slice(0, 19) + '…' : raw
+}
+
 // ─── 栈内会话右键菜单（重命名 / 删除；改完默认同步到 saved） ──────
 function openSessionCtx(sessionId: string, x: number, y: number): void {
   const ctx = activeContext()
@@ -1030,6 +1061,8 @@ function openSessionCtx(sessionId: string, x: number, y: number): void {
   if (!sess) return
   const onlyOne = ctx.tab.sessions.length <= 1
   const items: import('./ui-helpers').CtxItem[] = [
+    { label: '在新标签页中打开该会话', icon: icon('external-link'), act: () => void openSessionInNewTab(sessionId) },
+    { sep: true },
     { label: '重命名会话', icon: icon('edit'), act: () => renameSession(sessionId) }
   ]
   if (sess.userTitle) {
