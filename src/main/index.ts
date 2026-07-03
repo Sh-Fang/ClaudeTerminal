@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, powerMonitor, shell } from 'electron'
 import { join } from 'node:path'
 import { registerPtyIpc } from './ipc'
 import { killAll } from './pty-manager'
@@ -8,9 +8,25 @@ import { StateEventWatcher } from './state-events'
 import { isSafeExternalUrl } from './url-safety'
 import { setFloaterEnabled, destroyFloater } from './floater'
 import { loadSettings } from './settings'
+import { logEvent, startLogging, stopLogging } from './app-log'
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
+
+// 未捕获错误：越早注册越好，不用等 ready；startLogging 之前落的会因文件未开而丢，
+// 但保底能进 electron 内置 stderr。startLogging 之后的都会 JSONL 落盘。
+process.on('uncaughtException', (err) => {
+  try { logEvent('uncaught_exception', { message: err.message, stack: err.stack }) } catch {}
+})
+process.on('unhandledRejection', (reason) => {
+  const r = reason as { message?: string; stack?: string } | string | undefined
+  try {
+    logEvent('unhandled_rejection', {
+      message: typeof r === 'string' ? r : r?.message,
+      stack: typeof r === 'object' ? r?.stack : undefined
+    })
+  } catch {}
+})
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
@@ -103,6 +119,41 @@ function stopWatchers(): void {
 }
 
 app.whenReady().then(() => {
+  // logger 尽量早启动：ready 之后 electron 事件才能挂，getPath('logs') 也才可用。
+  // 上次未走 clean shutdown → sentinel 还在 → start 事件里 unclean_exit=true。
+  startLogging({
+    appVersion: app.getVersion(),
+    electron: process.versions.electron ?? '',
+    platform: `${process.platform}-${process.arch}`
+  })
+
+  // Electron 崩溃事件：render 是渲染进程（含 floater），child 是 GPU/utility/plugin。
+  // 休眠唤醒后 app 消失，最常见就是 GPU 进程崩了拖着主进程一起走。
+  app.on('render-process-gone', (_e, wc, details) => {
+    logEvent('render_process_gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      url: (() => { try { return wc.getURL() } catch { return '' } })()
+    })
+  })
+  app.on('child-process-gone', (_e, details) => {
+    logEvent('child_process_gone', {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      serviceName: details.serviceName,
+      name: details.name
+    })
+  })
+
+  // powerMonitor：这是诊断"睡→醒 app 没了"的核心线索。
+  // 日志停在 suspend 后 → app 是被系统在休眠期间处理掉的；
+  // 有 resume 之后再断 → 唤醒时崩的（多半 GPU/驱动）。
+  const power = ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'shutdown', 'on-ac', 'on-battery'] as const
+  for (const ev of power) {
+    try { powerMonitor.on(ev as never, () => logEvent('power', { kind: ev })) } catch {}
+  }
+
   registerPtyIpc(() => mainWindow)
   ipcMain.on('window:closeConfirmed', () => {
     allowClose = true
@@ -130,8 +181,10 @@ app.on('window-all-closed', () => {
   stopWatchers()
   destroyFloater()
   killAll()
+  // stop 事件同步落盘 + sentinel 删掉，下次启动才不会误判成 unclean_exit
+  stopLogging('window-all-closed')
   // 用 app.exit 而非 app.quit：node-pty 的 conoutSocketWorker.dispose() 会挂一个
-  // FLUSH_DATA_INTERVAL=1000ms 的 setTimeout 等最后一段输出 flush 再关 worker，
+  // FLUSH_DATA_INTERVAL=1000ms 的 setTimeout 等最后一段输出 flush 再关 worker,
   // app.quit 是优雅退，会等事件循环排空 → 进程多挂 1s 才消失。
   // 窗口已关、renderer 已退、子进程同步 kill 完了，那 1s flush 没人在读，直接跳过。
   if (process.platform !== 'darwin') app.exit(0)
@@ -142,4 +195,5 @@ app.on('before-quit', () => {
   // 时仍能把 watcher/pty 清干净（重复调用 stopWatchers/killAll 是幂等的）。
   stopWatchers()
   killAll()
+  stopLogging('before-quit')
 })
