@@ -1192,12 +1192,38 @@ function markTabPending(tabId: string): void {
   scheduleSave()
 }
 
+// "标记为已查看"：手动清掉侧栏点（done/attention/error → idle），不用切走 tab 再等降级。
+// busy 不清 —— 那是 cc 真在跑，跟"看过没"两回事；idle 本来就没点，直接短路。
+function markTabViewed(tabId: string): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  const s = ctx.tab.status
+  if (s === 'idle' || s === 'busy') return
+  ctx.tab.status = 'idle'
+  ctx.tab.note = undefined
+  if (downgradeTabId === tabId) clearDowngradeTimer()
+  sidebar.render()
+  toolbar.render()
+  scheduleSave()
+}
+
 function openTabCtx(tabId: string, x: number, y: number): void {
   const ctx = findTab(tabId)
   if (!ctx) return
+  // 按当前状态语义化切换：
+  //   idle → 允许"标记为待查看"（留自己看的标签）
+  //   done/attention/error → 允许"标记为已查看"（清点降噪）
+  //   busy → 都不给：cc 正在跑，改状态只会掩盖真实进度
+  const s = ctx.tab.status ?? 'idle'
+  const items: import('./ui-helpers').CtxItem[] = []
+  if (s === 'idle') {
+    items.push({ label: '标记为待查看', icon: icon('check-square'), act: () => markTabPending(tabId) })
+  } else if (s === 'done' || s === 'attention' || s === 'error') {
+    items.push({ label: '标记为已查看', icon: icon('square'), act: () => markTabViewed(tabId) })
+  }
   showCtxMenu(
     [
-      { label: '标记为待查看', icon: icon('check-square'), act: () => markTabPending(tabId) },
+      ...items,
       { label: '保存标签', icon: icon('save'), act: () => saveTab(tabId) },
       { sep: true },
       {
