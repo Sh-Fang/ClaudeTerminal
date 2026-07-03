@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cursor: { style: 'block', blink: true },
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
-  defaults: { cwd: '', autoLaunchCC: true, model: '' },
+  defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
   disableAutoupdater: true,
   lastUsedCwd: '',
