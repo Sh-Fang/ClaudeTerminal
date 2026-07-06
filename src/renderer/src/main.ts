@@ -1576,22 +1576,29 @@ window.addEventListener('beforeunload', () => {
   for (const g of groups) for (const t of g.tabs) t.dispose()
 })
 
-// ─── 关闭 app 时检查未保存分组 ────────────────────────────────────
+// ─── 关闭 app 时确认（兜底：任何情况都弹一次） ─────────────────────
+// 有脏分组且开启对应设置时展示分组明细；其他情况仍弹一个通用确认，防止误关。
 window.term.onWindowCloseRequest(() => {
   if (isConfirmOpen()) return // 已有确认弹窗在显示，忽略重复触发
   const dirtyGroups = groups.filter((g) => isGroupDirty(g) && g.tabs.length > 0)
-  if (dirtyGroups.length === 0 || !settings.confirmCloseUnsaved) {
-    window.term.winConfirmClose()
+  const showDirty = dirtyGroups.length > 0 && settings.confirmCloseUnsaved
+  if (showDirty) {
+    const lines = dirtyGroups
+      .map((g) => `• <b>${escapeHtml(g.name)}</b>（${g.tabs.length} 个标签）`)
+      .join('<br/>')
+    confirmDialog({
+      title: '有未保存的分组，仍要关闭？',
+      message: `以下分组未保存，关闭后将丢失标签布局：<br/>${lines}<br/><br/>` +
+        '可先在分组右键「保存分组」，或直接关闭。',
+      okLabel: '仍然关闭',
+      onOk: () => window.term.winConfirmClose()
+    })
     return
   }
-  const lines = dirtyGroups
-    .map((g) => `• <b>${escapeHtml(g.name)}</b>（${g.tabs.length} 个标签）`)
-    .join('<br/>')
   confirmDialog({
-    title: '有未保存的分组，仍要关闭？',
-    message: `以下分组未保存，关闭后将丢失标签布局：<br/>${lines}<br/><br/>` +
-      '可先在分组右键「保存分组」，或直接关闭。',
-    okLabel: '仍然关闭',
+    title: '确认关闭 Claude Terminal？',
+    message: '关闭后所有终端会话将被终止。确认继续？',
+    okLabel: '关闭',
     onOk: () => window.term.winConfirmClose()
   })
 })
@@ -1784,14 +1791,23 @@ async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
     toast(`已切到「${entry.tabName}」`)
     return
   }
+  // 该分组已保存 且 该 tabId 在保存快照里就有：视为"回到已保存的位置"，不打脏。
+  // 后续 spawn/会话事件走 autoSyncTabToSaved 把 saved snapshot 拉齐，保持"已保存"状态。
+  // 关键：saved 匹配走 findSavedForGroup（按 srcId 或 name+cwd），因为恢复时 g 可能是
+  // 通过 ensureGroup 新建的 —— 新 id 跟老 saved.srcId 对不上，必须用 name+cwd 兜底命中。
+  // 命中后把 srcId 重绑到当前 live group，isGroupDirty / autoSync 后续才能找到它。
+  const saved = findSavedForGroup(g)
+  if (saved) saved.srcId = g.id
+  const knownInSaved = !!saved?.snapshot.tabs.some((t) => t.id === entry.tabId)
   const tab = makeTab(g, {
     id: entry.tabId,
     name: entry.tabName,
     sessions: entry.sessions,
     activeSessionId: entry.activeSessionId,
     autoLaunchCC: entry.autoLaunchCC,
-    dirty: true
+    dirty: !knownInSaved
   })
+  if (knownInSaved) autoSyncTabToSaved(tab, g)
   activeTabId = tab.id
   sidebar.render()
   activateUI(tab.id)

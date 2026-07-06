@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 import { join } from 'node:path'
 import { registerPtyIpc } from './ipc'
 import { killAll } from './pty-manager'
@@ -70,12 +70,26 @@ function createWindow(): void {
     if (!mainWindow || mainWindow.isDestroyed()) return
     e.preventDefault()
     const wc = mainWindow.webContents
-    if (!wc || wc.isDestroyed()) {
-      allowClose = true
-      mainWindow.close()
-      return
+    // renderer 还活着 → 让它弹自绘对话框，回 window:closeConfirmed。
+    // renderer 死掉了 → 走原生 messageBox 兜底，保证"任何情况都能确认关闭"。
+    if (wc && !wc.isDestroyed()) {
+      try {
+        wc.send('window:close-request')
+        return
+      } catch {
+        // 落到下面的原生 dialog 兜底
+      }
     }
-    try { wc.send('window:close-request') } catch {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['关闭', '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      title: '确认关闭',
+      message: '确认关闭 Claude Terminal？',
+      detail: '关闭后所有终端会话将被终止。'
+    })
+    if (choice === 0) {
       allowClose = true
       mainWindow.close()
     }
