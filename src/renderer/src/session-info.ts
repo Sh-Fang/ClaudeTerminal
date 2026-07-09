@@ -118,8 +118,9 @@ export class SessionInfoBar {
   private openEffortMenu(anchor: HTMLElement): void {
     const cur = (this.usage?.effort ?? '').toLowerCase()
     const r = anchor.getBoundingClientRect()
+    // 菜单从上到下高→低：顶部 max、底部 low（EFFORT_OPTIONS 本身是低→高，渲染时倒序）
     showCtxMenu(
-      EFFORT_OPTIONS.map((lv) => ({
+      [...EFFORT_OPTIONS].reverse().map((lv) => ({
         label: cap(lv),
         icon: lv === cur ? '✓' : '',
         act: () => this.hooks.requestEffortSwitch(lv)
