@@ -81,7 +81,7 @@ export interface Settings {
   font: { family: string; size: number; lineHeight: number }
   cursor: { style: CursorStyle; blink: boolean }
   terminal: { scrollback: number; theme: ThemePreset }
-  defaults: { cwd: string; autoLaunchCC: boolean }
+  defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   disableAutoupdater: boolean
   lastUsedCwd: string
