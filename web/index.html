@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claude Terminal — 为 Claude Code 而生的 Windows 终端</title>
+<meta name="description" content="定制化终端（Electron + PowerShell 7），每个标签页绑定一个 Claude Code 会话，关闭后一键恢复原样。" />
+
+<!-- ╔══════════════════════════════════════════════════════════════╗
+     ║  下载配置：改这里即可。把 url 换成你的实际下载地址              ║
+     ║  （GitHub Releases / 对象存储 / 内网直链都行）。               ║
+     ╚══════════════════════════════════════════════════════════════╝ -->
+<script>
+  window.APP = {
+    version: "v0.0.1",
+    installer: { url: "#", size: "≈ 90 MB" },   // NSIS 安装包 (.exe)
+    portable:  { url: "#", size: "≈ 95 MB" },   // 免安装 ZIP
+    repo:      "#"                               // 源码 / Issues 链接（可留 #）
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect x='8' y='24' width='240' height='208' rx='52' fill='%23171717'/%3E%3Cpath d='M70 88l40 40-40 40' fill='none' stroke='%23fff' stroke-width='22' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='134' y1='160' x2='186' y2='160' stroke='%23fff' stroke-width='22' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<style>
+  :root{
+    --ink:#171717; --on-primary:#fff; --body:#4d4d4d; --mute:#888;
+    --hairline:#ebebeb; --hairline-strong:#a1a1a1;
+    --canvas:#fff; --canvas-soft:#fafafa; --canvas-soft-2:#f5f5f5;
+    --link:#0070f3;
+    --g-blue:#007cf0; --g-teal:#00dfd8; --g-violet:#7928ca; --g-pink:#ff0080;
+    --g-coral:#ff4d4d; --g-amber:#f9cb28;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sh-2:0 1px 1px #00000005,0 2px 2px #0000000a,0 0 0 1px #00000014;
+    --sh-3:0 2px 2px #0000000a,0 8px 8px -8px #0000000a,0 0 0 1px #00000014;
+    --sh-4:0 2px 2px #0000000a,0 8px 16px -4px #0000000a,0 0 0 1px #00000014;
+    --sh-5:0 1px 1px #00000005,0 8px 16px -4px #0000000a,0 24px 40px -8px #0000001a,0 0 0 1px #00000014;
+    --max:1200px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:var(--sans); background:var(--canvas-soft); color:var(--ink);
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+    overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.02em;color:var(--body);text-transform:uppercase}
+
+  /* ── Nav ── */
+  header{position:fixed;top:0;left:0;right:0;z-index:50;background:transparent;border-bottom:1px solid transparent;transition:background .25s ease,border-color .25s ease,backdrop-filter .25s ease}
+  header.scrolled{background:rgba(255,255,255,.72);backdrop-filter:blur(12px);border-bottom-color:var(--hairline)}
+  section,.stage{scroll-margin-top:72px}
+  nav{height:64px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.02em;font-size:15px}
+  .brand img{width:26px;height:26px;border-radius:7px;box-shadow:var(--sh-2)}
+  .nav-right{display:flex;align-items:center;gap:8px}
+  .nav-link{color:var(--body);font-size:14px;font-weight:500;padding:8px 12px;border-radius:999px;transition:.15s}
+  .nav-link:hover{color:var(--ink);background:var(--canvas-soft-2)}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-weight:500;cursor:pointer;border:none;transition:.15s;white-space:nowrap}
+  .btn-sm{font-size:14px;height:32px;padding:0 14px;border-radius:6px}
+  .btn-primary{background:var(--ink);color:var(--on-primary)}
+  .btn-primary:hover{background:#000;transform:translateY(-1px)}
+  .btn-ghost{background:var(--canvas);color:var(--ink);border:1px solid var(--hairline)}
+  .btn-ghost:hover{border-color:var(--hairline-strong)}
+
+  /* ── Hero ── */
+  .hero{position:relative;text-align:center;padding:128px 0 48px;overflow:hidden}
+  .hero>*{position:relative;z-index:1}
+  .mesh{position:absolute;inset:-40% -10% auto -10%;height:460px;z-index:0;filter:blur(80px);opacity:.4;pointer-events:none}
+  .mesh span{position:absolute;border-radius:50%}
+  .m1{width:300px;height:300px;background:var(--g-blue);left:10%;top:0;animation:float1 14s ease-in-out infinite}
+  .m2{width:260px;height:260px;background:var(--g-teal);left:32%;top:40px;animation:float2 16s ease-in-out infinite}
+  .m3{width:260px;height:260px;background:var(--g-violet);right:28%;top:10px;animation:float1 18s ease-in-out infinite reverse}
+  .m4{width:280px;height:280px;background:var(--g-pink);right:8%;top:50px;animation:float2 15s ease-in-out infinite}
+  .m5{width:220px;height:220px;background:var(--g-amber);left:47%;top:110px;animation:float1 20s ease-in-out infinite}
+  @keyframes float1{50%{transform:translate(30px,-24px) scale(1.08)}}
+  @keyframes float2{50%{transform:translate(-28px,22px) scale(.94)}}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:var(--canvas);border:1px solid var(--hairline);
+    padding:6px 14px;border-radius:999px;font-size:13px;color:var(--body);box-shadow:var(--sh-2);margin-bottom:28px}
+  .pill b{color:var(--ink);font-weight:600}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--g-teal);box-shadow:0 0 0 3px #00dfd826}
+  h1{font-size:clamp(38px,6.2vw,68px);font-weight:600;letter-spacing:-.045em;line-height:1.02;margin:0 auto;max-width:14ch}
+  .grad-text{background:linear-gradient(100deg,var(--g-blue),var(--g-violet) 42%,var(--g-pink) 72%,var(--g-coral));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{font-size:clamp(17px,2.2vw,20px);color:var(--body);max-width:56ch;margin:26px auto 0;line-height:1.55}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:38px}
+  .btn-lg{font-size:16px;height:52px;padding:0 26px;border-radius:999px}
+  .cta-note{margin-top:18px;font-family:var(--mono);font-size:12.5px;color:var(--mute)}
+
+  /* ── Terminal mockup ── */
+  .stage{max-width:1000px;margin:64px auto 0;padding:0 24px}
+  .term{background:#171717;border-radius:14px;box-shadow:var(--sh-5),0 40px 80px -30px #00000040;overflow:hidden;border:1px solid #ffffff10}
+  .term-bar{height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#1f1f1f;border-bottom:1px solid #ffffff0f}
+  .tl{width:12px;height:12px;border-radius:50%}
+  .tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
+  .term-title{color:#8a8a8a;font-family:var(--mono);font-size:12px;margin:0 auto;padding-right:52px}
+  .term-body{display:flex;min-height:360px}
+  .side{width:246px;background:#191919;border-right:1px solid #ffffff0d;padding:12px 8px;flex-shrink:0}
+  .grp{font-family:var(--mono);font-size:10.5px;color:#6a6a6a;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 6px;display:flex;align-items:center;gap:6px}
+  .tab{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#cfcfcf;font-size:13px;margin:2px 0;cursor:default}
+  .tab.active{background:#ffffff12;color:#fff}
+  .tab .sd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .sd.busy{background:#3b82f6}
+  .sd.attn{background:#f5a623;animation:pulse 1.4s ease-in-out infinite}
+  .sd.done{background:#28c840}
+  .sd.idle{background:#555}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 #f5a62366}50%{box-shadow:0 0 0 5px #f5a62300}}
+  .tab .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab .tt{font-family:var(--mono);font-size:10px;color:#666}
+  .screen{flex:1;padding:20px 22px;font-family:var(--mono);font-size:13px;line-height:1.7;color:#d0d0d0;overflow:hidden}
+  .screen .p{color:#00dfd8}
+  .screen .c{color:#fff}
+  .screen .g{color:#6a6a6a}
+  .screen .a{color:#ff8fbf}
+  .screen .cursor{display:inline-block;width:8px;height:15px;background:#00dfd8;vertical-align:-2px;animation:blink 1.1s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+  .badge-in{display:inline-block;background:#f5a62322;color:#f5a623;border:1px solid #f5a62344;font-size:11px;padding:1px 8px;border-radius:999px;font-family:var(--mono)}
+
+  /* ── Sections ── */
+  section{padding:96px 0}
+  .sec-head{text-align:center;max-width:640px;margin:0 auto 56px}
+  .sec-head h2{font-size:clamp(28px,4vw,40px);font-weight:600;letter-spacing:-.035em;margin:14px 0 0;line-height:1.1}
+  .sec-head p{color:var(--body);font-size:17px;margin-top:16px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .card{background:var(--canvas);border-radius:12px;padding:26px;box-shadow:var(--sh-3);transition:.2s}
+  .card:hover{transform:translateY(-3px);box-shadow:var(--sh-4)}
+  .ic{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;margin-bottom:18px;background:var(--canvas-soft-2)}
+  .ic svg{width:22px;height:22px}
+  .card h3{font-size:18px;font-weight:600;letter-spacing:-.02em}
+  .card p{color:var(--body);font-size:14.5px;margin-top:8px;line-height:1.6}
+  .card .kw{color:var(--ink);font-weight:500}
+
+  /* status legend */
+  .legend{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;margin-top:40px}
+  .leg{display:flex;align-items:center;gap:9px;font-size:14px;color:var(--body)}
+  .leg .sd{width:9px;height:9px;border-radius:50%}
+  .leg .sd.busy{background:#3b82f6}.leg .sd.attn{background:#f5a623}.leg .sd.done{background:#28c840}.leg .sd.idle{background:var(--hairline-strong)}
+
+  /* ── Download (dark band) ── */
+  .dl{background:var(--ink);color:var(--on-primary)}
+  .dl .eyebrow{color:#9a9a9a}
+  .dl h2{color:#fff}
+  .dl .sec-head p{color:#b0b0b0}
+  .dl-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:820px;margin:0 auto}
+  .dcard{background:#ffffff08;border:1px solid #ffffff14;border-radius:14px;padding:28px;transition:.2s}
+  .dcard:hover{background:#ffffff0d;border-color:#ffffff26}
+  .dcard .tag{font-family:var(--mono);font-size:11px;color:#8a8a8a;text-transform:uppercase;letter-spacing:.05em}
+  .dcard h3{font-size:22px;font-weight:600;margin:10px 0 4px;letter-spacing:-.02em}
+  .dcard .desc{color:#a8a8a8;font-size:14px;line-height:1.6;min-height:44px}
+  .dcard .size{font-family:var(--mono);font-size:12px;color:#7a7a7a;margin:16px 0 18px}
+  .btn-white{background:#fff;color:var(--ink);width:100%;justify-content:center;height:46px;border-radius:8px;font-size:15px}
+  .btn-white:hover{background:#e8e8e8}
+  .btn-line{background:transparent;color:#fff;border:1px solid #ffffff2e;width:100%;justify-content:center;height:46px;border-radius:8px;font-size:15px}
+  .btn-line:hover{border-color:#fff;background:#ffffff0d}
+  .reqs{max-width:820px;margin:32px auto 0;display:flex;gap:28px;flex-wrap:wrap;justify-content:center;font-size:13px;color:#8a8a8a;font-family:var(--mono)}
+  .reqs span{display:flex;align-items:center;gap:7px}
+  .reqs b{color:#d0d0d0;font-weight:400}
+
+  /* ── Steps ── */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;counter-reset:s}
+  .step{background:var(--canvas);border-radius:12px;padding:24px;box-shadow:var(--sh-2);position:relative}
+  .step::before{counter-increment:s;content:"0" counter(s);font-family:var(--mono);font-size:13px;color:var(--link);font-weight:500}
+  .step h4{font-size:16px;font-weight:600;margin:12px 0 6px;letter-spacing:-.01em}
+  .step p{font-size:14px;color:var(--body);line-height:1.55}
+
+  /* ── Footer ── */
+  footer{border-top:1px solid var(--hairline);padding:48px 0;background:var(--canvas)}
+  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;color:var(--mute);font-size:13px}
+  .foot .brand{color:var(--ink)}
+
+  /* ── Power showcase (draw the features) ── */
+  .show{display:flex;flex-direction:column;gap:80px}
+  .frow{display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center}
+  .frow.rev .fr-text{order:2}
+  .fr-text .eyebrow{color:var(--body)}
+  .fr-text h3{font-size:27px;font-weight:600;letter-spacing:-.03em;margin:14px 0 0;line-height:1.15}
+  .fr-text p{color:var(--body);font-size:16px;line-height:1.68;margin-top:16px}
+  .fr-text .kw{color:var(--ink);font-weight:500}
+  .fr-list{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .fr-list li{display:flex;gap:10px;font-size:14.5px;color:var(--body);line-height:1.5}
+  .fr-list li svg{flex-shrink:0;margin-top:3px;width:16px;height:16px;stroke:var(--link)}
+  .mock{border-radius:16px;padding:32px;box-shadow:var(--sh-4);position:relative;overflow:hidden;min-height:264px;display:grid;place-items:center}
+
+  /* 组件底座：还原 app 里的真实卡面 */
+  .mock-desk{background:radial-gradient(130% 150% at 30% 20%,#2b2f3a,#14161c)}
+  .mock-soft{background:var(--canvas-soft-2)}
+  .app-frag{width:100%;max-width:300px;background:var(--canvas-soft);border:1px solid var(--hairline);border-radius:12px;box-shadow:var(--sh-3);overflow:hidden}
+
+  /* 1 · 悬浮窗（1:1 还原 floater.html 的 pill） */
+  .desk-play{width:72px;height:72px;border-radius:50%;background:#ffffff12;display:grid;place-items:center;border:1px solid #ffffff1f}
+  .desk-play svg{width:24px;height:24px;fill:#ffffffcc;margin-left:4px}
+  .desk-hint{position:absolute;left:24px;bottom:20px;font-family:var(--mono);font-size:12px;color:#ffffff55}
+  .floater{position:absolute;top:20px;right:20px;height:34px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:9px;padding:0 12px;background:rgba(40,40,42,.94);border:1px solid rgba(255,255,255,.06);border-radius:17px;backdrop-filter:blur(12px);color:#f5f5f5;box-shadow:0 10px 28px #0000005e}
+  .floater .fit{display:flex;align-items:center;gap:5px;font-size:12px;line-height:1}
+  .floater .fdot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+  .fdot.att{background:#eab308}
+  .fdot.bsy{background:#3b82f6}
+  .fdot.don{background:#22c55e}
+  .floater .fnum{font-weight:600;font-variant-numeric:tabular-nums}
+  .floater .fsep{width:1px;height:14px;background:rgba(255,255,255,.18);flex:0 0 1px}
+  .float-tag{position:absolute;top:64px;right:24px;font-family:var(--mono);font-size:10.5px;color:#ffffff66}
+
+  /* 2 · 用量面板（还原侧边栏底部 .side-usage） */
+  .sf-tabs{padding:10px 8px 4px}
+  .sf-tab{display:flex;align-items:center;gap:9px;margin:1px 6px;padding:6px 8px;border-radius:6px;font-size:13px;color:var(--body)}
+  .sf-tab.act{background:var(--canvas);color:var(--ink);border:1px solid var(--hairline);box-shadow:0 0 0 1px #00000014}
+  .sf-tab .d{width:8px;height:8px;border-radius:50%;flex:0 0 8px}
+  .sf-usage{padding:9px 14px 12px;border-top:1px solid var(--hairline)}
+  .ubars{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;column-gap:8px;row-gap:7px;font-family:var(--mono);font-size:11px;color:var(--mute)}
+  .ubars .ul{white-space:nowrap}
+  .ubars .utrack{height:5px;border-radius:3px;background:#2a2a2a;overflow:hidden}
+  .ubars .ufill{display:block;height:100%;border-radius:3px}
+  .ubars .uval{font-variant-numeric:tabular-nums}
+  .ubars .ureset{opacity:.75;white-space:nowrap}
+  .lv-ok{color:#23d18b}.bg-ok{background:#23d18b}
+  .lv-warn{color:#f5a623}.bg-warn{background:#f5a623}
+  .lv-danger{color:#f14c4c}.bg-danger{background:#f14c4c}
+
+  /* 3 · 设置开关（还原 .set-row-toggle） */
+  .set-frag{width:100%;max-width:344px;background:var(--canvas);border:1px solid var(--hairline);border-radius:12px;box-shadow:var(--sh-3);padding:18px 20px}
+  .sfr{padding:11px 0}
+  .sfr+.sfr{border-top:1px solid var(--hairline)}
+  .slabel{font-family:var(--mono);font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px}
+  .sfr.hot .slabel{color:var(--ink)}
+  .stoggle{width:32px;height:18px;border-radius:999px;background:var(--hairline-strong);position:relative}
+  .stoggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #00000033,0 1px .5px #0000000f;transition:transform .18s ease}
+  .stoggle.on{background:var(--ink)}
+  .stoggle.on i{transform:translateX(14px)}
+  .set-note{font-family:var(--mono);font-size:11px;color:#1a7f37;margin-top:10px;display:flex;align-items:center;gap:6px}
+
+  /* ── app 线框 + 放大镜 ── */
+  .mock-shell{display:block;padding:0;min-height:330px;background:var(--canvas-soft-2)}
+  .shell{position:absolute;inset:26px;background:var(--canvas);border:1px solid var(--hairline);border-radius:9px;box-shadow:var(--sh-1);overflow:hidden;display:grid;grid-template-rows:22px 1fr}
+  .sh-bar{display:flex;align-items:center;gap:5px;padding:0 10px;border-bottom:1px solid var(--hairline);position:relative}
+  .sh-bar i{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+  .sh-cls{background:#ff5f57}.sh-min{background:#febc2e}.sh-max{background:#28c840}
+  .sh-nm{margin-left:7px;font-size:9px;font-weight:600;color:var(--mute);letter-spacing:-.2px}
+  .sh-body{display:grid;grid-template-columns:37% 1fr;min-height:0}
+  .sh-side{background:var(--canvas-soft);border-right:1px solid var(--hairline);padding:8px 7px;display:flex;flex-direction:column;min-height:0}
+  .sh-grp{height:6px;width:56%;border-radius:3px;background:var(--hairline);margin:2px 2px 8px}
+  .sh-tab{height:15px;border-radius:4px;background:var(--canvas);border:1px solid var(--hairline);display:flex;align-items:center;gap:5px;padding:0 6px;margin-bottom:4px}
+  .sh-tab.gh{background:transparent;border-color:transparent}
+  .sh-tab .sd{width:5px;height:5px;border-radius:50%;flex:0 0 5px;background:var(--hairline-strong)}
+  .sh-tab .ln{height:5px;border-radius:2px;background:var(--hairline);flex:1}
+  .sh-fill{flex:1}
+  .sh-main{background:var(--ink);position:relative;overflow:hidden;padding:9px 11px}
+  .sh-term{font-family:var(--mono);font-size:8px;line-height:1.95;color:#565656;white-space:nowrap}
+  .sh-term .p{color:#00b8a3}
+  /* 线框里"就位"的迷你功能件 */
+  .sh-floater{position:absolute;top:5px;right:7px;height:13px;display:flex;align-items:center;gap:5px;padding:0 6px;background:rgba(40,40,42,.94);border:1px solid #ffffff26;border-radius:7px}
+  .sh-floater .m{width:4px;height:4px;border-radius:50%}
+  .sh-usage{border-top:1px solid var(--hairline);padding:6px 4px 2px;display:grid;grid-template-columns:auto 1fr auto;column-gap:5px;row-gap:5px;align-items:center}
+  .sh-usage .ul{font-family:var(--mono);font-size:7px;color:var(--mute)}
+  .sh-usage .tk{height:4px;border-radius:2px;background:#2a2a2a;overflow:hidden}
+  .sh-usage .tk i{display:block;height:100%;border-radius:2px}
+  .sh-usage .vl{font-family:var(--mono);font-size:7px}
+  .sh-modal{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:57%;background:var(--canvas);border-radius:6px;box-shadow:var(--sh-5);padding:9px 11px}
+  .sh-modal .mr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0}
+  .sh-modal .mr+.mr{border-top:1px solid var(--hairline)}
+  .sh-modal .mln{height:5px;border-radius:2px;background:var(--hairline);flex:1;max-width:60%}
+  .sh-sw{width:15px;height:9px;border-radius:99px;background:var(--hairline-strong);position:relative;flex:0 0 15px}
+  .sh-sw.on{background:var(--ink)}
+  .sh-sw i{position:absolute;top:1.5px;left:1.5px;width:6px;height:6px;border-radius:50%;background:#fff}
+  .sh-sw.on i{left:auto;right:1.5px}
+
+  /* 定位高亮 + 连接线 + 放大镜（全部按 mock 百分比，随宽度同步缩放） */
+  .lens-svg{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:visible}
+  .spot{position:absolute;border:1.5px dashed var(--link);border-radius:6px;background:#0070f30f;z-index:2}
+  .loupe{position:absolute;transform:translate(-50%,-50%);aspect-ratio:1;border-radius:50%;background:var(--canvas);border:5px solid #fff;box-shadow:0 0 0 1px var(--hairline),0 26px 46px -12px #0000004a,0 8px 18px -6px #00000021;display:grid;place-items:center;overflow:hidden;z-index:4}
+  .loupe.dark{background:radial-gradient(120% 120% at 40% 30%,#20232c,#131519)}
+  .loupe .ubars{font-size:12px;width:158px;column-gap:9px;row-gap:12px}
+  .loupe .ubars .utrack{height:6px}
+  .loupe .set-frag{box-shadow:none;border:none;background:transparent;padding:0;max-width:none;width:170px}
+  .loupe .set-frag .sfr{padding:0}
+
+  @media(max-width:860px){
+    .show{gap:48px}
+    .frow{grid-template-columns:1fr;gap:24px}
+    .frow.rev .fr-text{order:0}
+    .mock{min-height:220px;padding:24px}
+    .grid,.steps,.dl-grid{grid-template-columns:1fr}
+    .side{display:none}
+    .nav-link{display:none}
+    section{padding:72px 0}
+    .hero{padding:80px 0 40px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap"><nav>
+    <a class="brand" href="#top">
+      <img src="data:image/png;base64,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" alt="" />
+      Claude Terminal
+    </a>
+    <div class="nav-right">
+      <a class="nav-link" href="#features">功能</a>
+      <a class="nav-link" href="#how">工作方式</a>
+      <a class="nav-link" href="#download">下载</a>
+      <a class="btn btn-sm btn-ghost" id="repo-link" href="#" target="_blank" rel="noopener">源码</a>
+      <a class="btn btn-sm btn-primary" href="#download">下载</a>
+    </div>
+  </nav></div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="mesh"><span class="m1"></span><span class="m2"></span><span class="m3"></span><span class="m4"></span><span class="m5"></span></div>
+    <span class="pill"><span class="dot"></span>Windows · Electron + <b>PowerShell 7</b></span>
+    <h1>为 <span class="grad-text">Claude Code</span> 而生的终端。</h1>
+    <p class="lead">每个标签页绑定一个 Claude Code 会话，关闭终端后下次打开一键回到原样——同一路径开多个会话也永不混淆。告别每次手输路径、<code>--resume</code> 翻列表。</p>
+    <div class="cta">
+      <a class="btn btn-lg btn-primary" href="#download">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        下载 for Windows
+      </a>
+      <a class="btn btn-lg btn-ghost" href="#features">查看功能</a>
+    </div>
+    <p class="cta-note" id="hero-note">免费 · 64-bit · Windows 10/11</p>
+  </div>
+
+  <!-- TERMINAL MOCKUP -->
+  <div class="stage">
+    <div class="term">
+      <div class="term-bar">
+        <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+        <span class="term-title">Claude Terminal — 理科工单</span>
+      </div>
+      <div class="term-body">
+        <aside class="side">
+          <div class="grp"><span>▾</span>终端项目 · D:\…\Terminal</div>
+          <div class="tab active"><span class="sd busy"></span><span class="nm">A · 主线开发</span><span class="tt">03:19</span></div>
+          <div class="tab"><span class="sd done"></span><span class="nm">B · 修复渲染残影</span><span class="tt">昨天</span></div>
+          <div class="grp"><span>▾</span>理科工单 · D:\…\理科工单</div>
+          <div class="tab"><span class="sd attn"></span><span class="nm">C · 单词上线批次</span><span class="tt">now</span></div>
+          <div class="tab"><span class="sd idle"></span><span class="nm">D · 数据核对</span><span class="tt">6/20</span></div>
+        </aside>
+        <div class="screen">
+          <div><span class="g">PS D:\Document\code\ElectronProject\Terminal&gt;</span> <span class="c">claude --resume 8f7eb41f…</span></div>
+          <div class="g">↳ 精确恢复会话，无需在列表里翻找</div>
+          <div style="margin-top:10px"><span class="p">✻ Claude</span> <span class="c">已回到「主线开发」上次的上下文。</span></div>
+          <div class="g" style="margin-top:6px">&nbsp;&nbsp;标签 C 触发 <span class="badge-in">需决策</span> · Allow Bash to run: npm test?</div>
+          <div style="margin-top:14px"><span class="p">&gt;</span> <span class="cursor"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">// core features</div>
+        <h2>不只是终端，是 Claude Code 的工作台。</h2>
+        <p>围绕「标签 = 工作流容器」重新设计，把开会话、恢复、找会话这些重复劳动全部自动化。</p>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#0070f3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg></div>
+          <h3>会话绑定 · 一键恢复</h3>
+          <p>标签出生即钉死一个 <span class="kw">session UUID</span>，首次 <code>--session-id</code> 创建、此后 <code>--resume</code> 精确命中。点一下标签，pwsh 自动落到对应路径并恢复会话。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#7928ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+          <h3>栈式会话 · <code>/clear</code> 不丢历史</h3>
+          <p><code>/clear</code> 换了新会话 id？标签会把它<span class="kw">压入会话栈</span>、栈顶前移，标签栏依旧是同一个，下拉里随时翻回 clear 之前那段长对话。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <h3>状态徽标 · 一眼看谁该处理</h3>
+          <p>hook 驱动的状态点：<span class="kw">运行中 / 需决策 / 完成 / 空闲</span>。多个会话并行时，橙色脉冲一眼锁定「正在等你批权限」的那个。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#00dfd8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></div>
+          <h3>分组 · 保存 · 恢复</h3>
+          <p>按路径分组管理标签，可整组<span class="kw">保存快照</span>、一键恢复整套工作流（含每个标签的会话栈与当前会话），下班关机也不怕丢现场。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#ff0080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+          <h3>PowerShell 7 · 真 ConPTY</h3>
+          <p>基于 <span class="kw">node-pty + ConPTY</span> 的原生体验，UTF-8 无乱码、reflow 不错位、xterm 渲染。先起 pwsh 再喂 <code>claude</code>，Ctrl+C 退出后还是可用的 shell。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#171717" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg></div>
+          <h3>不动你的全局配置</h3>
+          <p>会话追踪 hook 用 <code>--settings</code> 单实例挂载，<span class="kw">不污染</span> <code>~/.claude/settings.json</code>。会话按 UUID 全局搜，中文路径也不会串。</p>
+        </div>
+      </div>
+      <div class="legend">
+        <span class="leg"><span class="sd busy"></span>运行中</span>
+        <span class="leg"><span class="sd attn"></span>需决策</span>
+        <span class="leg"><span class="sd done"></span>完成待查看</span>
+        <span class="leg"><span class="sd idle"></span>空闲</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- POWER SHOWCASE -->
+  <section id="power">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">// built for long sessions</div>
+        <h2>为长时间开工调校的细节。</h2>
+        <p>不是把功能堆上去，而是把每天真正用到的东西做顺手。</p>
+      </div>
+      <div class="show">
+
+        <!-- 1 · 悬浮窗 -->
+        <div class="frow">
+          <div class="fr-text">
+            <div class="eyebrow">// always on top</div>
+            <h3>悬浮窗 · 全局状态一瞥</h3>
+            <p>一张常驻顶层的小卡片，聚合所有会话的 <span class="kw">完成 / 需决策 / 运行中</span> 计数。哪怕在看全屏视频、跑别的全屏应用，也能一眼看到「哪个会话在等你」。</p>
+            <ul class="fr-list">
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>可自由拖动、位置自动记忆</li>
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>拔掉外接屏，自动挪回可见区，不会「丢」在看不见的地方</li>
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>渲染崩溃自愈重建，不会「自己消失」</li>
+            </ul>
+          </div>
+          <div class="mock mock-shell">
+            <div class="shell">
+              <div class="sh-bar">
+                <i class="sh-cls"></i><i class="sh-min"></i><i class="sh-max"></i>
+                <span class="sh-nm">Claude Terminal</span>
+                <div class="sh-floater"><span class="m" style="background:#eab308"></span><span class="m" style="background:#3b82f6"></span><span class="m" style="background:#22c55e"></span></div>
+              </div>
+              <div class="sh-body">
+                <div class="sh-side">
+                  <div class="sh-grp"></div>
+                  <div class="sh-tab"><span class="sd" style="background:#0070f3"></span><span class="ln"></span></div>
+                  <div class="sh-tab"><span class="sd" style="background:#2da44e"></span><span class="ln"></span></div>
+                  <div class="sh-tab gh"><span class="sd"></span><span class="ln"></span></div>
+                </div>
+                <div class="sh-main"><div class="sh-term"><span class="p">PS&gt;</span> claude --resume 8f7e…<br/>✻ 已恢复「主线开发」<br/>&gt; _</div></div>
+              </div>
+            </div>
+            <div class="spot" style="left:60%;top:3.5%;width:35%;height:12%"></div>
+            <svg class="lens-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="77" y1="12" x2="70" y2="56" stroke="#0070f3" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/></svg>
+            <div class="loupe dark" style="left:70%;top:58%;width:32%">
+              <div class="floater">
+                <span class="fit"><span class="fdot att"></span><span class="fnum">2</span></span>
+                <span class="fsep"></span>
+                <span class="fit"><span class="fdot bsy"></span><span class="fnum">3</span></span>
+                <span class="fsep"></span>
+                <span class="fit"><span class="fdot don"></span><span class="fnum">5</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 · 额度 -->
+        <div class="frow rev">
+          <div class="fr-text">
+            <div class="eyebrow">// usage</div>
+            <h3>额度实时展示</h3>
+            <p>就在侧边栏底部一行行显示 Claude 账号用量：<span class="kw">5h额度 / 本周额度</span> 的百分比、进度条、重置倒计时一目了然，颜色随水位从绿转黄转红，不用切到别处查。</p>
+            <ul class="fr-list">
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>优先取 cc 自己联网落下的快照，<span class="kw">关了代理也能显示</span></li>
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>token 只在内存里当请求头，不落命令行</li>
+            </ul>
+          </div>
+          <div class="mock mock-shell">
+            <div class="shell">
+              <div class="sh-bar">
+                <i class="sh-cls"></i><i class="sh-min"></i><i class="sh-max"></i>
+                <span class="sh-nm">Claude Terminal</span>
+              </div>
+              <div class="sh-body">
+                <div class="sh-side">
+                  <div class="sh-grp"></div>
+                  <div class="sh-tab"><span class="sd" style="background:#0070f3"></span><span class="ln"></span></div>
+                  <div class="sh-tab gh"><span class="sd"></span><span class="ln"></span></div>
+                  <div class="sh-fill"></div>
+                  <div class="sh-usage">
+                    <span class="ul">5h</span><span class="tk"><i class="bg-ok" style="width:43%"></i></span><span class="vl lv-ok">43%</span>
+                    <span class="ul">周</span><span class="tk"><i class="bg-warn" style="width:76%"></i></span><span class="vl lv-warn">76%</span>
+                  </div>
+                </div>
+                <div class="sh-main"><div class="sh-term"><span class="p">✻ Claude</span> 正在工作…<br/>&gt; _</div></div>
+              </div>
+            </div>
+            <div class="spot" style="left:3.5%;top:69%;width:34%;height:21%"></div>
+            <svg class="lens-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="21" y1="80" x2="60" y2="46" stroke="#0070f3" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/></svg>
+            <div class="loupe" style="left:60%;top:46%;width:34%;background:var(--canvas-soft)">
+              <div class="ubars">
+                <span class="ul">5h额度</span><span class="utrack"><i class="ufill bg-ok" style="width:43%"></i></span><span class="uval lv-ok">43%</span><span class="ureset">1h52m</span>
+                <span class="ul">本周额度</span><span class="utrack"><i class="ufill bg-warn" style="width:76%"></i></span><span class="uval lv-warn">76%</span><span class="ureset">4d6h</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 · 禁用自动升级 -->
+        <div class="frow">
+          <div class="fr-text">
+            <div class="eyebrow">// version lock</div>
+            <h3>锁定 cc 版本 · 禁用自动升级</h3>
+            <p>一个开关写入用户级环境变量 <code>DISABLE_AUTOUPDATER=1</code>，<span class="kw">系统级生效</span>——此后所有新起的 Claude Code 都不再偷偷自动升级，团队统一锁版本、避免版本漂移带来意外变更。</p>
+            <ul class="fr-list">
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>写进 <code>HKCU\Environment</code>，对本终端外的 cc 也生效</li>
+              <li><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>关闭时只清除自己写入的，不动你原有配置</li>
+            </ul>
+          </div>
+          <div class="mock mock-shell">
+            <div class="shell">
+              <div class="sh-bar">
+                <i class="sh-cls"></i><i class="sh-min"></i><i class="sh-max"></i>
+                <span class="sh-nm">Claude Terminal · 设置</span>
+              </div>
+              <div class="sh-body">
+                <div class="sh-side">
+                  <div class="sh-grp"></div>
+                  <div class="sh-tab gh"><span class="sd"></span><span class="ln"></span></div>
+                  <div class="sh-tab gh"><span class="sd"></span><span class="ln"></span></div>
+                </div>
+                <div class="sh-main">
+                  <div class="sh-modal">
+                    <div class="mr"><span class="mln"></span><span class="sh-sw on"><i></i></span></div>
+                    <div class="mr"><span class="mln"></span><span class="sh-sw on"><i></i></span></div>
+                    <div class="mr"><span class="mln" style="max-width:72%"></span><span class="sh-sw on"><i></i></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="spot" style="left:41%;top:29%;width:51%;height:44%"></div>
+            <svg class="lens-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="66" y1="55" x2="63" y2="66" stroke="#0070f3" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/></svg>
+            <div class="loupe" style="left:63%;top:66%;width:33%">
+              <div class="set-frag">
+                <div class="sfr hot">
+                  <div class="slabel">禁止 cc 自动升级</div>
+                  <div class="stoggle on"><i></i></div>
+                  <div class="set-note">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    已写入用户环境变量
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" style="background:var(--canvas-soft-2)">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">// how it works</div>
+        <h2>打开即恢复现场。</h2>
+        <p>从关闭到重新开工，全程零手动输入路径、零 resume 翻找。</p>
+      </div>
+      <div class="steps">
+        <div class="step"><h4>打开终端</h4><p>历史标签 A / B / C 从上次的工作区直接列出。</p></div>
+        <div class="step"><h4>点一下标签</h4><p>pwsh 自动落到该标签的路径，并 resume 它绑定的会话。</p></div>
+        <div class="step"><h4>照常干活</h4><p><code>/clear</code>、compact 都被自动跟踪，状态点实时更新。</p></div>
+        <div class="step"><h4>随手关闭</h4><p>整组现场持久化，下次打开又是这一幕。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOWNLOAD -->
+  <section id="download" class="dl">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">// download</div>
+        <h2>开始使用 Claude Terminal</h2>
+        <p>选择适合你的版本。<span id="ver-inline"></span></p>
+      </div>
+      <div class="dl-grid">
+        <div class="dcard">
+          <div class="tag">推荐 · Installer</div>
+          <h3>安装包 (.exe)</h3>
+          <p class="desc">NSIS 安装向导，自动创建开始菜单与桌面快捷方式，支持自动更新与卸载。</p>
+          <div class="size" id="size-installer"></div>
+          <a class="btn btn-white" id="dl-installer" href="#" download>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            下载安装包
+          </a>
+        </div>
+        <div class="dcard">
+          <div class="tag">免安装 · Portable</div>
+          <h3>便携版 (.zip)</h3>
+          <p class="desc">解压即用，不写注册表、不改系统，适合无管理员权限或放到 U 盘随身携带。</p>
+          <div class="size" id="size-portable"></div>
+          <a class="btn btn-line" id="dl-portable" href="#" download>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            下载便携版
+          </a>
+        </div>
+      </div>
+      <div class="reqs">
+        <span>▪ 系统：<b>Windows 10 / 11 (x64)</b></span>
+        <span>▪ 依赖：<b>PowerShell 7+</b></span>
+        <span>▪ 可选：<b>Claude Code CLI</b></span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span class="brand" style="font-size:14px;font-weight:600;letter-spacing:-.02em">Claude Terminal</span>
+    <span>定制化终端 · Electron + PowerShell 7 · 适配 Windows</span>
+    <span id="foot-ver"></span>
+  </div>
+</footer>
+
+<script>
+  // 把顶部 APP 配置注入到页面各处
+  (function(){
+    var A = window.APP || {};
+    function set(id, prop, val){ var el=document.getElementById(id); if(el&&val!=null) el[prop]=val; }
+    set('dl-installer','href', A.installer && A.installer.url);
+    set('dl-portable','href', A.portable && A.portable.url);
+    set('repo-link','href', A.repo || '#');
+    document.getElementById('size-installer').textContent = '文件大小 ' + ((A.installer&&A.installer.size)||'—');
+    document.getElementById('size-portable').textContent  = '文件大小 ' + ((A.portable&&A.portable.size)||'—');
+    var v = A.version || '';
+    document.getElementById('ver-inline').textContent = v ? '当前版本 ' + v : '';
+    document.getElementById('foot-ver').textContent = v ? '© ' + new Date().getFullYear() + ' · ' + v : '';
+    // 若未配置源码链接则隐藏该按钮
+    if(!A.repo || A.repo === '#'){ var r=document.getElementById('repo-link'); if(r) r.style.display='none'; }
+
+    // 滚动感知导航：顶部透明沉浸，向下滚动后淡入毛玻璃白底
+    var hdr = document.querySelector('header');
+    function onScroll(){ hdr.classList.toggle('scrolled', window.scrollY > 16); }
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive:true });
+  })();
+</script>
+
+</body>
+</html>

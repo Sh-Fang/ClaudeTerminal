@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claude Terminal — 界面预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1' y='2' width='22' height='20' rx='5.5' fill='%23171717'/%3E%3Cpolyline points='6.5 9 10 12 6.5 15' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='12.5' y1='15' x2='17.5' y2='15' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+<style>
+  :root{
+    --ink:#171717; --body:#4d4d4d; --mute:#888888; --on-primary:#fff;
+    --canvas:#fff; --canvas-soft:#fafafa; --canvas-soft-2:#f5f5f5;
+    --hairline:#ebebeb; --hairline-strong:#a1a1a1; --link:#0070f3; --error:#ee0000;
+    --warning-soft:#fff4d6; --warning-deep:#b88300;
+    --cyan:#50e3c2; --cyan-deep:#29bc9b; --violet:#7928ca; --pink:#ff0080;
+    --g-prev-start:#7928ca; --g-prev-end:#ff0080;
+    --sans:'Geist','Inter',system-ui,-apple-system,sans-serif;
+    --mono:'Geist Mono','JetBrains Mono','Cascadia Code',ui-monospace,Consolas,monospace;
+    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-full:9999px;
+    --sh-1:0 0 0 1px #00000014;
+    --sh-3:0 0 0 1px #0000000d,0 2px 2px #0000000a,0 8px 8px -8px #0000000a;
+    --sh-5:0 0 0 1px #0000000d,0 1px 1px #00000005,0 8px 16px -4px #0000000a,0 24px 32px -8px #0000000f;
+    --sidebar-w:300px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--sans); color:var(--ink); background:var(--canvas-soft);
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none;
+    display:grid; grid-template-rows:32px 1fr;
+  }
+  svg{display:block}
+
+  /* ── Titlebar ── */
+  .titlebar{height:32px;display:flex;align-items:center;padding:0 12px;background:var(--canvas);border-bottom:1px solid var(--hairline);gap:12px}
+  .brand{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:-.2px;color:var(--ink);flex:0 0 auto}
+  .brand-icon{width:18px;height:18px;color:var(--ink);display:inline-grid;place-items:center;flex:0 0 18px}
+  .titlebar-spacer{flex:1;height:100%}
+  .win-ctrls{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .win-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:default;padding:0;display:grid;place-items:center;color:transparent;transition:color .1s}
+  .win-btn svg{display:block}
+  .c-close{background:#ff5f57}.c-min{background:#febc2e}.c-max{background:#28c840}
+  .win-ctrls:hover .win-btn{color:rgba(0,0,0,.55)}
+
+  /* ── App shell ── */
+  .app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:0;background:var(--canvas);position:relative}
+
+  /* ── Sidebar ── */
+  .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-height:0;position:relative}
+  .side-section{display:flex;flex-direction:column;min-height:0}
+  .side-open{flex:1 1 auto}
+  .side-open-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:none}
+  .side-open-scroll::-webkit-scrollbar{width:0;height:0;display:none}
+  .side-head-btn{width:22px;height:22px;border:none;background:transparent;color:var(--mute);border-radius:var(--r-sm);display:grid;place-items:center;cursor:pointer}
+  .side-head-btn:hover{background:var(--hairline);color:var(--ink)}
+  .side-section-label{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--mute);text-transform:uppercase;padding:12px 10px 6px;display:flex;align-items:center;gap:6px}
+  .side-section-label .line{flex:1;height:1px;background:var(--hairline)}
+  .saved-toggle{border:none;background:transparent;cursor:pointer;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;padding:0;display:inline-flex;align-items:center;gap:6px}
+  .saved-caret{display:inline-grid;place-items:center}
+
+  .group{margin-bottom:2px;position:relative}
+  .group-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:var(--r-sm);cursor:pointer}
+  .group-head:hover{background:var(--canvas-soft-2)}
+  .group-caret{color:var(--mute);flex:0 0 12px;display:grid;place-items:center}
+  .group-folder{flex:0 0 14px;color:var(--cyan-deep);display:grid;place-items:center}
+  .group-meta{min-width:0;flex:1}
+  .group-name{font-size:13px;font-weight:600;letter-spacing:-.2px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .group-path{font-family:var(--mono);font-size:10px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+  .group-count{font-family:var(--mono);font-size:10px;color:var(--mute);background:var(--canvas);border:1px solid var(--hairline);border-radius:var(--r-full);padding:1px 6px;flex:0 0 auto}
+
+  .group-tabs{padding:2px 0 4px 0}
+  .tab-row{display:flex;align-items:center;gap:9px;margin:1px 6px 1px 36px;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer;color:var(--body);border:1px solid transparent}
+  .tab-row.active{background:var(--canvas);color:var(--ink);border-color:var(--hairline);box-shadow:var(--sh-1)}
+  .st-dot{width:8px;height:8px;border-radius:var(--r-full);flex:0 0 8px;position:relative;background:currentColor}
+  .st-idle{color:var(--hairline-strong)}
+  .st-busy{color:#0070f3}.st-attention{color:#f5a623}.st-done{color:#2da44e}
+  .trow-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .trow-badge{font-family:var(--mono);font-size:10px;color:var(--mute)}
+
+  .saved-resizer{flex:0 0 6px;height:6px;margin:-3px 0;position:relative}
+  .saved-resizer::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;transform:translateY(-50%);background:transparent}
+  .side-saved{flex:0 0 auto;border-top:1px solid var(--hairline);height:42%;min-height:80px;max-height:90%;display:flex;flex-direction:column}
+  .side-saved-body{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:none}
+  .side-saved-body::-webkit-scrollbar{width:0;height:0;display:none}
+  .saved-row{display:flex;align-items:center;gap:9px;padding:8px;margin:1px 2px;border-radius:var(--r-sm);cursor:pointer;position:relative}
+  .saved-row:hover{background:var(--canvas-soft-2)}
+  .saved-ic{flex:0 0 26px;height:26px;border-radius:var(--r-sm);display:grid;place-items:center;background:var(--canvas);border:1px solid var(--hairline);color:var(--violet)}
+  .saved-meta{min-width:0;flex:1}
+  .saved-name{font-size:13px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .saved-sub{font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* usage panel */
+  .side-usage{flex:0 0 auto;padding:8px 14px 10px;border-top:1px solid var(--hairline)}
+  .usage-bars{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;column-gap:6px;row-gap:4px;font-family:var(--mono);font-size:11px;color:var(--mute)}
+  .usage-bars .ubar{display:contents}
+  .usage-bars .ubar-label{color:var(--mute);white-space:nowrap}
+  .usage-bars .ubar-track{min-width:0;height:5px;border-radius:3px;background:#2a2a2a;overflow:hidden}
+  .usage-bars .ubar-fill{display:block;height:100%;border-radius:3px}
+  .usage-bars .ubar-val{font-variant-numeric:tabular-nums}
+  .usage-bars .ubar-reset{color:var(--mute);opacity:.75;white-space:nowrap}
+  .lv-ok{color:#23d18b}.lv-ok-bg{background:#23d18b}
+  .lv-warn{color:#f5a623}.lv-warn-bg{background:#f5a623}
+  .lv-danger{color:#f14c4c}.lv-danger-bg{background:#f14c4c}
+
+  .sidebar-resizer{position:absolute;top:0;bottom:0;right:-3px;width:6px}
+
+  /* ── Main pane ── */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+  .toolbar{flex:0 0 auto;display:flex;align-items:center;gap:12px;min-height:50px;padding:8px 16px;background:var(--canvas);border-bottom:1px solid var(--hairline)}
+  .crumb{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0;flex:1 1 auto;overflow:hidden}
+  .crumb .g{font-weight:600;letter-spacing:-.2px;color:var(--ink);white-space:nowrap;flex:0 0 auto}
+  .crumb .sep{color:var(--hairline-strong);flex:0 0 auto}
+  .crumb .t{color:var(--body);white-space:nowrap;flex:0 0 auto}
+  .toolbar .spacer{flex:0 0 8px}
+  .session-select{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px 0 12px;flex:0 0 auto;border:1px solid var(--hairline);border-radius:var(--r-sm);background:var(--canvas);cursor:pointer;max-width:340px}
+  .session-select .clock{flex:0 0 13px;color:var(--mute);display:inline-grid;place-items:center}
+  .session-select .time{font-family:var(--mono);font-size:11px;color:var(--mute);flex:0 0 auto}
+  .session-select .title{font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .session-select .caret{color:var(--mute);flex:0 0 auto;display:inline-grid;place-items:center}
+  .tool-icon-btn{height:32px;width:32px;border:1px solid var(--hairline);border-radius:var(--r-sm);background:var(--canvas);cursor:pointer;color:var(--body);display:grid;place-items:center;flex:0 0 32px}
+  .tool-icon-btn:hover{border-color:var(--hairline-strong);background:var(--canvas-soft);color:var(--ink)}
+
+  /* ── Fake terminal ── */
+  .hosts{flex:1;min-height:0;position:relative;background:var(--ink);overflow:hidden}
+  .term{position:absolute;inset:0 0 0 4px;padding:10px 16px 8px;font-family:var(--mono);font-size:13px;line-height:22px;color:#d0d0d0;overflow:hidden;display:flex;flex-direction:column}
+  .tf-scroll{flex:1;min-height:0;overflow:hidden}
+  .tf-bottom{flex:0 0 auto}
+  .tf-inbox{border:1px solid #323232;border-radius:8px;padding:9px 13px;color:#8f8f8f;display:flex;align-items:center;gap:6px}
+  .tf-user{color:#8b9584;background:#ffffff08;border-radius:2px;padding:2px 10px;margin-bottom:16px}
+  .tf-bullet{color:#22c55e;font-weight:600}
+  .tf-upd b{color:#fff;font-weight:600}
+  .tf-link{color:#5aa2ff;text-decoration:underline;text-underline-offset:2px}
+  .tf-note{position:relative;padding-left:18px;color:#9a9a9a;margin-bottom:4px}
+  .tf-note::before{content:'⌊';position:absolute;left:2px;color:#5f5f5f}
+  .diff{margin:2px 0 6px}
+  .dl{display:flex;line-height:21px}
+  .dl .lno{width:30px;text-align:right;padding-right:8px;color:#565656;flex:0 0 auto;user-select:none}
+  .dl .sg{width:12px;flex:0 0 12px;color:#565656}
+  .dl .code{flex:1;color:#c2c2c2;white-space:pre-wrap;word-break:break-word}
+  .dl.rm{background:#43161b}
+  .dl.rm .lno,.dl.rm .sg{color:#e06b78}
+  .dl.add{background:#123314}
+  .dl.add .lno,.dl.add .sg{color:#5fbf6a}
+  .tok-tag{color:#7ee787}
+  .tok-attr{color:#79c0ff}
+  .tok-str{color:#e3b341}
+  .tf-done{margin-top:14px}
+  .tf-sum{position:relative;padding-left:14px;color:#b8b8b8;margin-top:4px}
+  .tf-sum::before{content:'-';position:absolute;left:2px;color:#6a6a6a}
+  .tf-cur{display:inline-block;width:8px;height:16px;background:#e5e5e5;vertical-align:-3px;animation:blink 1.05s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+  .tf-effort{text-align:right;color:#6a6a6a;margin-top:8px}
+  .tf-effort .dot{color:#22c55e}
+  .tf-auto{margin-top:4px;color:#caa15c}
+  .tf-auto .dim{color:#7c6a49}
+
+  /* ── Statusbar ── */
+  .statusbar{flex:0 0 26px;height:26px;display:flex;align-items:center;padding:0 16px;border-top:1px solid var(--hairline);background:var(--canvas);font-family:var(--mono);font-size:11px;color:var(--mute)}
+  .sb-session{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden;white-space:nowrap}
+  .sb-session .sbi-sep{color:var(--hairline)}
+  .sbi-ctx{display:inline-flex;align-items:center;gap:6px;color:var(--mute)}
+  .sbi-ctx-track{width:44px;height:5px;border-radius:3px;background:#2a2a2a;overflow:hidden;display:inline-block;vertical-align:middle}
+  .sbi-ctx-fill{display:block;height:100%;border-radius:3px}
+  .sbi-model{color:var(--body)}
+  .sbi-effort{color:var(--mute)}
+  .sbi-branch{display:inline-flex;align-items:center;gap:4px;color:var(--mute)}
+  .sbi-branch-ic{flex:0 0 12px;opacity:.85}
+  #sbCwd{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;margin-left:auto;padding-left:16px;border-left:1px solid var(--hairline);max-width:60%;user-select:text;cursor:text}
+</style>
+</head>
+<body>
+
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <svg viewBox="0 0 24 24" width="16" height="16"><rect x="1" y="2" width="22" height="20" rx="5.5" fill="currentColor"/><polyline points="6.5 9 10 12 6.5 15" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><line x1="12.5" y1="15" x2="17.5" y2="15" stroke="white" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </span>
+      Claude Terminal
+    </div>
+    <div class="titlebar-spacer"></div>
+    <div class="win-ctrls">
+      <button class="win-btn c-min" title="最小化"><svg viewBox="0 0 10 10" width="6" height="2"><path d="M1 5 H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg></button>
+      <button class="win-btn c-max" title="最大化"><svg viewBox="0 0 10 10" width="6" height="6"><path d="M2 5 H8 M5 2 V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg></button>
+      <button class="win-btn c-close" title="关闭"><svg viewBox="0 0 10 10" width="6" height="6"><path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg></button>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <section class="side-section side-open">
+        <div class="side-section-label">
+          打开的分组<span class="line"></span>
+          <button class="side-head-btn" title="新建分组"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="side-head-btn" title="标签历史"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+          <button class="side-head-btn" title="收起侧边栏"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button>
+        </div>
+        <div class="side-open-scroll">
+          <div class="group">
+            <div class="group-head">
+              <span class="group-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              <span class="group-folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+              <span class="group-meta">
+                <div class="group-name">my-app</div>
+                <div class="group-path">D:\Projects\my-app</div>
+              </span>
+              <span class="group-count">1</span>
+            </div>
+            <div class="group-tabs">
+              <div class="tab-row active">
+                <span class="st-dot st-idle"></span>
+                <span class="trow-name">主线开发</span>
+                <span class="trow-badge">3 会话</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="saved-resizer"></div>
+
+      <section class="side-section side-saved">
+        <div class="side-section-label saved-head">
+          <button class="saved-toggle">
+            <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+            已保存的分组
+          </button>
+          <span class="line"></span>
+          <button class="side-head-btn" title="管理全部已保存的分组"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        </div>
+        <div class="side-saved-body">
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">my-app</div><div class="saved-sub">1 个标签 · …\Projects\my-app</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">web-dashboard</div><div class="saved-sub">1 个标签 · …\Projects\dashboard</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">订单服务</div><div class="saved-sub">3 个标签 · …\services\order-svc</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">api-gateway</div><div class="saved-sub">1 个标签 · …\Projects\gateway</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">数据同步</div><div class="saved-sub">1 个标签 · …\services\sync-job</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">报表导出</div><div class="saved-sub">1 个标签 · …\tasks\report-export</div></span>
+          </div>
+          <div class="saved-row">
+            <span class="saved-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+            <span class="saved-meta"><div class="saved-name">release-2.0</div><div class="saved-sub">3 个标签 · …\Projects\webapp</div></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-usage">
+        <div class="usage-bars">
+          <span class="ubar">
+            <span class="ubar-label">5h额度</span>
+            <span class="ubar-track"><i class="ubar-fill lv-ok-bg" style="width:2%"></i></span>
+            <span class="ubar-val lv-ok">2%</span>
+            <span class="ubar-reset">3h43m</span>
+          </span>
+          <span class="ubar">
+            <span class="ubar-label">本周额度</span>
+            <span class="ubar-track"><i class="ubar-fill lv-ok-bg" style="width:7%"></i></span>
+            <span class="ubar-val lv-ok">7%</span>
+            <span class="ubar-reset">5d23h</span>
+          </span>
+        </div>
+      </section>
+      <div class="sidebar-resizer"></div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="toolbar">
+        <div class="crumb">
+          <span class="g">my-app</span>
+          <span class="sep">›</span>
+          <span class="t">主线开发</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="session-select" title="切换会话">
+          <span class="clock"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span class="time">今天 14:04</span>
+          <span class="title">UI界面调整</span>
+          <span class="caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+        </div>
+        <button class="tool-icon-btn" title="设置"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      </div>
+
+      <div class="hosts">
+        <div class="term">
+          <div class="tf-scroll">
+            <div class="tf-user">把首页主按钮的圆角改大一点，再加一层柔和投影，hover 时更明显</div>
+
+            <div class="tf-upd"><span class="tf-bullet">●</span> <b>Update(<span class="tf-link">src/styles.css</span>)</b></div>
+            <div class="tf-note">Added 5 lines, removed 2 lines</div>
+            <div class="diff">
+              <div class="dl"><span class="lno">38</span><span class="sg"></span><span class="code">  <span class="tok-tag">.btn-primary</span> {</span></div>
+              <div class="dl"><span class="lno">39</span><span class="sg"></span><span class="code">    background: <span class="tok-attr">var</span>(--brand);</span></div>
+              <div class="dl"><span class="lno">40</span><span class="sg"></span><span class="code">    color: <span class="tok-str">#fff</span>;</span></div>
+              <div class="dl rm"><span class="lno">41</span><span class="sg">-</span><span class="code">    border-radius: <span class="tok-str">6px</span>;</span></div>
+              <div class="dl rm"><span class="lno">42</span><span class="sg">-</span><span class="code">    box-shadow: none;</span></div>
+              <div class="dl add"><span class="lno">41</span><span class="sg">+</span><span class="code">    border-radius: <span class="tok-str">12px</span>;</span></div>
+              <div class="dl add"><span class="lno">42</span><span class="sg">+</span><span class="code">    box-shadow: <span class="tok-str">0 2px 8px rgba(0, 0, 0, .12)</span>;</span></div>
+              <div class="dl add"><span class="lno">43</span><span class="sg">+</span><span class="code">    transition: box-shadow <span class="tok-str">.2s</span> ease, transform <span class="tok-str">.2s</span> ease;</span></div>
+              <div class="dl"><span class="lno">44</span><span class="sg"></span><span class="code">  }</span></div>
+              <div class="dl"><span class="lno">45</span><span class="sg"></span><span class="code">  <span class="tok-tag">.btn-primary</span>:hover {</span></div>
+              <div class="dl add"><span class="lno">46</span><span class="sg">+</span><span class="code">    box-shadow: <span class="tok-str">0 6px 16px rgba(0, 0, 0, .18)</span>;</span></div>
+              <div class="dl add"><span class="lno">47</span><span class="sg">+</span><span class="code">    transform: translateY(<span class="tok-str">-1px</span>);</span></div>
+              <div class="dl"><span class="lno">48</span><span class="sg"></span><span class="code">  }</span></div>
+            </div>
+
+            <div class="tf-done"><span class="tf-bullet">●</span> 改完了。</div>
+            <div class="tf-sum">圆角从 6px 调到 12px，加了一层柔和投影，并把过渡挂到了 box-shadow / transform 上。</div>
+            <div class="tf-sum">hover 时阴影加深、按钮上抬 1px，悬浮反馈更明显；不想要位移的话把 translateY 那行删掉即可。</div>
+          </div>
+
+          <div class="tf-bottom">
+            <div class="tf-inbox">› <span class="tf-cur"></span></div>
+            <div class="tf-effort"><span class="dot">●</span> high · /effort</div>
+            <div class="tf-auto">▶▶ auto mode on <span class="dim">(shift+tab to cycle)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span class="sb-session">
+          <span class="sbi-ctx">ctx <span class="sbi-ctx-track"><i class="sbi-ctx-fill lv-ok-bg" style="width:12%"></i></span> <span class="lv-ok">12%</span></span>
+          <span class="sbi-sep">·</span>
+          <span class="sbi-model">Opus 4.7</span>
+          <span class="sbi-sep">·</span>
+          <span class="sbi-effort">High</span>
+          <span class="sbi-sep">·</span>
+          <span class="sbi-branch"><span class="sbi-branch-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5a6 6 0 0 1-6 6H8"/></svg></span>dev</span>
+        </span>
+        <span id="sbCwd">D:\Projects\my-app</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
