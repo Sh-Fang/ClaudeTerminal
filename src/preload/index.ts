@@ -156,7 +156,7 @@ export interface HistoryEntry {
 }
 
 export interface TermBridge {
-  create(opts: { cols: number; rows: number; cwd?: string; tabId?: string }): Promise<number>
+  create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string }): Promise<number>
   send(id: number, data: string): void
   resize(id: number, cols: number, rows: number): void
   kill(id: number): void

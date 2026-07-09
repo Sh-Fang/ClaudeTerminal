@@ -89,7 +89,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle(
     'pty:create',
-    (_e, opts: { cols?: number; rows?: number; cwd?: string; tabId?: string }) => {
+    (_e, opts: { cols?: number; rows?: number; cwd?: string; tabId?: string; tabName?: string }) => {
       if (opts?.cwd) {
         try {
           if (!existsSync(opts.cwd)) throw new Error(`目录不存在: ${opts.cwd}`)
@@ -105,6 +105,14 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         env.TERMINAL_EVENTS_DIR = hp.eventsDir
         env.TERMINAL_STATE_DIR = hp.stateDir
       }
+      // cct 命令依赖：让 pwsh profile 里的 cct 能直接拿到 hooks 配置 + claude 路径 + tab 名。
+      // tab name 只在 pty 首次 spawn 时快照；用户后续改名 env 不跟进，cct 会用旧名（可接受）。
+      env.TERMINAL_HOOK_SETTINGS_JSON = hp.ccHooksJson
+      if (opts?.tabName) env.TERMINAL_TAB_NAME = opts.tabName
+      try {
+        const cp = loadSettings().claudePath?.trim()
+        if (cp) env.TERMINAL_CLAUDE_PATH = cp
+      } catch {}
       if (shouldDisableAutoupdate()) {
         env.DISABLE_AUTOUPDATER = '1'
       }

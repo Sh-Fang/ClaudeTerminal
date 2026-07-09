@@ -209,6 +209,38 @@ if ($env:__TERMINAL_SHELL_INTEG -ne '1') {
         }
     } catch {}
 }
+
+# cct: 手动启动一次能被 app 接管的 cc 会话。
+# - 复用 pty:create 时注入的 env：
+#   TERMINAL_TAB_ID / TERMINAL_HOOK_SETTINGS_JSON / TERMINAL_CLAUDE_PATH / TERMINAL_TAB_NAME
+# - 无参 → --session-id <新 uuid> --name <tab>：新会话，hook 上报后 app 压栈
+# - -r / --resume → --resume：cc 自己弹选择器让用户选历史会话
+# - 其余参数原样透传给 claude（可 cct --model xxx 等）
+function Global:cct {
+    if (-not $env:TERMINAL_TAB_ID) {
+        Write-Host "cct: 需要在 Claude Terminal 的 tab 里运行" -ForegroundColor Yellow
+        return
+    }
+    if (-not $env:TERMINAL_HOOK_SETTINGS_JSON -or -not (Test-Path $env:TERMINAL_HOOK_SETTINGS_JSON)) {
+        Write-Host "cct: 缺少 cc-hooks.json (TERMINAL_HOOK_SETTINGS_JSON)" -ForegroundColor Red
+        return
+    }
+    $isResume = $false
+    $passArgs = @()
+    foreach ($a in $args) {
+        if ($a -eq '-r' -or $a -eq '--resume') { $isResume = $true; continue }
+        $passArgs += $a
+    }
+    $claudeBin = if ($env:TERMINAL_CLAUDE_PATH) { $env:TERMINAL_CLAUDE_PATH } else { 'claude' }
+    $settingsArg = @('--settings', $env:TERMINAL_HOOK_SETTINGS_JSON)
+    if ($isResume) {
+        & $claudeBin @settingsArg --resume @passArgs
+    } else {
+        $sid = [guid]::NewGuid().ToString()
+        $name = if ($env:TERMINAL_TAB_NAME) { $env:TERMINAL_TAB_NAME } else { 'cct' }
+        & $claudeBin @settingsArg --session-id $sid --name $name @passArgs
+    }
+}
 `
 
 export function ensureHookAssets(): HookPaths {
