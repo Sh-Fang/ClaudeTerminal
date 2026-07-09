@@ -31,15 +31,31 @@ process.on('unhandledRejection', (reason) => {
 // argv 里解析 `--open-here <path>`：右键菜单唤起 app 时带路径，主进程通过 IPC 通知
 // renderer 新建一个分组承载该路径。argv 首两项是 exe/asar，跳过；path 允许在 --open-here
 // 后面用等号或空格分隔。
+//
+// Chromium/Electron 会往主进程 argv 里塞自己的 flag（--allow-file-access-from-files
+// 之类）。如果 --open-here 后面刚好跟了这些 flag，parseOpenHere 会误把 flag 当成路径
+// 抛出去，renderer 看到"路径不存在：--allow-file-access-from-files"。这里做两道
+// 校验：跳过 - / / 打头（明显是 flag）、跳过不含冒号/斜杠（不像 Windows 绝对路径）。
+function looksLikePath(s: string): boolean {
+  if (!s) return false
+  if (s.startsWith('-')) return false
+  // Windows 盘符 D:\、UNC \\server、或 forward slash 都算
+  return /^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('\\\\') || s.startsWith('/')
+}
 function parseOpenHere(argv: string[]): string | null {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a) continue
     if (a === '--open-here' || a === '/open-here') {
       const v = argv[i + 1]
-      return v ? v.replace(/^"|"$/g, '') : null
+      if (!v) return null
+      const stripped = v.replace(/^"|"$/g, '')
+      return looksLikePath(stripped) ? stripped : null
     }
-    if (a.startsWith('--open-here=')) return a.slice('--open-here='.length).replace(/^"|"$/g, '')
+    if (a.startsWith('--open-here=')) {
+      const stripped = a.slice('--open-here='.length).replace(/^"|"$/g, '')
+      return looksLikePath(stripped) ? stripped : null
+    }
   }
   return null
 }
