@@ -849,7 +849,8 @@ const PICK_ACTION_NEW_BLANK = '__new_blank__'
 async function restoreSavedTabs(
   savedId: string,
   tabIds: string[],
-  blankName?: string
+  blankName?: string,
+  blankAutoLaunchCC?: boolean
 ): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -881,9 +882,10 @@ async function restoreSavedTabs(
   let blank: TerminalTab | null = null
   if (addBlank) {
     const nm = blankName?.trim() || String.fromCharCode(65 + g.tabs.length)
+    const cc = blankAutoLaunchCC ?? settings.defaults.autoLaunchCC
     blank = makeTab(g, {
       name: nm,
-      autoLaunchCC: settings.defaults.autoLaunchCC,
+      autoLaunchCC: cc,
       dirty: false
     })
     created.push(blank)
@@ -944,19 +946,30 @@ function openRestoreSelect(savedId: string): void {
   })
   // 末尾追加"新建空白标签"操作项：用户可能只想恢复分组同时顺手开一个空标签。
   // inputPlaceholder 让那行渲染成可输入框，用户可直接打字命名；不输入则用默认字母。
+  // sideToggle 控制新标签是否自动启动 CC，默认取设置里的值。
   items.push({
     id: PICK_ACTION_NEW_BLANK,
     label: '',
-    meta: '默认即已保存',
     defaultChecked: false,
-    inputPlaceholder: '+ 新建空白标签（直接输入名字）'
+    inputPlaceholder: '+ 新建空白标签（直接输入名字）',
+    sideToggle: {
+      defaultChecked: settings.defaults.autoLaunchCC,
+      label: '启动 CC',
+      title: '新建标签是否自动启动 Claude Code；默认值来自「设置 → 新建默认值」'
+    }
   })
   openPickTabs({
     title: `恢复「${s.name}」的标签`,
     sub: '勾选要恢复的标签。已在当前分组中的标签会被跳过。',
     items,
     okLabel: '恢复',
-    onOk: (ids, inputs) => void restoreSavedTabs(savedId, ids, inputs[PICK_ACTION_NEW_BLANK])
+    onOk: (ids, inputs, toggles) =>
+      void restoreSavedTabs(
+        savedId,
+        ids,
+        inputs[PICK_ACTION_NEW_BLANK],
+        toggles[PICK_ACTION_NEW_BLANK]
+      )
   })
 }
 

@@ -304,13 +304,16 @@ export interface PickItem {
   // 调用方自己负责二次确认 + 后续刷新（重新调一次 openPickTabs 即可热替换列表）。
   onDelete?: () => void
   deleteTitle?: string
+  // 行内附加小复选框：例如"启动 CC"。位置在 meta 之后、del 之前。
+  // onOk 的第三参 toggles[id] 拿到当前勾选态。
+  sideToggle?: { defaultChecked: boolean; label: string; title?: string }
 }
 export interface PickTabsCfg {
   title: string
   sub?: string
   items: PickItem[]
   okLabel?: string
-  onOk: (selectedIds: string[], inputs: Record<string, string>) => void
+  onOk: (selectedIds: string[], inputs: Record<string, string>, toggles: Record<string, boolean>) => void
   onCancel?: () => void
 }
 const pickScrim = document.getElementById('pickScrim') as HTMLDivElement
@@ -382,10 +385,14 @@ export function openPickTabs(cfg: PickTabsCfg): void {
     const deleteHtml = it.onDelete
       ? `<button type="button" class="pk-del" data-pk-del-id="${escapeHtml(it.id)}" title="${escapeHtml(it.deleteTitle ?? '从保存里删除')}" aria-label="删除">${icon('trash', { size: 13 })}</button>`
       : ''
+    const sideToggleHtml = it.sideToggle
+      ? `<label class="pk-side-toggle" title="${escapeHtml(it.sideToggle.title ?? '')}"><input type="checkbox" data-pk-toggle-id="${escapeHtml(it.id)}" ${it.sideToggle.defaultChecked ? 'checked' : ''} /><span>${escapeHtml(it.sideToggle.label)}</span></label>`
+      : ''
     row.innerHTML = `
       <input type="checkbox" data-pk-id="${escapeHtml(it.id)}" ${checked ? 'checked' : ''} ${it.disabled ? 'disabled' : ''} />
       ${labelHtml}
       ${it.meta ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>` : ''}
+      ${sideToggleHtml}
       ${deleteHtml}
     `
     row.addEventListener('change', pkUpdateCount)
@@ -397,6 +404,13 @@ export function openPickTabs(cfg: PickTabsCfg): void {
         e.stopPropagation()
         it.onDelete?.()
       })
+    }
+    if (it.sideToggle) {
+      // 行内 sideToggle 自带 label，正常 click 就 toggle 自己的 checkbox；
+      // 但外层若是 <label>（无 inputPlaceholder 的行），点这里会同时触发外层
+      // 主 checkbox 的隐式 toggle —— 阻止冒泡，让 sideToggle 独立。
+      const sideLabel = row.querySelector('.pk-side-toggle') as HTMLLabelElement | null
+      sideLabel?.addEventListener('click', (e) => e.stopPropagation())
     }
     // 文本输入框：非空时自动勾上同行 checkbox，省去用户两步操作
     if (it.inputPlaceholder) {
@@ -438,14 +452,20 @@ pkOk.addEventListener('click', () => {
   if (ids.length === 0) return
   // 把含 inputPlaceholder 的行的输入值收集起来一并回调
   const inputs: Record<string, string> = {}
+  const toggles: Record<string, boolean> = {}
   for (const it of pkItems) {
-    if (!it.inputPlaceholder) continue
-    const inp = pkList.querySelector(`input[data-pk-input-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
-    if (inp) inputs[it.id] = inp.value.trim()
+    if (it.inputPlaceholder) {
+      const inp = pkList.querySelector(`input[data-pk-input-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+      if (inp) inputs[it.id] = inp.value.trim()
+    }
+    if (it.sideToggle) {
+      const cb = pkList.querySelector(`input[data-pk-toggle-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+      if (cb) toggles[it.id] = cb.checked
+    }
   }
   const cb = pkCb
   pkClose()
-  cb?.(ids, inputs)
+  cb?.(ids, inputs, toggles)
 })
 bindScrimDismiss(pickScrim, () => {
   const cb = pkCancelCb
