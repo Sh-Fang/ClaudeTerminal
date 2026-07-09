@@ -206,6 +206,8 @@ export interface TermBridge {
   floaterSetFocusable(on: boolean): void
   // 主窗口侧：悬浮窗被右键菜单关掉时通知一下，刷新内存里的 settings 副本
   onFloaterHidden(cb: () => void): () => void
+  // 右键菜单"在此处打开 Claude Terminal"：主进程 argv 里解析出 path 后推给 renderer
+  onOpenHere(cb: (path: string) => void): () => void
 }
 
 const api: TermBridge = {
@@ -287,6 +289,11 @@ const api: TermBridge = {
     const h = (): void => cb()
     ipcRenderer.on('floater:hidden', h)
     return () => ipcRenderer.off('floater:hidden', h)
+  },
+  onOpenHere: (cb) => {
+    const h = (_e: IpcRendererEvent, p: string) => cb(p)
+    ipcRenderer.on('app:openHere', h)
+    return () => ipcRenderer.off('app:openHere', h)
   }
 }
 

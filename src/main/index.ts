@@ -28,14 +28,50 @@ process.on('unhandledRejection', (reason) => {
   } catch {}
 })
 
+// argv 里解析 `--open-here <path>`：右键菜单唤起 app 时带路径，主进程通过 IPC 通知
+// renderer 新建一个分组承载该路径。argv 首两项是 exe/asar，跳过；path 允许在 --open-here
+// 后面用等号或空格分隔。
+function parseOpenHere(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (!a) continue
+    if (a === '--open-here' || a === '/open-here') {
+      const v = argv[i + 1]
+      return v ? v.replace(/^"|"$/g, '') : null
+    }
+    if (a.startsWith('--open-here=')) return a.slice('--open-here='.length).replace(/^"|"$/g, '')
+  }
+  return null
+}
+
+// 首次实例启动时 argv 里就带的 path，等 mainWindow 就绪后消费一次
+let pendingOpenHere: string | null = parseOpenHere(process.argv)
+
+function safeSendOpenHere(path: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const wc = mainWindow.webContents
+  if (!wc || wc.isDestroyed()) return
+  if (wc.isLoading()) {
+    // renderer 还没 ready，等 did-finish-load 时再推
+    wc.once('did-finish-load', () => {
+      try { wc.send('app:openHere', path) } catch {}
+    })
+    return
+  }
+  try { wc.send('app:openHere', path) } catch {}
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
+    // 第二实例带 --open-here → 通知 renderer 新建分组
+    const p = parseOpenHere(argv)
+    if (p) safeSendOpenHere(p)
   })
 }
 
@@ -198,6 +234,12 @@ app.whenReady().then(() => {
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()
+  // 首次启动就带 --open-here → 等 renderer ready 后消费一次
+  if (pendingOpenHere) {
+    const p = pendingOpenHere
+    pendingOpenHere = null
+    safeSendOpenHere(p)
+  }
   // 启动时按设置决定是否拉起悬浮窗
   try {
     if (loadSettings().showFloater) setFloaterEnabled(true)

@@ -457,6 +457,52 @@ async function newGroup(): Promise<void> {
   })
 }
 
+// 右键菜单"在此处打开 Claude Terminal"入口：直接建 tab，不弹 modal。
+// - 同 cwd 已有 live 分组 → 直接往里新建 tab（tab 名为分组内下一个字母）
+// - 否则 ensureGroup(name=basename(path))；若 savedGroups 里有同 name+cwd 的已保存分组，
+//   把它的 srcId 绑到新建的 live 分组 —— 这样 isGroupDirty 因为新 tab.id 不在快照里 → 分组头
+//   会显示黄色 dirty，用户手动"保存分组"就把新 tab 并进去。
+// autoLaunchCC 走设置默认值。
+function basenameOfPath(p: string): string {
+  const segs = p.split(/[\\/]+/).filter(Boolean)
+  return segs[segs.length - 1] ?? p
+}
+
+async function openHereWithPath(rawPath: string): Promise<void> {
+  const p = (rawPath || '').trim()
+  if (!p) return
+  // 先校验路径存在，避免右键选中一个已重命名/删除的目录时静默 spawn 失败
+  const exists = await window.term.pathExists(p)
+  if (!exists) {
+    toast(`路径不存在：${p}`)
+    return
+  }
+  const bn = basenameOfPath(p) || p
+  const cc = settings.defaults.autoLaunchCC
+  // 找现成 live 分组（同 cwd 优先复用；无则新建）
+  let g = groups.find((x) => x.cwd === p)
+  if (!g) {
+    g = ensureGroup({ name: bn, cwd: p })
+    // 已保存同 name+cwd 的分组自动绑 srcId → 新 tab 让 group 显 dirty
+    const saved = savedGroups.find((s) => s.name === g!.name && s.cwd === g!.cwd)
+    if (saved) saved.srcId = g.id
+  }
+  const tabName = String.fromCharCode(65 + g.tabs.length)
+  const tab = makeTab(g, { name: tabName, autoLaunchCC: cc })
+  g.collapsed = false
+  activeTabId = tab.id
+  sidebar.render()
+  activateUI(tab.id)
+  await spawnTabPty(tab)
+  scheduleSave()
+  // 把这次选的路径也记成 lastUsedCwd
+  if (p !== settings.lastUsedCwd) {
+    settings = { ...settings, lastUsedCwd: p }
+    void window.term.saveSettings(settings)
+  }
+  toast(`已在「${g.name}」新建标签`)
+}
+
 async function promptNewTabInGroup(groupId: string): Promise<void> {
   const g = findGroup(groupId)
   if (!g) return
@@ -1877,5 +1923,10 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
   window.term.onFloaterHidden(() => {
     if (!settings.showFloater) return
     settings = { ...settings, showFloater: false }
+  })
+  // 右键菜单唤起：主进程解析 argv 后推 path 过来。放在这里注册是等 settings/savedGroups
+  // 都加载好，openHereWithPath 里能正确读 defaults.autoLaunchCC 与 savedGroups 匹配。
+  window.term.onOpenHere((p) => {
+    void openHereWithPath(p)
   })
 })()
