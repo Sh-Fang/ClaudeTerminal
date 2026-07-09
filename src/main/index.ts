@@ -91,7 +91,7 @@ function createWindow(): void {
     })
     if (choice === 0) {
       allowClose = true
-      mainWindow.close()
+      fastQuit('user-close-native')
     }
   })
 
@@ -130,6 +130,22 @@ let stateWatcher: StateEventWatcher | null = null
 function stopWatchers(): void {
   sessionWatcher?.stop(); sessionWatcher = null
   stateWatcher?.stop(); stateWatcher = null
+}
+
+// 用户确认关闭 → 走这里"快退"：不给 renderer beforeunload 机会，
+// 也不等 Chromium 回收 helper 进程；同步把 PTY 与日志收干净后 app.exit。
+// 观测背景：beforeunload 里逐 tab 串行 TerminalTab.dispose()（xterm 6 dispose
+// + kill IPC 累加）+ Chromium renderer/helper 回收 = 关闭感知 2~3s。
+// 直接 exit 让 OS 成组回收进程，通常 <300ms。
+let fastQuitting = false
+function fastQuit(reason: string): void {
+  if (fastQuitting) return
+  fastQuitting = true
+  try { stopWatchers() } catch {}
+  try { destroyFloater() } catch {}
+  try { killAll() } catch {}
+  try { stopLogging(reason) } catch {}
+  app.exit(0)
 }
 
 app.whenReady().then(() => {
@@ -171,9 +187,10 @@ app.whenReady().then(() => {
   registerPtyIpc(() => mainWindow)
   ipcMain.on('window:closeConfirmed', () => {
     allowClose = true
-    // 先关掉悬浮窗，否则它还活着会卡住 window-all-closed，app 退不出去
-    destroyFloater()
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close()
+    // 直接 app.exit(0)：跳过 mainWindow.close() → renderer beforeunload → Chromium
+    // helper 回收这条慢路径。原本这条路径要 2~3s（xterm 逐 tab dispose + kill IPC
+    // 串行 + Chromium 回收），fastQuit 通常 <300ms。
+    fastQuit('user-close')
   })
   const hp = ensureHookAssets()
   sessionWatcher = new SessionEventWatcher(hp.eventsDir, () => mainWindow)
