@@ -7,8 +7,7 @@ export interface SessionRecord {
   sessionId: string
   source: SessionSource
   createdAt: string
-  aiTitle?: string
-  userTitle?: string  // 用户手动重命名（优先于 aiTitle 显示）
+  userTitle?: string  // 用户手动重命名，空则显示默认名「会话 N」（N 按 createdAt 排序）
   lastTs?: string
 }
 
@@ -125,9 +124,7 @@ export type ClipboardRead =
   | { kind: 'empty' }
 
 export interface SessionMeta {
-  aiTitle?: string
   lastTs?: string
-  lastPrompt?: string
   mtime?: number
   exists: boolean
 }

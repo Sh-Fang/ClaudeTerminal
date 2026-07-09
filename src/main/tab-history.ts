@@ -42,7 +42,6 @@ function normalizeSession(s: unknown): SessionRecord | null {
     sessionId: r.sessionId,
     source: isSessionSource(r.source) ? r.source : 'startup',
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
-    aiTitle: typeof r.aiTitle === 'string' ? r.aiTitle : undefined,
     userTitle: typeof r.userTitle === 'string' ? r.userTitle : undefined,
     lastTs: typeof r.lastTs === 'string' ? r.lastTs : undefined
   }

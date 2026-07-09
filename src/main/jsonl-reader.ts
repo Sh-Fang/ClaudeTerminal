@@ -5,9 +5,7 @@ import { findSessionJsonl as findJsonl } from './claude-paths'
 
 export interface SessionMeta {
   exists: boolean
-  aiTitle?: string
   lastTs?: string
-  lastPrompt?: string
   mtime?: number
 }
 
@@ -46,29 +44,20 @@ export function readSessionMeta(sessionId: string): SessionMeta {
   // 末尾可能切到行中间，丢掉首段
   const lines = raw.split(/\r?\n/).slice(1).filter((l) => l.length > 0)
 
-  let aiTitle: string | undefined
-  let lastPrompt: string | undefined
   let lastTs: string | undefined
 
-  // 倒序遍历找最新；ai-title / last-prompt 取最后一次出现；timestamp 取最新 user/assistant
+  // 倒序遍历找最新的真实 user/assistant timestamp
   for (let i = lines.length - 1; i >= 0; i--) {
     const obj = safeParse(lines[i])
     if (!obj) continue
     const type = typeof obj.type === 'string' ? obj.type : ''
-
-    if (!aiTitle && type === 'ai-title' && typeof obj.aiTitle === 'string') {
-      aiTitle = obj.aiTitle
-    } else if (!lastPrompt && type === 'last-prompt' && typeof obj.lastPrompt === 'string') {
-      lastPrompt = obj.lastPrompt
-    } else if (!lastTs && (type === 'user' || type === 'assistant') && typeof obj.timestamp === 'string') {
+    if ((type === 'user' || type === 'assistant') && typeof obj.timestamp === 'string') {
       // 排除非真实对话条目：tool_result 数组、command 包装、compact 提示
-      if (isRealMessage(obj)) lastTs = obj.timestamp
+      if (isRealMessage(obj)) { lastTs = obj.timestamp; break }
     }
-
-    if (aiTitle && lastTs && lastPrompt) break
   }
 
-  return { exists: true, aiTitle, lastPrompt, lastTs, mtime }
+  return { exists: true, lastTs, mtime }
 }
 
 export interface SessionUsage {

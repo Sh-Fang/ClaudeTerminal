@@ -101,7 +101,16 @@
             <span class="t" id="cbTab"></span>
             <span id="cbStatus"></span>
           </div>
-          <div class="spacer"></div>
+          <div class="cmdpal-wrap">
+            <div class="cmdpal-search" id="cmdpalSearch">
+              <span class="cmdpal-ic" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input id="cmdpalInput" type="text" autocomplete="off" spellcheck="false" placeholder="搜索标签 / 分组 / 路径…" />
+              <span class="cmdpal-hint mono">Ctrl+P</span>
+            </div>
+            <div class="cmdpal-panel" id="cmdpalPanel" role="listbox" aria-label="命令面板搜索结果" hidden></div>
+          </div>
           <div class="session-select" id="sessionSelect" title="切换会话">
             <span class="clock"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
             <span class="time" id="sessTime"></span>
@@ -132,9 +141,10 @@
         </div>
 
         <div id="search" role="search" aria-label="终端内搜索">
+          <button id="search-trigger" type="button" title="搜索 (Ctrl+F)" aria-label="搜索"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg></button>
           <input id="search-input" type="text" placeholder="搜索（Enter 下一个，Shift+Enter 上一个）" autocomplete="off" spellcheck="false" />
           <span id="search-count" aria-live="polite"></span>
-          <button id="search-close" title="关闭 (Esc)" aria-label="关闭搜索"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <button id="search-close" type="button" title="关闭 (Esc)" aria-label="关闭搜索"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
 
         <div class="statusbar">

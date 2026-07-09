@@ -21,7 +21,6 @@ export interface SessionRecord {
   sessionId: string
   source: 'startup' | 'clear' | 'compact' | 'resume'
   createdAt: string
-  aiTitle?: string
   userTitle?: string
   lastTs?: string
 }
@@ -285,6 +284,9 @@ export class TerminalTab {
         if (e.key === 't' || e.key === 'T') { this.handlers.onRequestNewTab(); return false }
         if (e.key === 'w' || e.key === 'W') { this.handlers.onRequestCloseSelf(); return false }
         if (e.key === 'f' || e.key === 'F') { this.handlers.openSearch(); return false }
+        // Ctrl+P：命令面板(由 CommandPalette 在 window capture 阶段自行处理)。
+        // 这里只负责不让 xterm 把它译成 pty 输入(pwsh PSReadLine 会把 Ctrl+P 当"历史上一条")。
+        if (e.key === 'p' || e.key === 'P') return false
         if (e.key === 'c' || e.key === 'C') {
           // Ctrl+C：有选区→复制（吃掉按键）；无选区→透传 SIGINT 给 cc
           if (this.copySelectionIfAny()) {

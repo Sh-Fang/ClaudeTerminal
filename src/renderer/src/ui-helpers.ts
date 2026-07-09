@@ -8,6 +8,7 @@
 //  · sensitivity:base 大小写不敏感，与系统直觉一致。
 import { pinyin } from 'pinyin-pro'
 import { icon } from './svg-icons'
+import type { SessionRecord } from './terminal-tab'
 const NAME_COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 function nameSortKey(s: string): string {
   // toneType:'none' 去声调；type:'string' 返回空格连接的字符串。原串作为 tiebreak 后缀。
@@ -536,4 +537,16 @@ export function statusShort(s?: string): string {
   return (
     ({ busy: '运行中', attention: '待决策', done: '待查看', error: '错误' } as Record<string, string>)[s || 'idle'] || ''
   )
+}
+
+// 会话默认名「会话 N」：N 按 createdAt 排序位置算，不用栈位置。
+// resume 会把旧条目挪到栈顶（main.ts:1552），用栈位置的话「会话 1」会跟着移动 → 反直觉。
+export function defaultSessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
+  const sorted = [...sessions].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+  const idx = sorted.findIndex((s) => s.sessionId === sess.sessionId)
+  return `会话 ${idx >= 0 ? idx + 1 : sessions.length}`
+}
+
+export function sessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
+  return sess.userTitle || defaultSessionTitle(sess, sessions)
 }

@@ -14,8 +14,7 @@ export interface SessionRecord {
   sessionId: string
   source: SessionSource
   createdAt: string
-  aiTitle?: string
-  userTitle?: string // 用户手动重命名，优先于 aiTitle 显示——需持久化，否则保存的分组重载后丢失
+  userTitle?: string // 用户手动重命名，空则默认「会话 N」——需持久化，否则保存的分组重载后丢失
   lastTs?: string
 }
 
@@ -66,7 +65,6 @@ function normalizeSession(s: unknown): SessionRecord | null {
     sessionId: r.sessionId,
     source: isSessionSource(r.source) ? r.source : 'startup',
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
-    aiTitle: typeof r.aiTitle === 'string' ? r.aiTitle : undefined,
     userTitle: typeof r.userTitle === 'string' ? r.userTitle : undefined,
     lastTs: typeof r.lastTs === 'string' ? r.lastTs : undefined
   }

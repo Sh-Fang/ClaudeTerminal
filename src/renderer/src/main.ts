@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS, type Settings } from './themes'
 import {
   closePickTabs,
   confirmDialog,
+  defaultSessionTitle,
   escapeHtml,
   formatTs,
   isConfirmOpen,
@@ -23,16 +24,20 @@ import { SavedManager, type ManageGroupView } from './saved-manager'
 import { UsageIndicator } from './usage-indicator'
 import { SessionInfoBar } from './session-info'
 import { HistoryManager, type HistoryEntry } from './history-manager'
+import { CommandPalette, type CmdOpenTabCandidate, type CmdSavedCandidate } from './command-palette'
 
 const usageIndicator = new UsageIndicator()
 
 const SEARCH_DECOR = {
+  // 普通匹配：暗黄背景 + 亮黄描边
   matchBackground: '#3a3a00',
   matchBorder: '#e5e510',
   matchOverviewRuler: '#e5e510',
-  activeMatchBackground: '#5a4a00',
-  activeMatchBorder: '#f5f543',
-  activeMatchColorOverviewRuler: '#f5f543'
+  // 当前匹配：换成高饱和亮橙 + 白色描边，跟普通匹配的黄色系拉开对比度，
+  // 上下切匹配时一眼能看到"我现在停在哪里"。原方案两者同为黄色系深浅差，肉眼几乎分不出。
+  activeMatchBackground: '#ff8800',
+  activeMatchBorder: '#ffffff',
+  activeMatchColorOverviewRuler: '#ff8800'
 }
 
 const hostsEl = document.getElementById('hosts') as HTMLDivElement
@@ -107,6 +112,9 @@ let activeTabId: string | null = null
 let saveDebounceTimer: number | null = null
 let settings: Settings = DEFAULT_SETTINGS
 let settingsSaveTimer: number | null = null
+// 命令面板的"最近使用"排序依据。activateTab / makeTab 时更新。
+const tabLastActive = new Map<string, number>()
+function markTabActive(tabId: string): void { tabLastActive.set(tabId, Date.now()) }
 
 function getSettings(): Settings { return settings }
 
@@ -369,6 +377,7 @@ function makeTab(group: Group, opts: {
   )
   group.tabs.push(tabRef)
   tabRef.mount(hostsEl)
+  markTabActive(id)
   // 新建/恢复出来的 tab 立刻落历史，崩溃前哪怕一秒没动也能找回
   recordTabHistory(tabRef, group.name, true)
   return tabRef
@@ -384,7 +393,7 @@ async function spawnTabPty(tab: TerminalTab): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, tab.id, 'spawnTabPty: rAF done, calling startPty')
   await tab.startPty()
-  // 异步刷新 aiTitle / lastTs（首次出现就重渲染）
+  // 异步刷新 lastTs（首次出现就重渲染）
   void refreshSessionMeta(tab)
 }
 
@@ -393,10 +402,6 @@ async function refreshSessionMeta(tab: TerminalTab): Promise<void> {
   for (const s of tab.sessions) {
     const meta = await window.term.claudeSessionMeta(s.sessionId)
     if (!meta.exists) continue
-    if (meta.aiTitle && meta.aiTitle !== s.aiTitle) {
-      s.aiTitle = meta.aiTitle
-      changed = true
-    }
     if (meta.lastTs && meta.lastTs !== s.lastTs) {
       s.lastTs = meta.lastTs
       changed = true
@@ -583,11 +588,12 @@ window.addEventListener('blur', clearDowngradeTimer)
 window.addEventListener('focus', resumeDowngradeIfNeeded)
 
 function activateTab(tabId: string): void {
-  if (activeTabId === tabId) return
+  if (activeTabId === tabId) { markTabActive(tabId); return }
   const ctx = findTab(tabId)
   if (!ctx) return
   if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, `activateTab ${activeTabId} -> ${tabId}`)
   activeTabId = tabId
+  markTabActive(tabId)
   // 切走旧 tab → 取消其降级倒计时（保留绿点，下次再切回来重新计时）
   clearDowngradeTimer()
   maybeStartDowngrade(tabId, ctx.tab.status)
@@ -1113,7 +1119,7 @@ async function openSessionInNewTab(sessionId: string): Promise<void> {
 }
 
 function tabNameForSession(s: SessionRecord): string {
-  const raw = s.userTitle || s.aiTitle || `会话 ${s.sessionId.slice(0, 8)}`
+  const raw = s.userTitle || `会话 ${s.sessionId.slice(0, 8)}`
   return raw.length > 20 ? raw.slice(0, 19) + '…' : raw
 }
 
@@ -1161,11 +1167,11 @@ function renameSession(sessionId: string, forceText?: string): void {
     toast('已清除自定义标题')
     return
   }
-  const current = sess.userTitle ?? sess.aiTitle ?? ''
+  const current = sess.userTitle ?? ''
   openModal({
     kind: 'rename',
     title: '重命名会话',
-    sub: 'Claude 生成的 aiTitle 可能滞后或没有，可以手动起个名。右键菜单可「清除自定义标题」回退到 aiTitle。',
+    sub: '不填就用默认名「会话 N」（N 按创建顺序）。右键菜单可「清除自定义标题」回到默认名。',
     name: current,
     okLabel: '保存',
     onOk: (v) => apply(v.name)
@@ -1181,7 +1187,7 @@ async function deleteSession(sessionId: string): Promise<void> {
   if (idx < 0) return
   const sess = tab.sessions[idx]
   const wasActive = tab.activeSessionId === sessionId
-  const title = sess.aiTitle || `（${sess.sessionId.slice(0, 8)}）`
+  const title = sess.userTitle || defaultSessionTitle(sess, tab.sessions)
   confirmDialog({
     title: `删除会话「${title}」？`,
     message: wasActive
@@ -1447,6 +1453,7 @@ const searchUI = document.getElementById('search') as HTMLDivElement
 const searchInput = document.getElementById('search-input') as HTMLInputElement
 const searchCount = document.getElementById('search-count') as HTMLSpanElement
 const searchClose = document.getElementById('search-close') as HTMLButtonElement
+const searchTrigger = document.getElementById('search-trigger') as HTMLButtonElement
 let searchBound: TerminalTab | null = null
 let lastQuery = ''
 const searchSubs = new WeakSet<TerminalTab>()
@@ -1505,6 +1512,7 @@ searchInput.addEventListener('keydown', (e) => {
   }
 })
 searchClose.addEventListener('click', () => closeSearch())
+searchTrigger.addEventListener('click', () => openSearch())
 
 // ─── Window controls ─────────────────────────────────────────────
 const winClose = document.getElementById('win-close') as HTMLButtonElement | null
@@ -1880,6 +1888,59 @@ const historyManager = new HistoryManager({
 })
 
 historyOpenBtn?.addEventListener('click', () => void historyManager.open())
+
+// ─── 顶栏命令面板：搜索"打开的 tab / 已保存分组 / 7 天标签历史" ───────
+const commandPalette = new CommandPalette({
+  getOpenTabs: (): CmdOpenTabCandidate[] => {
+    const out: CmdOpenTabCandidate[] = []
+    for (const g of groups) {
+      for (const t of g.tabs) {
+        out.push({
+          tabId: t.id,
+          tabName: t.name,
+          groupName: g.name,
+          cwd: g.cwd,
+          lastActive: tabLastActive.get(t.id) ?? 0
+        })
+      }
+    }
+    return out
+  },
+  getSaved: (): CmdSavedCandidate[] =>
+    savedGroups.map((s) => ({
+      savedId: s.id,
+      name: s.name,
+      cwd: s.cwd,
+      tabCount: s.snapshot.tabs.length,
+      savedAt: s.savedAt
+    })),
+  getHistory: () => window.term.tabHistoryList(),
+  activateTab: (tabId) => {
+    if (findTab(tabId)) activateTab(tabId)
+  },
+  restoreSavedPick: (savedId) => openRestoreSelect(savedId),
+  restoreFromHistory: async (tabId) => {
+    // history 层面上 id 就是 tabId(与 live 一致);若该 tab 已在 live,activateTab 即可
+    if (findTab(tabId)) { activateTab(tabId); return }
+    const list = await window.term.tabHistoryList()
+    const entry = list.find((e) => e.tabId === tabId)
+    if (entry) void restoreFromHistory(entry)
+    else toast('该历史记录已过期或被清除')
+  },
+  copyPathToClipboard: async (tabId) => {
+    const ctx = findTab(tabId)
+    if (!ctx) return
+    const cwd = ctx.group.cwd
+    if (!cwd) { toast('该分组没有路径'); return }
+    const ok = await window.term.writeClipboard(cwd)
+    toast(ok ? `已复制路径：${cwd}` : '复制失败')
+  },
+  restoreSavedAll: (savedId) => restoreSavedAll(savedId),
+  focusActiveTerminal: () => {
+    activeContext()?.tab.term.focus()
+  }
+})
+void commandPalette
 
 // ─── 启动恢复 ────────────────────────────────────────────────────
 // 轻量模式：只读 settings + savedGroups，groups/activeTabId 一律不恢复。

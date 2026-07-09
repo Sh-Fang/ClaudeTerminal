@@ -1,4 +1,4 @@
-import { escapeHtml, formatTs, srcLabel, statusLabel } from './ui-helpers'
+import { escapeHtml, formatTs, sessionTitle, srcLabel, statusLabel } from './ui-helpers'
 import type { TerminalTab, SessionRecord } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -67,7 +67,7 @@ export class Toolbar {
 
     const cur_sess = currentSession(tab)
     if (cur_sess) {
-      const title = sessionTitle(cur_sess)
+      const title = sessionTitle(cur_sess, tab.sessions)
       this.sessTime.textContent = formatTs(cur_sess.lastTs || cur_sess.createdAt)
       this.sessTitle.textContent = title
     } else {
@@ -101,7 +101,7 @@ export class Toolbar {
       it.innerHTML = `
         <span class="sdot"></span>
         <div class="sess-body">
-          <div class="sess-title">${escapeHtml(sessionTitle(s))}</div>
+          <div class="sess-title">${escapeHtml(sessionTitle(s, tab.sessions))}</div>
           <div class="sess-meta">${escapeHtml(formatTs(s.lastTs || s.createdAt))} · <span class="src">${escapeHtml(srcLabel(s.source))}</span> · ${escapeHtml(s.sessionId.slice(0, 8))}${isCurrent ? ' · <span class="cur">当前</span>' : ''}</div>
         </div>
       `
@@ -142,10 +142,4 @@ function currentSession(tab: TerminalTab): SessionRecord | undefined {
     tab.sessions.find((s) => s.sessionId === tab.activeSessionId) ??
     tab.sessions[tab.sessions.length - 1]
   )
-}
-
-function sessionTitle(s: SessionRecord): string {
-  if (s.userTitle) return s.userTitle
-  if (s.aiTitle) return s.aiTitle
-  return `（待 Claude 生成标题…${s.sessionId.slice(0, 8)}）`
 }
