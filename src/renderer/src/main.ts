@@ -372,6 +372,12 @@ function makeTab(group: Group, opts: {
         toolbar.render()
       },
       onShellCommand: (kind, cmd) => {
+        // pwsh shell integration OSC 序列触发 → pwsh 一定在前台（cc 全屏 TUI 会完全屏蔽这些序列）。
+        // 顶栏"启动 CC"按钮据此显隐：cc 退出后 pwsh 打 prompt 触发一次 end → 按钮秒回。
+        if (tabRef.ccActive) {
+          tabRef.ccActive = false
+          toolbar.render()
+        }
         // A: cc tab（autoLaunchCC=true）状态完全交给 cc hooks，shell 事件不参与，避免重复标注。
         if (tabRef.autoLaunchCC) return
         // B: 过滤命令本身是启动 cc 的情况——用户在纯 pwsh tab 里手打 `claude` 也不上蓝点。
@@ -1560,6 +1566,8 @@ const offSession = window.term.onSessionEvent((ev) => {
   const ctx = findTab(ev.tabId)
   if (!ctx) return
   const { tab } = ctx
+  // SessionStart 到达即 cc 刚起了会话 → 标记活跃。cc 退出后由 onShellCommand 翻回 false。
+  tab.ccActive = true
   // 清掉历史累积的同 id 重复条目（早期版本无去重）
   if (tab.sessions.length > 1) {
     const seen = new Set<string>()

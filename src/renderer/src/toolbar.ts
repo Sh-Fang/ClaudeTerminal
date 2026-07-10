@@ -82,8 +82,9 @@ export class Toolbar {
     this.sbCwd.textContent = groupCwd
     this.sbCwd.title = groupCwd
 
-    // 纯 pwsh 标签（没勾自动 cc、也没起过任何会话）才给"启动 CC"入口——与 main.ts isCcTab 反相。
-    const pureNonCc = !tab.autoLaunchCC && tab.sessions.length === 0
+    // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
+    // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。
+    const pureNonCc = !tab.autoLaunchCC && !tab.ccActive
     this.startCcBtn.classList.toggle('show', pureNonCc)
 
     this.renderSessList(tab)

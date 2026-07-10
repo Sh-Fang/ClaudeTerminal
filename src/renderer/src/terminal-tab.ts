@@ -122,6 +122,10 @@ export class TerminalTab {
   status: TabStatus
   note?: string
   dirty: boolean
+  // 运行时状态：当下 cc 进程是否活跃。SessionStart hook → true；任意 pwsh shell integration
+  // OSC 序列（onShellCommand）→ false（cc 在 alt-screen 里屏蔽 pwsh 序列，触发即证明 pwsh 前台）。
+  // 不持久化——仅用于顶栏"启动 CC"按钮显隐等即时判定，重启/恢复后重新根据事件推导。
+  ccActive: boolean = false
 
   readonly host: HTMLDivElement
   readonly term: Terminal
