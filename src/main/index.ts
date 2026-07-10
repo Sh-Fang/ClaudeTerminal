@@ -233,17 +233,21 @@ function stopWatchers(): void {
 }
 
 // 用户确认关闭 → 走这里"快退"：不给 renderer beforeunload 机会，
-// 也不等 Chromium 回收 helper 进程；同步把 PTY 与日志收干净后 app.exit。
+// 也不等 Chromium 回收 helper 进程；收干净日志后直接 app.exit，让 OS 成组回收进程。
 // 观测背景：beforeunload 里逐 tab 串行 TerminalTab.dispose()（xterm 6 dispose
 // + kill IPC 累加）+ Chromium renderer/helper 回收 = 关闭感知 2~3s。
-// 直接 exit 让 OS 成组回收进程，通常 <300ms。
+//
+// 关键：这里刻意不再调 killAll()。proc.kill() 在 Windows ConPTY 下是【同步阻塞】——
+// 每次要跑 conpty_console_list 枚举进程树 + 逐个 process.kill + 关 pseudoconsole，
+// 单个实测 300~750ms，串行 killAll 随 tab 数线性放大（8 个会话实测卡主线程 ≈ 3.9s），
+// 这正是"标签页一多、关闭就慢"的根因。而马上就要 app.exit(0)：进程退出时 OS 关闭
+// ConPTY 句柄，会自动终止挂在其上的 pwsh 及其子进程（实测无孤儿残留），无需我们逐个杀。
 let fastQuitting = false
 function fastQuit(reason: string): void {
   if (fastQuitting) return
   fastQuitting = true
   try { stopWatchers() } catch {}
   try { destroyFloater() } catch {}
-  try { killAll() } catch {}
   try { stopLogging(reason) } catch {}
   app.exit(0)
 }
@@ -318,14 +322,18 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   stopWatchers()
   destroyFloater()
-  killAll()
   // stop 事件同步落盘 + sentinel 删掉，下次启动才不会误判成 unclean_exit
   stopLogging('window-all-closed')
-  // 用 app.exit 而非 app.quit：node-pty 的 conoutSocketWorker.dispose() 会挂一个
-  // FLUSH_DATA_INTERVAL=1000ms 的 setTimeout 等最后一段输出 flush 再关 worker,
-  // app.quit 是优雅退，会等事件循环排空 → 进程多挂 1s 才消失。
-  // 窗口已关、renderer 已退、子进程同步 kill 完了，那 1s flush 没人在读，直接跳过。
-  if (process.platform !== 'darwin') app.exit(0)
+  if (process.platform !== 'darwin') {
+    // Windows/Linux：进程要退了，直接 app.exit(0)。同 fastQuit 的理由——不再逐个
+    // proc.kill()（同步阻塞、随 tab 线性放大），OS 关闭 ConPTY 句柄即回收挂在其上的
+    // pwsh。用 app.exit 而非 app.quit：后者优雅退会等事件循环排空（node-pty conout
+    // worker 的 FLUSH_DATA_INTERVAL=1000ms flush 等），进程多挂 ~1s；这里没人在读，跳过。
+    app.exit(0)
+  } else {
+    // macOS：窗口全关进程仍活着，必须把子进程收干净，否则泄漏
+    killAll()
+  }
 })
 
 app.on('before-quit', () => {
