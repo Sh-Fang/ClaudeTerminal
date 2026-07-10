@@ -319,6 +319,19 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   window.term.send(tab.ptyId, cmd + '\r')
 }
 
+// 顶栏"启动 CC"按钮入口：在当前纯 pwsh 标签里手动起一次可被 app 接管的 cc 会话。
+// 等效于用户手敲 cct（走 shell profile 里的 cct 函数：--session-id 新 uuid --name <tab>
+// --settings <hooks>），给不知道 cct 命令的用户一个可视化入口；hook 上报后 onSessionEvent 压栈接管。
+function startCcInActiveTab(): void {
+  const ctx = activeContext()
+  if (!ctx) return
+  const { tab } = ctx
+  if (isCcTab(tab)) return       // 已勾自动启动或已起过会话 → 不重复起
+  if (tab.ptyId == null) return  // pty 还没就绪
+  window.term.send(tab.ptyId, 'cct\r')
+  tab.term.focus()
+}
+
 // ─── Tab 工厂 ─────────────────────────────────────────────────────
 function makeTab(group: Group, opts: {
   id?: string
@@ -1400,7 +1413,8 @@ const toolbar = new Toolbar({
     return { tab: ctx.tab, groupName: ctx.group.name, groupCwd: ctx.group.cwd }
   },
   switchSession: (id) => void switchSession(id),
-  onSessionCtx: openSessionCtx
+  onSessionCtx: openSessionCtx,
+  startCcHere: () => startCcInActiveTab()
 })
 
 // 外部切模型/思考强度（B 方案）：往当前活跃 tab 的 cc 注入斜杠命令。

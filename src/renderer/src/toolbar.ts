@@ -6,6 +6,8 @@ export interface ToolbarHooks {
   getActiveTab(): { tab: TerminalTab; groupName: string; groupCwd: string } | null
   switchSession(sessionId: string): void
   onSessionCtx(sessionId: string, x: number, y: number): void
+  // 顶栏"启动 CC"按钮：在当前纯 pwsh 标签里起一次可被 app 接管的 cc 会话（等效 cct）
+  startCcHere(): void
 }
 
 export class Toolbar {
@@ -19,8 +21,10 @@ export class Toolbar {
   private sessMenu = document.getElementById('sessionMenu') as HTMLDivElement
   private sessList = document.getElementById('sessList') as HTMLDivElement
   private sbCwd = document.getElementById('sbCwd') as HTMLSpanElement
+  private startCcBtn = document.getElementById('startCcBtn') as HTMLButtonElement
 
   constructor(private hooks: ToolbarHooks) {
+    this.startCcBtn.addEventListener('click', () => this.hooks.startCcHere())
     this.sessSelect.addEventListener('click', (e) => {
       e.stopPropagation()
       if (this.sessSelect.classList.contains('empty')) return
@@ -47,6 +51,7 @@ export class Toolbar {
       this.sessList.innerHTML = ''
       this.sbCwd.textContent = ''
       this.sbCwd.title = ''
+      this.startCcBtn.classList.remove('show')
       this.closeMenu()
       return
     }
@@ -76,6 +81,10 @@ export class Toolbar {
     }
     this.sbCwd.textContent = groupCwd
     this.sbCwd.title = groupCwd
+
+    // 纯 pwsh 标签（没勾自动 cc、也没起过任何会话）才给"启动 CC"入口——与 main.ts isCcTab 反相。
+    const pureNonCc = !tab.autoLaunchCC && tab.sessions.length === 0
+    this.startCcBtn.classList.toggle('show', pureNonCc)
 
     this.renderSessList(tab)
   }

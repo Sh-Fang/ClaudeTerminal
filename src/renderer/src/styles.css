@@ -495,6 +495,27 @@ button.saved-toggle:hover { color: var(--ink); }
 .crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; }
 #cbStatus { flex: 0 0 auto; display: inline-flex; }
 #cbStatus:empty { display: none; }
+
+/* 顶栏"启动 CC"按钮：仅纯 pwsh 标签显示（toolbar.render 加 .show）。
+   借用 sp-busy 的 cc 蓝色系，暗示"在这里点一下就能开 Claude Code"。 */
+.start-cc-btn {
+  display: none;
+  align-items: center; gap: 5px;
+  flex: 0 0 auto;
+  font-size: 12px; padding: 3px 10px;
+  border-radius: var(--r-full);
+  border: 1px solid #cfe2ff;
+  background: #e8f1ff;
+  color: #0761d1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.start-cc-btn.show { display: inline-flex; }
+.start-cc-btn:hover { background: #dbe9ff; border-color: #0761d1; }
+.start-cc-btn:active { background: #cfe2ff; }
+.start-cc-btn svg { flex: 0 0 auto; }
+
 .toolbar .spacer { flex: 0 0 8px; }
 
 .status-pill {
