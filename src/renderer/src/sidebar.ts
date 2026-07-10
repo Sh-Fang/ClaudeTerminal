@@ -138,10 +138,16 @@ export class Sidebar {
     const badgeText = isIdle ? `${t.sessions.length}会话` : statusShort(st)
     const badgeCls = isIdle ? '' : ` bs-${st}`
     const dotTitle = `${statusLabel(st)}${t.note ? '：' + t.note : ''}`
+    // dirty 点：跟 isGroupDirty 的过滤条件对齐——纯 pwsh tab 即便 dirty=true 也不显示
+    // （纯 pwsh 没数据可保存，显示无意义）。承载 cc 的 tab 有未保存改动时在名字末尾贴一个
+    // 黄点，跟分组头 folder-filled 用同一色系表达"dirty"语义。
+    const showDirty = t.dirty && (t.autoLaunchCC || t.sessions.length > 0)
+    const dirtyDot = showDirty ? `<span class="trow-dirty" title="有未保存改动"></span>` : ''
     return `
       <div class="tab-row${active ? ' active' : ''}" data-t="${escapeHtml(t.id)}">
         <span class="st-dot st-${st}" title="${escapeHtml(dotTitle)}"></span>
         <span class="trow-name">${escapeHtml(t.name)}</span>
+        ${dirtyDot}
         <span class="trow-badge${badgeCls}">${escapeHtml(badgeText)}</span>
         <span class="trow-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 12, stroke: 2 })}</span>
       </div>`

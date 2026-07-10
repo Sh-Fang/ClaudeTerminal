@@ -408,6 +408,13 @@ button.saved-toggle:hover { color: var(--ink); }
 .trow-badge.bs-busy { color: #0761d1; }
 .trow-badge.bs-attention { color: var(--warning-deep); font-weight: 600; }
 .trow-badge.bs-done { color: #1a7f37; font-weight: 500; }
+/* dirty 点：跟 .group-folder.is-dirty 同色，表达"该标签有未保存改动" */
+.trow-dirty {
+  width: 6px; height: 6px;
+  border-radius: var(--r-full);
+  flex: 0 0 6px;
+  background: #f5a623;
+}
 .trow-close {
   width: 18px; height: 18px;
   border-radius: var(--r-full);
