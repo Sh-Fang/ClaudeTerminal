@@ -59,24 +59,32 @@ interface Group {
   tabs: TerminalTab[]
 }
 
-// 纯 pwsh 分组：所有标签都没勾"自动启动 cc"。没绑定 cc 会话栈，本质就是普通终端，
+// 标签是否"承载 cc"：勾了自动启动 cc，或实际已经起过 cc 会话（含手动 cct / claude 起的）。
+// 关键：autoLaunchCC 只是"新建时的意图"，cct 手动起的会话 autoLaunchCC=false 却有真实会话
+// 价值——只看 autoLaunchCC 会把这种 tab 误判成纯 pwsh，dirty / 关闭确认全部漏掉。
+function isCcTab(t: TerminalTab): boolean {
+  return t.autoLaunchCC || t.sessions.length > 0
+}
+
+// 纯 pwsh 分组：所有标签既没勾"自动启动 cc"、也没起过任何 cc 会话。本质就是普通终端，
 // 关掉就关掉、下次重开就是空白，没有保存价值。
 function isPureNonCcGroup(g: Group): boolean {
-  return g.tabs.length > 0 && g.tabs.every((t) => !t.autoLaunchCC)
+  return g.tabs.length > 0 && g.tabs.every((t) => !isCcTab(t))
 }
 
-// 单个标签是否"可丢弃"：没勾"自动启动 cc"且没有任何会话栈记录。
+// 单个标签是否"可丢弃"：不承载 cc（没勾自动启动、也没有任何会话栈记录）。
 // 关闭这种标签不会丢失任何 cc 会话历史，跳过二次确认更顺手。
 function isTabExpendable(t: TerminalTab): boolean {
-  return !t.autoLaunchCC && t.sessions.length === 0
+  return !isCcTab(t)
 }
 
-// 分组是否"脏"：组内有未保存标签，或组元信息（name/cwd）与已保存的不一致，
+// 分组是否"脏"：组内有承载 cc 的未保存标签，或组元信息（name/cwd）与已保存的不一致，
 // 或根本没有对应的已保存条目。纯 pwsh 分组永远视为"不脏"——没东西可保存。
 function isGroupDirty(g: Group): boolean {
   if (isPureNonCcGroup(g)) return false
-  // 只有"绑了 cc"的 tab 的 dirty 才传染到分组——纯 pwsh tab 改了也无所谓
-  if (g.tabs.some((t) => t.dirty && t.autoLaunchCC)) return true
+  // 只有"承载 cc"的 tab 的 dirty 才传染到分组——纯 pwsh tab 改了也无所谓。
+  // 用 isCcTab 而非 autoLaunchCC：cct 手动起的会话（autoLaunchCC=false）也要能让分组显 dirty。
+  if (g.tabs.some((t) => t.dirty && isCcTab(t))) return true
   const saved = savedGroups.find((s) => s.srcId === g.id)
   if (!saved) return true
   if (saved.snapshot.name !== g.name) return true
@@ -162,8 +170,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // 判断 shell-integration 上报的命令行是不是「启动 cc」——命中就跳过 shell-busy 标注，
 // 让 cc 自己的 hooks 单独驱动 busy/attention/done/error。
-// 覆盖：`claude ...`、`& 'C:\...\claude.exe' ...`、`& claude ...`、以及用户在 settings 里
-// 指定的 claudePath basename（改名后的 cc 也能识别）。扩展名 .exe/.cmd/.ps1/.bat 视为等价。
+// 覆盖：`claude ...`、`& 'C:\...\claude.exe' ...`、`& claude ...`、`cct ...`（本 app pwsh
+// profile 注入的函数，内部就是启动可接管的 cc），以及用户在 settings 里指定的 claudePath
+// basename（改名后的 cc 也能识别）。扩展名 .exe/.cmd/.ps1/.bat 视为等价。
 function commandLineIsCcInvocation(cmd: string | undefined, claudePath: string): boolean {
   if (!cmd) return false
   const m = /^\s*(?:&\s+)?(?:'([^']*)'|"([^"]*)"|(\S+))/.exec(cmd)
@@ -172,6 +181,7 @@ function commandLineIsCcInvocation(cmd: string | undefined, claudePath: string):
   if (!exe) return false
   const base = exe.split(/[\\/]/).pop()!.replace(/\.(exe|cmd|ps1|bat)$/i, '')
   if (base === 'claude') return true
+  if (base === 'cct') return true
   if (claudePath) {
     const cpBase = claudePath.toLowerCase().split(/[\\/]/).pop()?.replace(/\.(exe|cmd|ps1|bat)$/i, '') || ''
     if (cpBase && base === cpBase) return true
