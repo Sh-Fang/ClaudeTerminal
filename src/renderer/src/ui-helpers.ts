@@ -190,8 +190,10 @@ let modalAutoName = false
 let modalNameUserEdited = false
 
 // 取路径最后一段作为默认分组名：D:\Document\工单处理\理科工单 → "理科工单"
-// 兼容正反斜杠和末尾斜杠；取不到时回退给空串
+// 兼容正反斜杠和末尾斜杠；磁盘根（D:\ 等）没有最后一段，美化成「D 盘」；取不到时回退空串
 function basenameOfPath(p: string): string {
+  const drive = /^([a-zA-Z]):[\\/]?$/.exec(p.trim())
+  if (drive) return `${drive[1].toUpperCase()} 盘`
   const segs = p.split(/[\\/]+/).filter(Boolean)
   return segs[segs.length - 1] ?? ''
 }

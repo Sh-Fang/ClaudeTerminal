@@ -487,134 +487,15 @@ button.saved-toggle:hover { color: var(--ink); }
   border-bottom: 1px solid var(--hairline);
   position: relative;
 }
-.crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
 .crumb.is-empty .sep,
 .crumb.is-empty .t { display: none; }
 .crumb .g { font-weight: 600; letter-spacing: -0.2px; color: var(--ink); white-space: nowrap; flex: 0 0 auto; }
 .crumb .sep { color: var(--hairline-strong); flex: 0 0 auto; }
-.crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; }
+.crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; }
 #cbStatus { flex: 0 0 auto; display: inline-flex; }
 #cbStatus:empty { display: none; }
-
-/* ── 命令面板：顶栏中间搜索框 + 下拉浮层 ─────────────────────── */
-.cmdpal-wrap {
-  flex: 1 1 auto;
-  min-width: 120px;
-  position: relative;
-  display: flex; justify-content: center;
-}
-.cmdpal-search {
-  width: 100%; max-width: 520px;
-  height: 32px;
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 8px 0 10px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
-  background: var(--canvas-soft);
-  color: var(--body);
-  transition: border-color 0.12s, background 0.12s;
-}
-.cmdpal-search:hover { border-color: var(--hairline-strong); background: var(--canvas); }
-.cmdpal-search.focus { border-color: var(--link); background: var(--canvas); box-shadow: 0 0 0 3px rgb(0 112 243 / 0.12); }
-.cmdpal-search .cmdpal-ic { flex: 0 0 auto; color: var(--mute); display: inline-grid; place-items: center; }
-.cmdpal-search input {
-  flex: 1 1 auto; min-width: 0;
-  border: 0; outline: 0; background: transparent;
-  font-size: 13px; color: var(--ink);
-  font-family: inherit;
-}
-.cmdpal-search input::placeholder { color: var(--mute); }
-.cmdpal-search .cmdpal-hint {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--mute);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 5px;
-  line-height: 14px;
-  background: var(--canvas);
-}
-.cmdpal-search.focus .cmdpal-hint { display: none; }
-
-.cmdpal-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%; transform: translateX(-50%);
-  width: 100%; max-width: 560px; min-width: 360px;
-  max-height: min(60vh, 480px);
-  overflow-y: auto;
-  z-index: 40;
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-5);
-  padding: 4px;
-  animation: pop 0.14s ease;
-}
-.cmdpal-panel[hidden] { display: none; }
-.cmdpal-empty {
-  padding: 14px 16px;
-  font-size: 12px;
-  color: var(--mute);
-  text-align: center;
-}
-.cmdpal-section-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  color: var(--mute);
-  text-transform: uppercase;
-  padding: 6px 10px 4px;
-}
-.cmdpal-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  color: var(--ink);
-}
-.cmdpal-item:hover { background: var(--canvas-soft); }
-.cmdpal-item.active { background: var(--link-bg-soft); color: var(--ink); }
-.cmdpal-item .ci-kind {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.3px;
-  color: var(--body);
-  background: var(--canvas-soft-2);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 5px;
-  min-width: 42px;
-  text-align: center;
-}
-.cmdpal-item.active .ci-kind { background: var(--canvas); }
-.cmdpal-item .ci-body { flex: 1 1 auto; min-width: 0; }
-.cmdpal-item .ci-title { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmdpal-item .ci-sub { font-size: 11px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
-.cmdpal-item .ci-title mark, .cmdpal-item .ci-sub mark {
-  background: transparent; color: var(--link-deep); font-weight: 600; padding: 0;
-}
-.cmdpal-item .ci-badge {
-  flex: 0 0 auto;
-  font-family: var(--mono); font-size: 10px; color: var(--mute);
-}
-.cmdpal-foot {
-  display: flex; gap: 14px;
-  padding: 8px 12px 4px;
-  border-top: 1px solid var(--hairline);
-  margin-top: 4px;
-  font-family: var(--mono); font-size: 10px; color: var(--mute);
-}
-.cmdpal-foot kbd {
-  font-family: var(--mono); font-size: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 1px 4px;
-  color: var(--body);
-  background: var(--canvas-soft);
-}
+.toolbar .spacer { flex: 0 0 8px; }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px;
@@ -871,110 +752,48 @@ button.saved-toggle:hover { color: var(--ink); }
 .usage-bars .ubar-val.lv-danger { color: #f14c4c; }
 .usage-bars .ubar-reset { color: var(--mute); opacity: .75; white-space: nowrap; }
 
-/* Search popover：常驻放大镜图标，hover / focus / .open 时向左展开成完整搜索框
-   ─────────────────────────────────────────────────────────────
-   位置固定在 hosts 顶部右上角，不再走"打开时才渲染"的路径，避免首次 open 的
-   位置抖动（旧版 display:none→flex 切换 + top:60px 相对 .main 时，首帧尺寸未定
-   偶尔会闪一下）。展开靠 max-width/padding/opacity 的 transition 平滑过渡。 */
+/* Search popover */
 #search {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
+  top: 60px;
+  right: 18px;
+  display: none;
   align-items: center;
-  gap: 4px;
-  padding: 3px;
-  background: rgba(20, 20, 20, 0.85);
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  box-shadow: none;
-  z-index: 20;
-  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
-}
-#search:hover, #search.open, #search:focus-within {
-  border-color: #2f2f2f;
+  gap: 6px;
+  padding: 6px 8px;
   background: #1a1a1a;
-  box-shadow: var(--sh-4);
+  border: 1px solid #2f2f2f;
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-5);
+  z-index: 20;
 }
-#search-trigger {
-  width: 26px; height: 26px;
-  flex: 0 0 26px;
-  display: grid; place-items: center;
-  color: #a0a0a0;
-  background: transparent; border: none;
-  border-radius: var(--r-xs);
-  cursor: pointer;
-  transition: color .12s, background .12s;
-}
-#search-trigger:hover { color: #e5e5e5; background: #2a2a2a; }
-#search:hover #search-trigger,
-#search.open #search-trigger,
-#search:focus-within #search-trigger {
-  color: #e5e5e5;
-}
+#search.open { display: flex; }
 #search-input {
-  width: 0;
-  max-width: 0;
-  min-width: 0;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  opacity: 0;
+  width: 260px;
   background: #0a0a0a;
   color: #e5e5e5;
+  border: 1px solid #2f2f2f;
+  border-radius: var(--r-xs);
+  padding: 4px 8px;
   font-size: 12px;
   font-family: var(--mono);
   outline: none;
-  border-radius: var(--r-xs);
-  transition: max-width .18s ease, padding .18s ease, opacity .12s ease, border-color .12s;
-}
-#search:hover #search-input,
-#search.open #search-input,
-#search:focus-within #search-input {
-  width: 240px;
-  max-width: 240px;
-  padding: 4px 8px;
-  border: 1px solid #2f2f2f;
-  opacity: 1;
 }
 #search-input:focus { border-color: var(--link); }
 #search-count {
   color: #888; font-size: 11px;
-  min-width: 0;
-  width: 0;
-  overflow: hidden;
-  text-align: center;
+  min-width: 36px; text-align: center;
   font-family: var(--mono);
-  opacity: 0;
-  transition: min-width .18s ease, opacity .12s ease;
-}
-#search:hover #search-count,
-#search.open #search-count,
-#search:focus-within #search-count {
-  min-width: 36px;
-  width: auto;
-  opacity: 1;
 }
 #search-close {
   background: transparent;
   color: #888; border: none;
   cursor: pointer;
+  padding: 4px;
   display: grid;
   place-items: center;
   line-height: 1;
-  border-radius: var(--r-xs);
-  width: 0;
-  padding: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: width .18s ease, padding .18s ease, opacity .12s ease;
-}
-#search:hover #search-close,
-#search.open #search-close,
-#search:focus-within #search-close {
-  width: 22px;
-  padding: 4px;
-  opacity: 1;
+  border-radius: 3px;
 }
 #search-close:hover { color: #e5e5e5; background: #2a2a2a; }
 

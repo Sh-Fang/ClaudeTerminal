@@ -205,6 +205,9 @@ export interface TermBridge {
   onFloaterHidden(cb: () => void): () => void
   // 右键菜单"在此处打开 Claude Terminal"：主进程 argv 里解析出 path 后推给 renderer
   onOpenHere(cb: (path: string) => void): () => void
+  // renderer 启动完成后主动拉一次：把首次启动 argv 里的 path（如果有）取走。
+  // 避免"send 时 renderer 监听器还没注册"导致的丢消息。
+  consumePendingOpenHere(): Promise<string[]>
 }
 
 const api: TermBridge = {
@@ -291,7 +294,8 @@ const api: TermBridge = {
     const h = (_e: IpcRendererEvent, p: string) => cb(p)
     ipcRenderer.on('app:openHere', h)
     return () => ipcRenderer.off('app:openHere', h)
-  }
+  },
+  consumePendingOpenHere: () => ipcRenderer.invoke('app:consumePendingOpenHere')
 }
 
 contextBridge.exposeInMainWorld('term', api)

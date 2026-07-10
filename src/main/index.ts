@@ -42,38 +42,83 @@ function looksLikePath(s: string): boolean {
   // Windows 盘符 D:\、UNC \\server、或 forward slash 都算
   return /^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('\\\\') || s.startsWith('/')
 }
+// 两条唤起路径拿到的 argv 形态不同：
+//   · 首次启动：process.argv 未被 Chromium 加工，形如 [exe, --open-here, D:\path]，
+//     路径紧跟 --open-here。
+//   · second-instance：Electron 传进来的 argv 是 Chromium CommandLine 重排过的——
+//     switch（--xxx）被排到前面、注入自己的 flag（如 --allow-file-access-from-files），
+//     裸路径（positional 参数）被挪到 argv 末尾。于是 --open-here 后面紧跟的不再是
+//     路径而是注入的 flag，路径掉到最后。实测（Electron 42）：
+//       [exe, --open-here, --allow-file-access-from-files, <main脚本>, D:\path]
+// 所以不能只看 --open-here 的下一个 token。三级识别：
+//   1) 等号形式 --open-here=path：Chromium 把它当整体 switch 保留、不拆散，最稳；
+//   2) 裸 flag 紧邻路径：首次启动 process.argv 命中；
+//   3) 兜底：只要出现过 --open-here，就从末尾往前找第一个"像路径"的 token
+//      （second-instance 场景路径被挪到末尾）。
+// 清洗 argv 里取出的路径 token。核心是磁盘根：右键"在此处打开"时 %V 展开成 D:\，
+// 命令行 "D:\" 里的 \" 会被 Windows 当转义引号，盘符路径丢掉斜杠、留下一个字面引号，
+// argv 里实测（CommandLineToArgvW）拿到的是 D:" 。这是 Windows 命令行固有行为，NSIS
+// 命令行层面无法同时兼容磁盘根与普通目录（VSCode 的 "%V" 同样坏成 D:"），只能在此清洗：
+//   · Windows 路径本就不允许含 " —— 去掉所有引号；
+//   · 清洗后若是纯盘符 D: —— 补回根斜杠成 D:\ 。
+function normalizeArgPath(s: string): string {
+  const v = s.replace(/"/g, '').trim()
+  return /^[a-zA-Z]:$/.test(v) ? v + '\\' : v
+}
+
 function parseOpenHere(argv: string[]): string | null {
+  let sawFlag = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a) continue
-    if (a === '--open-here' || a === '/open-here') {
-      const v = argv[i + 1]
-      if (!v) return null
-      const stripped = v.replace(/^"|"$/g, '')
-      return looksLikePath(stripped) ? stripped : null
-    }
+    // 1) 等号形式：路径绑在 switch 值里，不会被重排拆散
     if (a.startsWith('--open-here=')) {
-      const stripped = a.slice('--open-here='.length).replace(/^"|"$/g, '')
-      return looksLikePath(stripped) ? stripped : null
+      const stripped = normalizeArgPath(a.slice('--open-here='.length))
+      if (looksLikePath(stripped)) return stripped
+      sawFlag = true
+      continue
+    }
+    // 2) 裸 flag：首次启动时路径紧跟其后
+    if (a === '--open-here' || a === '/open-here') {
+      sawFlag = true
+      const v = argv[i + 1]
+      if (v) {
+        const stripped = normalizeArgPath(v)
+        if (looksLikePath(stripped)) return stripped
+      }
+    }
+  }
+  // 3) 兜底：second-instance 场景路径被 Chromium 挪到 argv 末尾，倒序捞第一个像路径的。
+  //    倒序是关键——dev 下 argv 里还夹着 main 脚本路径（也 looksLikePath），但它排在
+  //    真实路径之前，从末尾扫描先命中真实的 %V 路径。生产打包 argv 里只有唯一裸路径。
+  //    到 i>=1 为止：argv[0] 永远是 exe/electron 自身路径（也 looksLikePath），万一带了
+  //    --open-here 却没有真实路径，不能把 exe 路径误当目标抛出去。
+  if (sawFlag) {
+    for (let i = argv.length - 1; i >= 1; i--) {
+      const v = normalizeArgPath(argv[i] || '')
+      if (looksLikePath(v)) return v
     }
   }
   return null
 }
 
-// 首次实例启动时 argv 里就带的 path，等 mainWindow 就绪后消费一次
-let pendingOpenHere: string | null = parseOpenHere(process.argv)
+// 待消费的 open-here 路径队列。用队列而非单值是因为极端情况可能连续两次触发。
+// - 首次启动：process.argv 里 parse 出的 path 直接 push
+// - second-instance：无论 renderer ready 与否都 push；如果已 ready 顺带 send 一次触发消费
+// renderer 启动 IIFE 完成后会 invoke 'app:consumePendingOpenHere' 主动拉走队列——
+// 之前用 send + did-finish-load 会在 renderer 的 onOpenHere 监听器注册前送达而被丢弃，
+// 现在改成主动拉取，只要监听器就位就一定能拿到。
+const pendingOpenHere: string[] = []
+{
+  const initial = parseOpenHere(process.argv)
+  if (initial) pendingOpenHere.push(initial)
+}
 
 function safeSendOpenHere(path: string): void {
+  // send 只是"顺手催一下"（second-instance 场景 renderer 已 ready）；主要落盘还是靠 pendingOpenHere
   if (!mainWindow || mainWindow.isDestroyed()) return
   const wc = mainWindow.webContents
   if (!wc || wc.isDestroyed()) return
-  if (wc.isLoading()) {
-    // renderer 还没 ready，等 did-finish-load 时再推
-    wc.once('did-finish-load', () => {
-      try { wc.send('app:openHere', path) } catch {}
-    })
-    return
-  }
   try { wc.send('app:openHere', path) } catch {}
 }
 
@@ -85,9 +130,12 @@ if (!gotSingleInstanceLock) {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
-    // 第二实例带 --open-here → 通知 renderer 新建分组
+    // 第二实例带 --open-here → push 到 pending 队列，并顺手 send 一次触发 renderer 消费
     const p = parseOpenHere(argv)
-    if (p) safeSendOpenHere(p)
+    if (p) {
+      pendingOpenHere.push(p)
+      safeSendOpenHere(p)
+    }
   })
 }
 
@@ -237,6 +285,12 @@ app.whenReady().then(() => {
   }
 
   registerPtyIpc(() => mainWindow)
+  // 主动拉取：renderer 启动 IIFE 完成后 invoke 一次，把首次启动 argv 里带来的路径取走。
+  ipcMain.handle('app:consumePendingOpenHere', () => {
+    const out = [...pendingOpenHere]
+    pendingOpenHere.length = 0
+    return out
+  })
   ipcMain.on('window:closeConfirmed', () => {
     allowClose = true
     // 直接 app.exit(0)：跳过 mainWindow.close() → renderer beforeunload → Chromium
@@ -250,12 +304,7 @@ app.whenReady().then(() => {
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()
-  // 首次启动就带 --open-here → 等 renderer ready 后消费一次
-  if (pendingOpenHere) {
-    const p = pendingOpenHere
-    pendingOpenHere = null
-    safeSendOpenHere(p)
-  }
+  // 首次启动的路径已经在 pendingOpenHere 里；等 renderer 主动 invoke consumePendingOpenHere 消费。
   // 启动时按设置决定是否拉起悬浮窗
   try {
     if (loadSettings().showFloater) setFloaterEnabled(true)
