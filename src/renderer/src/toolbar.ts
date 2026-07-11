@@ -1,4 +1,4 @@
-import { escapeHtml, formatTs, sessionTitle, srcLabel, statusLabel } from './ui-helpers'
+import { escapeHtml, formatTs, sessionTitle, srcLabel, statusLabel, toast } from './ui-helpers'
 import type { TerminalTab, SessionRecord } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -25,6 +25,15 @@ export class Toolbar {
 
   constructor(private hooks: ToolbarHooks) {
     this.startCcBtn.addEventListener('click', () => this.hooks.startCcHere())
+    // 双击底部路径 → 用系统资源管理器打开该目录。双击同时会选中一个词，属预期，
+    // 不阻止；用户仍可拖选复制路径。
+    this.sbCwd.addEventListener('dblclick', () => {
+      const p = this.sbCwd.textContent?.trim()
+      if (!p) return
+      void window.term.openPath(p).then((r) => {
+        if (!r.ok) toast(`打开失败：${r.error ?? '未知错误'}`)
+      })
+    })
     this.sessSelect.addEventListener('click', (e) => {
       e.stopPropagation()
       if (this.sessSelect.classList.contains('empty')) return
@@ -80,7 +89,7 @@ export class Toolbar {
       this.sessTitle.textContent = '（未创建会话）'
     }
     this.sbCwd.textContent = groupCwd
-    this.sbCwd.title = groupCwd
+    this.sbCwd.title = `${groupCwd}\n双击用资源管理器打开`
 
     // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
     // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。

@@ -42,6 +42,18 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return false
   })
 
+  // 用系统资源管理器打开本地目录/文件。仅接受绝对路径且路径存在，避免被塞相对路径逃出预期目录。
+  ipcMain.handle('shell:openPath', async (_e, p: string) => {
+    if (typeof p !== 'string' || !p) return { ok: false, error: '空路径' }
+    try {
+      if (!existsSync(p)) return { ok: false, error: '路径不存在' }
+    } catch {
+      return { ok: false, error: '路径不可访问' }
+    }
+    const err = await shell.openPath(p)
+    return err ? { ok: false, error: err } : { ok: true }
+  })
+
   ipcMain.handle('workspace:load', () => loadWorkspace())
   ipcMain.handle('workspace:save', (_e, ws: Workspace) => {
     saveWorkspace(ws)

@@ -158,6 +158,7 @@ export interface TermBridge {
   resize(id: number, cols: number, rows: number): void
   kill(id: number): void
   openExternal(url: string): Promise<boolean>
+  openPath(path: string): Promise<{ ok: boolean; error?: string }>
   loadWorkspace(): Promise<Workspace>
   saveWorkspace(ws: Workspace): Promise<boolean>
   claudeAvailable(): Promise<boolean>
@@ -216,6 +217,7 @@ const api: TermBridge = {
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
   kill: (id) => ipcRenderer.send('pty:kill', { id }),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
   loadWorkspace: () => ipcRenderer.invoke('workspace:load'),
   saveWorkspace: (ws) => ipcRenderer.invoke('workspace:save', ws),
   claudeAvailable: () => ipcRenderer.invoke('claude:available'),
