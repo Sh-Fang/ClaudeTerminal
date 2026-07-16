@@ -82,6 +82,7 @@ export interface Settings {
   terminal: { scrollback: number; theme: ThemePreset }
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
+  npmRegistry: string
   disableAutoupdater: boolean
   lastUsedCwd: string
   sidebarWidth: number
@@ -140,6 +141,23 @@ export interface SessionUsage {
   ctxApprox?: boolean
 }
 
+export interface InstalledCcVersion {
+  version: string
+  path: string
+  installedAt: number
+  active: boolean
+}
+export interface CcInstallResult {
+  ok: boolean
+  version: string
+  path?: string
+  error?: string
+}
+export interface CcRemoteResult {
+  ok: boolean
+  versions: string[]
+  error?: string
+}
 export interface HistoryEntry {
   tabId: string
   tabName: string
@@ -166,6 +184,13 @@ export interface TermBridge {
   claudeSessionMeta(sessionId: string): Promise<SessionMeta>
   claudeSessionUsage(sessionId: string): Promise<SessionUsage>
   claudeDetect(): Promise<string | null>
+  ccListInstalled(): Promise<InstalledCcVersion[]>
+  ccListRemote(): Promise<CcRemoteResult>
+  ccInstall(version: string): Promise<CcInstallResult>
+  ccInstallCancel(version: string): Promise<{ ok: boolean; error?: string }>
+  ccUninstall(version: string): Promise<{ ok: boolean; error?: string }>
+  ccCurrentVersion(): Promise<string | null>
+  onCcInstallPhase(cb: (p: { version: string; phase: string }) => void): () => void
   claudeUsage(force?: boolean): Promise<ClaudeUsage>
   gitBranch(cwd: string): Promise<string | null>
   hookPaths(): Promise<HookPaths>
@@ -225,6 +250,17 @@ const api: TermBridge = {
   claudeSessionMeta: (sessionId) => ipcRenderer.invoke('claude:sessionMeta', sessionId),
   claudeSessionUsage: (sessionId) => ipcRenderer.invoke('claude:sessionUsage', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
+  ccListInstalled: () => ipcRenderer.invoke('cc:listInstalled'),
+  ccListRemote: () => ipcRenderer.invoke('cc:listRemote'),
+  ccInstall: (version) => ipcRenderer.invoke('cc:install', version),
+  ccInstallCancel: (version) => ipcRenderer.invoke('cc:installCancel', version),
+  ccUninstall: (version) => ipcRenderer.invoke('cc:uninstall', version),
+  ccCurrentVersion: () => ipcRenderer.invoke('cc:currentVersion'),
+  onCcInstallPhase: (cb) => {
+    const h = (_e: IpcRendererEvent, p: { version: string; phase: string }): void => cb(p)
+    ipcRenderer.on('cc:install:phase', h)
+    return () => ipcRenderer.off('cc:install:phase', h)
+  },
   claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
   gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),

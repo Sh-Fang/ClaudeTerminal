@@ -288,6 +288,10 @@
               <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 0-9 9"/><path d="M12 3v9l6 3"/></svg></span>
               Claude Code
             </button>
+            <div class="settings-nav-foot">
+              <button id="set-reset" class="btn btn-secondary" type="button">恢复默认</button>
+              <button id="set-close" class="btn btn-primary" type="button">完成</button>
+            </div>
           </nav>
 
           <div class="settings-pane">
@@ -405,12 +409,38 @@
                 <label for="set-show-usage">底部状态栏显示 Claude 用量</label>
                 <input id="set-show-usage" type="checkbox" />
               </div>
-            </div>
 
-            <div class="actions">
-              <button id="set-reset" class="btn btn-secondary">恢复默认</button>
-              <div style="flex:1"></div>
-              <button id="set-close" class="btn btn-primary">完成</button>
+              <div class="set-subhead">版本管理</div>
+              <div class="set-row">
+                <label for="set-npm-registry">npm 镜像</label>
+                <input id="set-npm-registry" class="mono" type="text" autocomplete="off" spellcheck="false"
+                  placeholder="https://registry.npmmirror.com" />
+              </div>
+
+              <div class="cvcard">
+                <div class="cvcard-l">
+                  <span class="cvcard-eyebrow">正在使用</span>
+                  <span class="cvcard-body" id="cc-ver-current-label">—</span>
+                </div>
+              </div>
+
+              <div class="cvtool">
+                <div class="cvtool-search">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  <input id="cc-ver-search" type="text" autocomplete="off" spellcheck="false" placeholder="搜索版本号" />
+                </div>
+                <label class="cvtool-filter">
+                  <input type="checkbox" id="cc-ver-only-installed" />
+                  <span>仅已安装</span>
+                </label>
+                <button id="cc-ver-refresh" class="cvtool-icon" type="button" title="重新拉取版本列表" aria-label="刷新">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14"/></svg>
+                </button>
+              </div>
+
+              <div class="cvlist" id="cc-ver-list" role="listbox"></div>
+              <div class="cvpager" id="cc-ver-pager" hidden></div>
+              <div class="cc-ver-hint" id="cc-ver-hint"></div>
             </div>
           </div>
         </div>

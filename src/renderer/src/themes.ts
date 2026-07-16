@@ -13,6 +13,7 @@ export interface Settings {
   // --resume）时生效，避免覆盖旧会话原有模型。
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
+  npmRegistry: string
   disableAutoupdater: boolean
   lastUsedCwd: string
   sidebarWidth: number
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
+  npmRegistry: 'https://registry.npmmirror.com',
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,

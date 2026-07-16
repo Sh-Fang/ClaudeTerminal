@@ -3,6 +3,14 @@ import { existsSync, statSync } from 'node:fs'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
+import {
+  cancelInstall as ccCancelInstall,
+  install as ccInstall,
+  listInstalled as ccListInstalled,
+  listRemote as ccListRemote,
+  uninstall as ccUninstall,
+  versionFromPath as ccVersionFromPath
+} from './cc-versions'
 import { ensureHookAssets, type HookPaths } from './hook-assets'
 import { readSessionMeta, readSessionUsage } from './jsonl-reader'
 import { readGitBranch } from './git-info'
@@ -90,6 +98,34 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('claude:sessionExists', (_e, sessionId: string) => sessionExists(sessionId))
   ipcMain.handle('claude:sessionMeta', (_e, sessionId: string) => readSessionMeta(sessionId))
   ipcMain.handle('claude:detect', () => detectClaudePath())
+  ipcMain.handle('cc:listInstalled', () => {
+    try { return ccListInstalled(loadSettings().claudePath) } catch { return [] }
+  })
+  ipcMain.handle('cc:listRemote', async () => {
+    try { return { ok: true, versions: await ccListRemote(loadSettings().npmRegistry) } }
+    catch (e) { return { ok: false, error: (e as Error).message, versions: [] as string[] } }
+  })
+  ipcMain.handle('cc:install', async (e, version: string) => {
+    if (typeof version !== 'string' || !version.trim()) {
+      return { ok: false, version, error: '版本号为空' }
+    }
+    const wc = e.sender
+    const ver = version.trim()
+    const onPhase = (phase: string): void => {
+      if (!wc || wc.isDestroyed()) return
+      try { wc.send('cc:install:phase', { version: ver, phase }) } catch {}
+    }
+    return ccInstall(ver, loadSettings().npmRegistry, onPhase)
+  })
+  ipcMain.handle('cc:uninstall', (_e, version: string) =>
+    typeof version === 'string' ? ccUninstall(version) : { ok: false, error: '版本号非法' }
+  )
+  ipcMain.handle('cc:installCancel', (_e, version: string) =>
+    typeof version === 'string' ? ccCancelInstall(version) : { ok: false, error: '版本号非法' }
+  )
+  ipcMain.handle('cc:currentVersion', () => {
+    try { return ccVersionFromPath(loadSettings().claudePath) } catch { return null }
+  })
   ipcMain.handle('claude:usage', (_e, force?: boolean) => getClaudeUsage(!!force))
   ipcMain.handle('claude:sessionUsage', (_e, sessionId: string) => readSessionUsage(sessionId))
   ipcMain.handle('git:branch', (_e, cwd: string) => readGitBranch(cwd))

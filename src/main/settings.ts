@@ -27,7 +27,8 @@ export interface Settings {
     // 空串 = 不带 --model，跟随 cc 默认。只在新建会话（非 --resume）时生效。
     model: string
   }
-  claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径
+  claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径（多版本切换写这里）
+  npmRegistry: string  // 安装 cc 版本用的 npm 镜像，空 = 走默认国内镜像
   disableAutoupdater: boolean  // true = spawn pwsh 时注入 DISABLE_AUTOUPDATER=1
   lastUsedCwd: string  // 最近一次新建分组选择的 cwd，下次预填用
   sidebarWidth: number
@@ -53,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
+  npmRegistry: 'https://registry.npmmirror.com',
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,
@@ -122,6 +124,10 @@ function normalize(raw: unknown): Settings {
           : DEFAULT_SETTINGS.defaults.model
     },
     claudePath: typeof r.claudePath === 'string' ? r.claudePath : DEFAULT_SETTINGS.claudePath,
+    npmRegistry:
+      typeof r.npmRegistry === 'string' && r.npmRegistry.trim()
+        ? r.npmRegistry.trim()
+        : DEFAULT_SETTINGS.npmRegistry,
     disableAutoupdater:
       typeof r.disableAutoupdater === 'boolean'
         ? r.disableAutoupdater
