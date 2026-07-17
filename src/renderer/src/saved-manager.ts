@@ -46,6 +46,7 @@ export interface SavedManagerHooks {
   onRestoreAll(savedId: string): void
   onRestoreSelect(savedId: string): void
   onRestoreOneTab(savedId: string, tabId: string): void
+  onAddTabToSaved(savedId: string): void
   onRenameWorkspace(wsId: string, newName: string): void
   onDeleteWorkspace(wsId: string): void
   onRestoreWorkspace(wsId: string): void
@@ -413,6 +414,7 @@ export class SavedManager {
       const items: CtxItem[] = [
         { label: '重命名', icon: icon('edit'), act: () => { if (nameEl) this.beginRenameGroup(nameEl) } },
         { label: '恢复所有标签页', icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreAll(savedId) },
+        { label: '新增标签页', icon: icon('plus'), act: () => this.hooks.onAddTabToSaved(savedId) },
         { sep: true },
         { label: '删除分组', icon: icon('trash'), danger: true, act: () => this.hooks.onDelete(savedId) }
       ]

@@ -621,6 +621,46 @@ function activateUI(tabId: string): void {
   toolbar.render()
 }
 
+// 管理弹窗里对"已保存分组"直接新增标签：命名窗压在管理弹窗上层，确认后在
+// 弹窗后面打开该分组（复用已开实例或按保存记录新建）+ 新标签页 —— 与恢复标签页
+// 同一交互；新标签立即写回保存快照（在已保存分组下新建的标签必然"已保存"，不留脏）。
+function addTabToSavedGroup(savedId: string): void {
+  const s = savedGroups.find((x) => x.id === savedId)
+  if (!s) return
+  openModal({
+    kind: 'new-tab',
+    title: `在「${s.name}」新增标签页`,
+    sub: '确认后会在后台打开该分组和新标签页，并自动保存到该分组。',
+    name: String.fromCharCode(65 + Math.min(25, s.snapshot.tabs.length)),
+    cwd: undefined,
+    showCC: true,
+    ccChecked: settings.defaults.autoLaunchCC,
+    okLabel: '创建',
+    onOk: async (v) => {
+      // 复用已打开的同分组实例（srcId → name+cwd 兜底），否则按保存记录新建；
+      // 并把保存记录的 srcId 重绑到 live 分组，isGroupDirty / autoSync 才认得
+      let g = groups.find((x) => x.id === s.srcId)
+        || groups.find((x) => x.name === s.name && x.cwd === s.cwd)
+      if (!g) g = ensureGroup({ name: s.name, cwd: s.cwd })
+      s.srcId = g.id
+      const tab = makeTab(g, { name: v.name, autoLaunchCC: v.autoLaunchCC, dirty: false })
+      g.collapsed = false
+      activeTabId = tab.id
+      activateUI(tab.id)
+      await spawnTabPty(tab)
+      // 自动保存：新标签立即写入该分组的保存快照
+      const savedAt = new Date().toISOString()
+      s.snapshot.tabs.push(snapshotTabFromLive(tab, savedAt))
+      s.savedAt = savedAt
+      tab.dirty = false
+      sidebar.render()
+      savedManager.render()
+      scheduleSave()
+      toast(`已在「${s.name}」新增并保存标签「${tab.name}」`)
+    }
+  })
+}
+
 // 查看降级：用户切到 done/attention 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
 // 用意：误点切走时绿点仍保留；真正"我看过了"才消失。
 //
@@ -2137,6 +2177,7 @@ const savedManager = new SavedManager({
   onRestoreAll: (id) => restoreSavedAll(id),
   onRestoreSelect: (id) => openRestoreSelect(id),
   onRestoreOneTab: (savedId, tabId) => void restoreSavedTabs(savedId, [tabId]),
+  onAddTabToSaved: addTabToSavedGroup,
   getSavedWorkspaces: (): ManageWorkspaceView[] =>
     [...savedWorkspaces]
       .sort((a, b) => naturalNameCompare(a.name, b.name))

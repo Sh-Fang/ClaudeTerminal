@@ -1023,6 +1023,9 @@ button.saved-toggle:hover { color: var(--ink); }
   z-index: 80;
 }
 .scrim[hidden] { display: none; }
+/* 通用命名/新建弹窗要能压在管理弹窗之上（如「已保存分组 → 新增标签页」），
+   两者都是 z-80 时按 DOM 顺序 #scrim 会被盖住，这里显式抬一层 */
+#scrim { z-index: 85; }
 .modal {
   width: 460px;
   background: var(--canvas);
