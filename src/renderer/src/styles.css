@@ -153,6 +153,10 @@ body {
   flex: 0 0 18px;
 }
 .brand-icon svg { display: block; }
+/* 图标底板是 currentColor(ink)，glyph 得用 on-primary —— 深色主题下底板变亮，
+   写死的白色 glyph 会隐身（svg 属性里的 stroke="white" 被这里覆盖） */
+.brand-icon svg polyline,
+.brand-icon svg line { stroke: var(--on-primary); }
 .titlebar-spacer { flex: 1; height: 100%; -webkit-app-region: drag; }
 
 .app {
@@ -801,6 +805,15 @@ button.saved-toggle:hover { color: var(--ink); }
   background: #2a2a2a; overflow: hidden; display: inline-block; vertical-align: middle;
 }
 .statusbar .sb-session .sbi-ctx-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
+/* ctx 的迷你圆环形态（额度显示样式 = 圆环时启用）：13px 贴合状态栏行高，不撑高底栏 */
+.statusbar .sb-session .sbi-ctx-ring {
+  width: 13px; height: 13px; display: inline-block; vertical-align: middle;
+}
+.sbi-ctx-ring .ring-track { fill: none; stroke: #2a2a2a; stroke-width: 3; }
+.sbi-ctx-ring .ring-fill { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .3s; }
+.sbi-ctx-ring .ring-fill.lv-ok { stroke: #23d18b; }
+.sbi-ctx-ring .ring-fill.lv-warn { stroke: #f5a623; }
+.sbi-ctx-ring .ring-fill.lv-danger { stroke: #f14c4c; }
 .statusbar .sb-session .sbi-ctx-tok { color: var(--mute); }
 /* 进度条填充 / 数值配色（ctx 与顶部账号条共用） */
 .sbi-ctx-fill.lv-ok, .ubar-fill.lv-ok { background: #23d18b; }
@@ -814,9 +827,14 @@ button.saved-toggle:hover { color: var(--ink); }
    track 走 1fr 跟着面板宽度伸缩 —— 两行同列对齐 + 同等长度 */
 .side-usage {
   flex: 0 0 auto;
-  padding: 8px 14px 10px;
+  /* 高度定死：进度条 / 圆环两种样式切换时面板不跳动，侧边栏布局稳定 */
+  height: 56px;
+  padding: 0 14px;
   border-top: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
 }
+.side-usage > * { flex: 1; min-width: 0; }
 .usage-bars {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
@@ -840,6 +858,63 @@ button.saved-toggle:hover { color: var(--ink); }
 .usage-bars .ubar-val.lv-warn { color: #f5a623; }
 .usage-bars .ubar-val.lv-danger { color: #f14c4c; }
 .usage-bars .ubar-reset { color: var(--mute); opacity: .75; white-space: nowrap; }
+
+/* 圆环样式：5h额度 / 本周额度 左右并排；每项 = 左圆环（心是百分比）+ 右侧两行（标题 / 重置倒计时） */
+.usage-bars.is-rings {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+.usage-bars.is-rings .uring {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.usage-bars.is-rings .uring-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.usage-bars.is-rings .uring-box {
+  position: relative;
+  width: 34px; height: 34px;
+}
+.usage-bars.is-rings .uring-box svg {
+  width: 100%; height: 100%;
+  display: block;
+}
+.usage-bars.is-rings .uring-track {
+  fill: none;
+  stroke: var(--hairline);
+  stroke-width: 4;
+}
+.usage-bars.is-rings .uring-fill {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset .3s;
+}
+.usage-bars.is-rings .uring-fill.lv-ok { stroke: #23d18b; }
+.usage-bars.is-rings .uring-fill.lv-warn { stroke: #f5a623; }
+.usage-bars.is-rings .uring-fill.lv-danger { stroke: #f14c4c; }
+.usage-bars.is-rings .uring-val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-bars.is-rings .uring-val.lv-ok { color: #23d18b; }
+.usage-bars.is-rings .uring-val.lv-warn { color: #f5a623; }
+.usage-bars.is-rings .uring-val.lv-danger { color: #f14c4c; }
+.usage-bars.is-rings .uring-label { color: var(--body); white-space: nowrap; line-height: 12px; }
+.usage-bars.is-rings .uring-reset {
+  color: var(--mute); opacity: .8; white-space: nowrap;
+  font-size: 10px; line-height: 11px; min-height: 11px;
+}
 
 /* Search popover */
 #search {
@@ -948,6 +1023,7 @@ button.saved-toggle:hover { color: var(--ink); }
 .cf-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
 .cf-body::-webkit-scrollbar-track { background: transparent; }
 .field { margin-bottom: 14px; }
+/* 标题就是标题：纯文字可选中，不关联控件（HTML 侧不写 for） */
 .field label {
   display: block;
   font-family: var(--mono);
@@ -956,6 +1032,8 @@ button.saved-toggle:hover { color: var(--ink); }
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 6px;
+  user-select: text;
+  cursor: auto;
 }
 .field input {
   width: 100%; height: 40px; padding: 0 12px;
@@ -972,13 +1050,14 @@ button.saved-toggle:hover { color: var(--ink); }
 .field-check {
   margin: -2px 0 4px;
 }
-.field-check label {
+/* 不用 <label> 包裹：点说明文字不应触发开关（标题/说明是纯文字，可选中） */
+.field-check .fc-line {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   color: var(--body);
-  cursor: pointer;
+  user-select: text;
 }
 /* iOS / macOS 风格 toggle 滑块：appearance:none 把 checkbox 改造成自定义外观，
    伪元素做圆球，CSS-only，不动 HTML / JS 也不影响 :checked 行为。 */
@@ -1003,7 +1082,8 @@ button.saved-toggle:hover { color: var(--ink); }
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: #ffffff;
+  /* 圆球用 on-primary：浅色主题 = 白球，深色主题 = 深球（轨道 ink 变亮后仍有对比） */
+  background: var(--on-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 0.5px rgba(0, 0, 0, 0.06);
   transition: transform 0.18s ease;
 }
@@ -1465,7 +1545,8 @@ button.saved-toggle:hover { color: var(--ink); }
   left: 50%; bottom: 40px;
   transform: translateX(-50%) translateY(20px);
   background: var(--ink);
-  color: #fff;
+  /* 文字用 on-primary：深色主题下 ink 变亮底，白字会看不清 */
+  color: var(--on-primary);
   font-size: 13px;
   padding: 10px 16px;
   border-radius: var(--r-md);
@@ -1725,7 +1806,8 @@ button.saved-toggle:hover { color: var(--ink); }
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffffff;
+  /* 同 .field-check：圆球用 on-primary，深浅主题下都和轨道有对比 */
+  background: var(--on-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 0.5px rgba(0, 0, 0, 0.06);
   transition: transform 0.18s ease;
 }

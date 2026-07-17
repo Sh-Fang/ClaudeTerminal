@@ -243,6 +243,18 @@ function stopWatchers(): void {
 // 单个实测 300~750ms，串行 killAll 随 tab 数线性放大（8 个会话实测卡主线程 ≈ 3.9s），
 // 这正是"标签页一多、关闭就慢"的根因。而马上就要 app.exit(0)：进程退出时 OS 关闭
 // ConPTY 句柄，会自动终止挂在其上的 pwsh 及其子进程（实测无孤儿残留），无需我们逐个杀。
+// TerminateProcess 级别的立即退出：不跑 CRT/atexit 静态析构。
+// app.exit(0) 底层走 exit()，会执行 native 模块析构 —— node-pty 的 ConPTY agent
+// 线程这时可能正好回调 OnProcessExit，撞上已拆掉的 baton 表，弹出
+// "Assertion failed: remove_pty_baton(baton->id)" 断言框（conpty.cc:106）。
+// SIGKILL 在 Windows 上由 libuv 映射为 TerminateProcess：OS 直接回收进程，
+// ConPTY 句柄随之关闭、挂在其上的 pwsh 树自动终止，效果与 app.exit 一致且无竞态。
+// 注意：调用前必须已完成所有需要落盘的收尾（stopLogging 等都是同步写）。
+function hardExit(): void {
+  try { process.kill(process.pid, 'SIGKILL') } catch {}
+  app.exit(0) // 兜底，正常到不了这行
+}
+
 let fastQuitting = false
 function fastQuit(reason: string): void {
   if (fastQuitting) return
@@ -250,7 +262,7 @@ function fastQuit(reason: string): void {
   try { stopWatchers() } catch {}
   try { destroyFloater() } catch {}
   try { stopLogging(reason) } catch {}
-  app.exit(0)
+  hardExit()
 }
 
 app.whenReady().then(() => {
@@ -338,11 +350,10 @@ app.on('window-all-closed', () => {
   // stop 事件同步落盘 + sentinel 删掉，下次启动才不会误判成 unclean_exit
   stopLogging('window-all-closed')
   if (process.platform !== 'darwin') {
-    // Windows/Linux：进程要退了，直接 app.exit(0)。同 fastQuit 的理由——不再逐个
-    // proc.kill()（同步阻塞、随 tab 线性放大），OS 关闭 ConPTY 句柄即回收挂在其上的
-    // pwsh。用 app.exit 而非 app.quit：后者优雅退会等事件循环排空（node-pty conout
-    // worker 的 FLUSH_DATA_INTERVAL=1000ms flush 等），进程多挂 ~1s；这里没人在读，跳过。
-    app.exit(0)
+    // Windows/Linux：进程要退了，硬退（TerminateProcess，见 hardExit 注释）。
+    // 不逐个 proc.kill()（同步阻塞、随 tab 线性放大），OS 关闭 ConPTY 句柄即回收
+    // 挂在其上的 pwsh；也不走 app.exit —— exit() 的析构会和 conpty 线程竞态弹断言框。
+    hardExit()
   } else {
     // macOS：窗口全关进程仍活着，必须把子进程收干净，否则泄漏
     killAll()

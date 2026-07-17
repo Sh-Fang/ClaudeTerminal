@@ -157,11 +157,11 @@
         <h2 id="modal-title">新建标签</h2>
         <p class="sub" id="modal-sub">一个标签 = 一个 pwsh 会话。</p>
         <div class="field" id="modal-name-field">
-          <label for="modal-name">名称</label>
+          <label>名称</label>
           <input id="modal-name" type="text" autocomplete="off" spellcheck="false" />
         </div>
         <div class="field" id="modal-cwd-field">
-          <label for="modal-cwd">路径 (cwd)</label>
+          <label>路径 (cwd)</label>
           <div class="row-with-btn">
             <input id="modal-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
             <button id="modal-cwd-pick" class="btn btn-secondary" type="button" title="选择目录">
@@ -173,14 +173,14 @@
           </div>
         </div>
         <div class="field" id="modal-tabname-field">
-          <label for="modal-tabname">首个标签名</label>
+          <label>首个标签名</label>
           <input id="modal-tabname" type="text" autocomplete="off" spellcheck="false" />
         </div>
         <div class="field-check" id="modal-cc-field">
-          <label>
+          <span class="fc-line">
             <input id="modal-cc" type="checkbox" checked />
             <span>自动启动 Claude Code（首次绑定 UUID，之后 <code>--resume</code>）</span>
-          </label>
+          </span>
         </div>
         <div class="actions">
           <button id="modal-cancel" class="btn btn-secondary">取消</button>
@@ -332,6 +332,13 @@
                 <div class="seg-group" id="set-app-theme" role="radiogroup" aria-label="应用主题">
                   <button class="seg-item" data-val="light" type="button" role="radio">浅色</button>
                   <button class="seg-item" data-val="dark" type="button" role="radio">深色</button>
+                </div>
+              </div>
+              <div class="set-row">
+                <label>额度显示样式</label>
+                <div class="seg-group" id="set-usage-style" role="radiogroup" aria-label="额度显示样式">
+                  <button class="seg-item" data-val="bar" type="button" role="radio">进度条</button>
+                  <button class="seg-item" data-val="ring" type="button" role="radio">圆环</button>
                 </div>
               </div>
             </div>

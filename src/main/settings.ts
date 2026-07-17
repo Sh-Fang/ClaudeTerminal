@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
+export type UsageStyle = 'bar' | 'ring'
 
 export interface Settings {
   version: 1
@@ -39,6 +40,7 @@ export interface Settings {
   sidebarSavedHeight: number  // 「已保存的分组」区的像素高度（0 = 用 CSS 默认 40%）
   statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle（1~10）
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
+  usageStyle: UsageStyle       // 额度显示样式：进度条 / 左右并排圆环
   showFloater: boolean         // 开启常驻悬浮窗（显示待查看 / 待决策 / 运行中 数）
   floaterX: number | null      // 悬浮窗最近一次屏幕位置（null = 未持久化，走默认位）
   floaterY: number | null
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
   showClaudeUsage: true,
+  usageStyle: 'bar',
   showFloater: false,
   floaterX: null,
   floaterY: null
@@ -75,6 +78,7 @@ const FILE = (): string => join(app.getPath('userData'), 'settings.json')
 const THEMES: ThemePreset[] = ['vscode-dark', 'vercel-dark', 'one-dark']
 const APP_THEMES: AppTheme[] = ['light', 'dark']
 const CURSORS: CursorStyle[] = ['block', 'underline', 'bar']
+const USAGE_STYLES: UsageStyle[] = ['bar', 'ring']
 
 function pick<T extends string>(v: unknown, allow: T[], fallback: T): T {
   return typeof v === 'string' && (allow as string[]).includes(v) ? (v as T) : fallback
@@ -144,6 +148,7 @@ function normalize(raw: unknown): Settings {
     statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 10, DEFAULT_SETTINGS.statusDowngradeSec),
     showClaudeUsage:
       typeof r.showClaudeUsage === 'boolean' ? r.showClaudeUsage : DEFAULT_SETTINGS.showClaudeUsage,
+    usageStyle: pick(r.usageStyle, USAGE_STYLES, DEFAULT_SETTINGS.usageStyle),
     showFloater:
       typeof r.showFloater === 'boolean' ? r.showFloater : DEFAULT_SETTINGS.showFloater,
     floaterX: coord(r.floaterX),

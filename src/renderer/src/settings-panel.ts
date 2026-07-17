@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle } from './themes'
+import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle, type UsageStyle } from './themes'
 import { bindScrimDismiss, confirmDialog, showCtxMenu } from './ui-helpers'
 import { icon } from './svg-icons'
 import { MODEL_GROUPS } from './session-info'
@@ -44,6 +44,7 @@ export class SettingsPanel {
   private fLine = document.getElementById('set-line-height') as HTMLInputElement
   private fTheme = document.getElementById('set-theme') as HTMLDivElement
   private fAppTheme = document.getElementById('set-app-theme') as HTMLDivElement
+  private fUsageStyle = document.getElementById('set-usage-style') as HTMLDivElement
   private fCursorGroup = document.getElementById('set-cursor-style') as HTMLDivElement
   private fCursorBlink = document.getElementById('set-cursor-blink') as HTMLInputElement
   private fScrollback = document.getElementById('set-scrollback') as HTMLInputElement
@@ -123,6 +124,7 @@ export class SettingsPanel {
 
     this.initSeg(this.fTheme)
     this.initSeg(this.fAppTheme)
+    this.initSeg(this.fUsageStyle)
     this.initSeg(this.fDowngradeSec)
     this.fDefaultModel.addEventListener('click', (e) => {
       e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
@@ -594,6 +596,8 @@ export class SettingsPanel {
     this.fLine.value = String(s.font.lineHeight)
     this.setSeg(this.fTheme, s.terminal.theme)
     this.setSeg(this.fAppTheme, s.appTheme)
+    // 老配置没有该字段时兜底进度条，保证进设置一定有选中态
+    this.setSeg(this.fUsageStyle, s.usageStyle || 'bar')
     this.currentCursor = s.cursor.style
     this.paintCursorActive()
     this.fCursorBlink.checked = s.cursor.blink
@@ -637,6 +641,7 @@ export class SettingsPanel {
         theme: (this.getSeg(this.fTheme) as ThemePreset) || cur.terminal.theme
       },
       appTheme: (this.getSeg(this.fAppTheme) as AppTheme) || cur.appTheme,
+      usageStyle: (this.getSeg(this.fUsageStyle) as UsageStyle) || cur.usageStyle,
       defaults: {
         // cwd 预填全靠 lastUsedCwd 自动记忆，设置面板不再提供手动默认路径
         cwd: cur.defaults.cwd,

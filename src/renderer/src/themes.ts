@@ -3,6 +3,7 @@ import type { ITheme } from '@xterm/xterm'
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
+export type UsageStyle = 'bar' | 'ring'
 
 export interface Settings {
   version: 1
@@ -24,6 +25,7 @@ export interface Settings {
   sidebarSavedHeight: number   // 「已保存的分组」区像素高度（0 = 用 CSS 默认 40%）
   statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle（1~10）
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
+  usageStyle: UsageStyle       // 额度显示样式：进度条 / 左右并排圆环
   showFloater: boolean         // 开启常驻悬浮窗
   floaterX: number | null
   floaterY: number | null
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
   showClaudeUsage: true,
+  usageStyle: 'bar',
   showFloater: false,
   floaterX: null,
   floaterY: null

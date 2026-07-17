@@ -54,16 +54,51 @@ function bar(label: string, percent: number, reset: string): string {
   )
 }
 
+// 圆环：SVG 双圆（底轨 + 按百分比截断的进度弧），中心是百分比。
+// 横向排布：左侧圆环，右侧两行文字（标题 / 重置倒计时）。
+const RING_R = 15.5
+const RING_C = 2 * Math.PI * RING_R
+function ring(label: string, percent: number, reset: string): string {
+  const lv = lvOf(percent)
+  const offset = (RING_C * (100 - Math.min(100, Math.max(0, percent)))) / 100
+  return (
+    `<span class="uring">` +
+    `<span class="uring-box">` +
+    `<svg viewBox="0 0 40 40" aria-hidden="true">` +
+    `<circle class="uring-track" cx="20" cy="20" r="${RING_R}"></circle>` +
+    `<circle class="uring-fill ${lv}" cx="20" cy="20" r="${RING_R}" ` +
+    `stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" ` +
+    `transform="rotate(-90 20 20)"></circle>` +
+    `</svg>` +
+    `<span class="uring-val ${lv}">${percent}%</span>` +
+    `</span>` +
+    `<span class="uring-meta">` +
+    `<span class="uring-label">${label}</span>` +
+    `<span class="uring-reset">${reset}</span>` +
+    `</span>` +
+    `</span>`
+  )
+}
+
+export type UsageStyle = 'bar' | 'ring'
+
 export class UsageIndicator {
   private panel = document.getElementById('usagePanel') as HTMLElement
   private el = document.getElementById('usageBars') as HTMLDivElement
   private pollTimer: number | null = null
   private tickTimer: number | null = null
   private enabled = false
+  private style: UsageStyle = 'bar'
   private last: ClaudeUsage | null = null
 
-  applySettings(enabled: boolean): void {
-    if (enabled === this.enabled) return
+  applySettings(enabled: boolean, style: UsageStyle = 'bar'): void {
+    const styleChanged = style !== this.style
+    this.style = style
+    if (enabled === this.enabled) {
+      // 开关没变但样式变了 → 原地重绘
+      if (enabled && styleChanged) this.paint()
+      return
+    }
     this.enabled = enabled
     if (enabled) this.start()
     else this.stop()
@@ -113,10 +148,16 @@ export class UsageIndicator {
     }
     const five = pct(u.fiveHour)
     const week = pct(u.sevenDay)
-    this.el.className = 'usage-bars'
+    const fiveReset = fmtCountdown(u.fiveHour?.resetsAt ?? null)
+    const weekReset = fmtCountdown(u.sevenDay?.resetsAt ?? null)
     this.el.title = ''
-    this.el.innerHTML =
-      bar('5h额度', five, fmtCountdown(u.fiveHour?.resetsAt ?? null)) +
-      bar('本周额度', week, fmtCountdown(u.sevenDay?.resetsAt ?? null))
+    if (this.style === 'ring') {
+      // 圆环样式：5h 额度和本周额度左右并排
+      this.el.className = 'usage-bars is-rings'
+      this.el.innerHTML = ring('5h额度', five, fiveReset) + ring('本周额度', week, weekReset)
+    } else {
+      this.el.className = 'usage-bars'
+      this.el.innerHTML = bar('5h额度', five, fiveReset) + bar('本周额度', week, weekReset)
+    }
   }
 }

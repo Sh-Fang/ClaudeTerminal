@@ -82,6 +82,14 @@ export class SessionInfoBar {
   private tick = 0
   private polling = false
   private timer: number | null = null
+  // 额度显示样式联动：'ring' 时 ctx 也画成迷你圆环（尺寸缩到状态栏行高内，不撑高底栏）
+  private usageStyle: 'bar' | 'ring' = 'bar'
+
+  setUsageStyle(style: 'bar' | 'ring'): void {
+    if (style === this.usageStyle) return
+    this.usageStyle = style
+    this.paint()
+  }
 
   constructor(private hooks: SessionInfoHooks) {
     this.timer = window.setInterval(() => void this.poll(), TICK_MS)
@@ -207,12 +215,30 @@ export class SessionInfoBar {
       const tip = hasCtx && u!.ctxTokens != null
         ? ` title="上下文 ${u!.ctxTokens!.toLocaleString()} / ${(u!.ctxWindow ?? 0).toLocaleString()} tokens${u!.ctxApprox ? '（窗口为估算，未读到会话快照）' : ''}"`
         : ' title="新会话，等待 cc 上报上下文用量"'
-      parts.push(
-        `<span class="sbi-ctx"${tip}>ctx` +
-          `<span class="sbi-ctx-track"><i class="sbi-ctx-fill ${lv}" style="width:${p}%"></i></span>` +
-          `<span class="sbi-ctx-val ${lv}">${p}%</span>` +
-          `</span>`
-      )
+      if (this.usageStyle === 'ring') {
+        // 迷你圆环：13px 视觉尺寸贴合状态栏行高，绝不撑高底栏
+        const R = 6
+        const C = 2 * Math.PI * R
+        const off = (C * (100 - Math.min(100, Math.max(0, p)))) / 100
+        parts.push(
+          `<span class="sbi-ctx"${tip}>ctx` +
+            `<svg class="sbi-ctx-ring" viewBox="0 0 16 16" aria-hidden="true">` +
+            `<circle class="ring-track" cx="8" cy="8" r="${R}"></circle>` +
+            `<circle class="ring-fill ${lv}" cx="8" cy="8" r="${R}" ` +
+            `stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" ` +
+            `transform="rotate(-90 8 8)"></circle>` +
+            `</svg>` +
+            `<span class="sbi-ctx-val ${lv}">${p}%</span>` +
+            `</span>`
+        )
+      } else {
+        parts.push(
+          `<span class="sbi-ctx"${tip}>ctx` +
+            `<span class="sbi-ctx-track"><i class="sbi-ctx-fill ${lv}" style="width:${p}%"></i></span>` +
+            `<span class="sbi-ctx-val ${lv}">${p}%</span>` +
+            `</span>`
+        )
+      }
       const model = u?.modelLabel ?? this.stickyModel ?? 'Claude'
       parts.push(
         `<span class="sbi-model" title="点击切换模型">${escapeHtml(model)}</span>`

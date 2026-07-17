@@ -177,7 +177,8 @@ function updateSettings(s: Settings): void {
   applyAppTheme(settings.appTheme)
   syncHostsBackdrop()
   applySettingsToAll()
-  usageIndicator.applySettings(settings.showClaudeUsage)
+  usageIndicator.applySettings(settings.showClaudeUsage, settings.usageStyle)
+  sessionInfo.setUsageStyle(settings.usageStyle)
   // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
   sidebar.render()
   savedManager.render()
@@ -1960,7 +1961,9 @@ function persistSettings(): void {
   if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
   settingsSaveTimer = window.setTimeout(() => {
     settingsSaveTimer = null
-    void window.term.saveSettings(settings).then((normed) => { settings = normed })
+    // 合并而非整体替换：主进程若是旧构建（归一化白名单没有新字段），
+    // 整体替换会把渲染层刚写入的新字段悄悄抹掉（表现为"设置不生效/回跳"）
+    void window.term.saveSettings(settings).then((normed) => { settings = { ...settings, ...normed } })
   }, 300)
 }
 
@@ -2203,7 +2206,8 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
   applyAppTheme(settings.appTheme)
   syncHostsBackdrop()
   applySidebarLayout()
-  usageIndicator.applySettings(settings.showClaudeUsage)
+  usageIndicator.applySettings(settings.showClaudeUsage, settings.usageStyle)
+  sessionInfo.setUsageStyle(settings.usageStyle)
   const ws = await window.term.loadWorkspace()
   for (const s of ws.savedGroups) {
     savedGroups.push({

@@ -211,9 +211,10 @@ function maybeSyncNameFromCwd(): void {
   if (base) modalName.value = base
 }
 
+// 首个标签名与 CC 开关相互独立：新建分组必然要建首个标签（不管启不启 CC），
+// 字段是否出现只由调用方的 showTabName 决定。
 function syncTabNameVisibility(): void {
-  const shouldShow = modalShowTabName && modalCC.checked && modalCCField.style.display !== 'none'
-  modalTabNameField.style.display = shouldShow ? '' : 'none'
+  modalTabNameField.style.display = modalShowTabName ? '' : 'none'
 }
 
 export function openModal(cfg: ModalInput): void {
@@ -252,7 +253,6 @@ modalName.addEventListener('input', () => { modalNameUserEdited = true })
 // cwd 字段无论"打字"还是"粘贴"都触发同步
 modalCwd.addEventListener('input', maybeSyncNameFromCwd)
 
-modalCC.addEventListener('change', syncTabNameVisibility)
 function closeModal(): void {
   scrim.hidden = true
   modalCb = null
