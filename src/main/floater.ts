@@ -82,15 +82,17 @@ export function ensureFloaterOnScreen(): void {
 }
 
 // 鼠标穿透管理：主进程轮询光标位置。
-// 不能靠渲染层 mousemove —— 胶囊是 -webkit-app-region:drag 区域，drag 区域的
-// 鼠标事件（含穿透转发的 mousemove）不会派发给页面，渲染层根本感知不到悬停。
-// 规则：光标在胶囊上（±4px 容差）或菜单开着（focusable=true 即菜单态）→ 接管鼠标；
-// 否则整窗穿透。原生拖动时窗口跟着光标走、相对位置不变，不会中途误切穿透。
+// 不能靠渲染层 mousemove 做悬停检测 —— 穿透态下页面收不到常规鼠标事件。
+// 规则：光标在胶囊上（±4px 容差）、菜单开着（focusable=true 即菜单态）或正在拖动
+// → 接管鼠标；否则整窗穿透。
 let ignoring = true
 let hoverTimer: ReturnType<typeof setInterval> | null = null
+let draggingByUser = false
 
 function pollHover(): void {
   if (!win || win.isDestroyed()) return
+  // 拖动中窗口位置滞后于光标，按位置判断会误切穿透打断拖动 —— 挂起轮询
+  if (draggingByUser) return
   const pt = screen.getCursorScreenPoint()
   const [wx, wy] = win.getPosition()
   const px = wx + PILL_OFF_X
@@ -103,6 +105,35 @@ function pollHover(): void {
   if (wantIgnore === ignoring) return
   ignoring = wantIgnore
   win.setIgnoreMouseEvents(wantIgnore, { forward: true })
+}
+
+// 渲染层手动拖动：pointer capture 期间把目标坐标推过来，程序化 setPosition
+// 不受 OS "窗口顶边不能出屏"的交互拖动钳制 —— 胶囊可以贴到屏幕最顶。
+export function moveFloaterTo(x: number, y: number): void {
+  if (!win || win.isDestroyed()) return
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return
+  win.setPosition(Math.round(x), Math.round(y))
+}
+
+export function setFloaterDragging(on: boolean): void {
+  draggingByUser = on
+  if (!win || win.isDestroyed()) return
+  if (on && ignoring) {
+    ignoring = false
+    win.setIgnoreMouseEvents(false, { forward: true })
+  }
+  // 拖动结束落盘胶囊坐标（'moved' 对程序化移动不一定触发，这里兜底）
+  if (!on) persistPillPos()
+}
+
+function persistPillPos(): void {
+  const pos = pillPosition()
+  if (!pos) return
+  try {
+    const cur = loadSettings()
+    if (cur.floaterX === pos.x && cur.floaterY === pos.y) return
+    saveSettings({ ...cur, floaterX: pos.x, floaterY: pos.y })
+  } catch {}
 }
 
 // 菜单打开时把悬浮窗临时设为可聚焦并 focus —— 拿到 blur 事件用来检测
@@ -188,16 +219,9 @@ export function createFloater(): void {
     pushCountsToFloater()
   })
 
-  // 拖动结束 / 关闭前把"胶囊"坐标落盘
-  const persistPos = (): void => {
-    const pos = pillPosition()
-    if (!pos) return
-    const cur = loadSettings()
-    if (cur.floaterX === pos.x && cur.floaterY === pos.y) return
-    saveSettings({ ...cur, floaterX: pos.x, floaterY: pos.y })
-  }
-  win.on('moved', persistPos)
-  win.on('close', persistPos)
+  // 移动 / 关闭前把"胶囊"坐标落盘（拖动结束另有 setFloaterDragging(false) 兜底）
+  win.on('moved', persistPillPos)
+  win.on('close', persistPillPos)
   win.on('closed', () => {
     if (hoverTimer) { clearInterval(hoverTimer); hoverTimer = null }
     screen.off('display-removed', ensureFloaterOnScreen)

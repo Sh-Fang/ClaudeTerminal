@@ -64,10 +64,15 @@
         <!-- 分组/工作区管理：底部区，已保存分组与工作区混排（图标区分），管理入口进弹窗 -->
         <section class="side-section side-saved" id="savedSection">
           <div class="side-section-label saved-head">
-            <button class="saved-toggle" id="savedToggle" type="button" title="收起 / 展开分组/工作区管理">
+            <button class="saved-toggle" id="savedToggle" type="button" title="收起 / 展开">
               <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
-              分组/工作区管理
             </button>
+            <!-- 视图切换：已保存分组 / 已保存工作区 分开展示 -->
+            <span class="saved-view-switch" id="savedViewSwitch" role="tablist">
+              <button class="sv-item active" data-view="groups" type="button" role="tab">分组</button>
+              <span class="sv-sep">/</span>
+              <button class="sv-item" data-view="workspaces" type="button" role="tab">工作区</button>
+            </span>
             <span class="line"></span>
             <button id="manageSavedBtn" class="side-head-btn" type="button" title="管理已保存的分组/工作区" aria-label="展开管理">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>

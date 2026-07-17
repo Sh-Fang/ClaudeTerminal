@@ -48,7 +48,8 @@ export interface SidebarHooks {
   reorderGroups(orderedIds: string[]): void
   restoreSaved(savedId: string): void
   restoreSavedWorkspace(wsId: string): void
-  openManageSaved(): void
+  // view = 侧边栏当前选中的视图，管理弹窗直接落到对应 tab
+  openManageSaved(view: 'groups' | 'workspaces'): void
 }
 
 const ORDER: Record<TabStatus, number> = { error: 4, attention: 3, done: 2, busy: 1, idle: 0 }
@@ -67,6 +68,9 @@ export class Sidebar {
   private savedEl: HTMLDivElement
   private newGroupBtn: HTMLButtonElement
   private manageBtn: HTMLDivElement
+  private viewButtons: HTMLButtonElement[]
+  // 底部区当前展示：已保存分组 / 已保存工作区（分开展示，头部小切换）
+  private savedView: 'groups' | 'workspaces' = 'groups'
   private dragGroupId: string | null = null
 
   constructor(private hooks: SidebarHooks) {
@@ -74,6 +78,16 @@ export class Sidebar {
     this.savedEl = document.getElementById('savedList') as HTMLDivElement
     this.newGroupBtn = document.getElementById('newGroupBtn') as HTMLButtonElement
     this.manageBtn = document.getElementById('manageSavedBtn') as HTMLDivElement
+    this.viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#savedViewSwitch .sv-item'))
+    for (const btn of this.viewButtons) {
+      btn.addEventListener('click', () => {
+        const v = btn.dataset.view as 'groups' | 'workspaces'
+        if (v === this.savedView) return
+        this.savedView = v
+        for (const b of this.viewButtons) b.classList.toggle('active', b === btn)
+        this.renderSaved()
+      })
+    }
 
     this.listEl.addEventListener('click', (e) => this.onListClick(e))
     this.listEl.addEventListener('contextmenu', (e) => this.onListCtx(e))
@@ -89,7 +103,7 @@ export class Sidebar {
     const openSection = this.listEl.closest('.side-open') as HTMLElement | null
     openSection?.addEventListener('contextmenu', (e) => this.onOpenPaneCtx(e))
     this.newGroupBtn.addEventListener('click', () => this.hooks.newGroup())
-    this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved())
+    this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved(this.savedView))
   }
 
   render(): void {
@@ -167,11 +181,34 @@ export class Sidebar {
   }
 
   private renderSaved(): void {
-    // 分组在前、工作区在后混排：同一行样式，靠图标（↺ / 层叠）与副文案区分
-    const saved = this.hooks.getSaved()
-    const workspaces = this.hooks.getSavedWorkspaces()
+    // 分组 / 工作区分开展示，由头部「分组 / 工作区」小切换决定当前视图
     this.savedEl.innerHTML = ''
-    if (saved.length === 0 && workspaces.length === 0) {
+    if (this.savedView === 'workspaces') {
+      const workspaces = this.hooks.getSavedWorkspaces()
+      if (workspaces.length === 0) {
+        const empty = document.createElement('div')
+        empty.className = 'side-empty'
+        empty.textContent = '上方「工作区」区空白处右键「保存该工作区」。'
+        this.savedEl.appendChild(empty)
+        return
+      }
+      for (const w of workspaces) {
+        const el = document.createElement('div')
+        el.className = 'saved-row'
+        el.dataset.savedWs = w.id
+        el.innerHTML = `
+          <div class="saved-ic saved-ic-ws">${icon('layers')}</div>
+          <div class="saved-meta">
+            <div class="saved-name">${escapeHtml(w.name)}</div>
+            <div class="saved-sub">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(w.savedAt)}</div>
+          </div>
+        `
+        this.savedEl.appendChild(el)
+      }
+      return
+    }
+    const saved = this.hooks.getSaved()
+    if (saved.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
       empty.textContent = '右键分组「保存分组」可在此一键恢复。'
@@ -190,19 +227,6 @@ export class Sidebar {
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
           <div class="saved-sub">${s.tabCount} 个标签 · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
-        </div>
-      `
-      this.savedEl.appendChild(el)
-    }
-    for (const w of workspaces) {
-      const el = document.createElement('div')
-      el.className = 'saved-row'
-      el.dataset.savedWs = w.id
-      el.innerHTML = `
-        <div class="saved-ic saved-ic-ws">${icon('layers')}</div>
-        <div class="saved-meta">
-          <div class="saved-name">${escapeHtml(w.name)}</div>
-          <div class="saved-sub">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(w.savedAt)}</div>
         </div>
       `
       this.savedEl.appendChild(el)

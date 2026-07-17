@@ -1622,7 +1622,7 @@ const sidebar = new Sidebar({
   },
   restoreSaved: openRestoreSelect,
   restoreSavedWorkspace: (id) => void restoreSavedWorkspace(id),
-  openManageSaved: () => savedManager.open()
+  openManageSaved: (view) => savedManager.open(undefined, view)
 })
 
 // 让悬浮窗的计数自动跟着 sidebar 状态同步：sidebar.render 是"任何 tab/分组发生变化"

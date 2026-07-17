@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
 
 export interface TermTabHandlers {
@@ -200,6 +201,11 @@ export class TerminalTab {
     this.search = new SearchAddon()
     this.term.loadAddon(this.fit)
     this.term.loadAddon(this.search)
+    // 宽度表对齐：xterm 内置的是 Unicode 6 时代宽度表，emoji（如 ✅）被记 1 格，
+    // 而 cc（string-width，新版 Unicode）按 2 格打印 —— buffer 格数和视觉字形错位，
+    // 选中重绘时就会整段平移/凭空多空格。切到 Unicode 11 表与打印方对齐。
+    this.term.loadAddon(new Unicode11Addon())
+    this.term.unicode.activeVersion = '11'
     this.term.loadAddon(
       new WebLinksAddon((event, uri) => {
         event.preventDefault()

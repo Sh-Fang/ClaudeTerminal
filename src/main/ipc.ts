@@ -27,7 +27,7 @@ import {
   upsertTabHistory,
   type HistoryEntry
 } from './tab-history'
-import { pushCountsToFloater, setFloaterEnabled, setFloaterFocusable } from './floater'
+import { moveFloaterTo, pushCountsToFloater, setFloaterDragging, setFloaterEnabled, setFloaterFocusable } from './floater'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -256,6 +256,12 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     w.focus()
   })
   ipcMain.on('floater:setFocusable', (_e, on: boolean) => setFloaterFocusable(!!on))
+  // 手动拖动：目标坐标 + 拖动起止（拖动中挂起穿透轮询）
+  ipcMain.on('floater:moveTo', (_e, p: { x: number; y: number }) => {
+    if (!p || typeof p !== 'object') return
+    moveFloaterTo(Number(p.x), Number(p.y))
+  })
+  ipcMain.on('floater:dragState', (_e, on: boolean) => setFloaterDragging(!!on))
 
   ipcMain.on('floater:hide', () => {
     setFloaterEnabled(false)

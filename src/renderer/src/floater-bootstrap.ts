@@ -22,6 +22,49 @@ const MENU_PAD = 8
 
 let menuOpen = false
 
+// ─── 手动拖动 ─────────────────────────────────────────────────────
+// 不用 -webkit-app-region:drag：OS 交互拖动会把"窗口顶边"钳在屏幕内，而窗口
+// 顶部有 130px 菜单留白 → 胶囊永远贴不到屏顶。改为 pointer capture 手动拖，
+// 主进程 setPosition 程序化移窗（不受钳制，窗口可为负坐标）。
+let dragging = false
+let dragMoved = false
+let dragStart = { mx: 0, my: 0, wx: 0, wy: 0 }
+let movePending = false
+let dragTarget = { x: 0, y: 0 }
+
+cardEl?.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return
+  dragging = true
+  dragMoved = false
+  dragStart = { mx: e.screenX, my: e.screenY, wx: window.screenX, wy: window.screenY }
+  try { cardEl.setPointerCapture(e.pointerId) } catch {}
+  // 通知主进程挂起穿透轮询：拖动中窗口位置滞后于光标，按位置判断会误切穿透
+  window.term?.floaterDragState?.(true)
+})
+cardEl?.addEventListener('pointermove', (e) => {
+  if (!dragging) return
+  const dx = e.screenX - dragStart.mx
+  const dy = e.screenY - dragStart.my
+  if (!dragMoved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return
+  dragMoved = true
+  dragTarget = { x: dragStart.wx + dx, y: dragStart.wy + dy }
+  // rAF 节流：每帧最多推一次坐标
+  if (movePending) return
+  movePending = true
+  requestAnimationFrame(() => {
+    movePending = false
+    window.term?.floaterMoveTo?.(dragTarget.x, dragTarget.y)
+  })
+})
+const endDrag = (e: PointerEvent): void => {
+  if (!dragging) return
+  dragging = false
+  try { cardEl.releasePointerCapture(e.pointerId) } catch {}
+  window.term?.floaterDragState?.(false)
+}
+cardEl?.addEventListener('pointerup', endDrag)
+cardEl?.addEventListener('pointercancel', endDrag)
+
 // ─── 右键菜单（UI 与主窗口 .ctx 同款） ───────────────────────────────
 function buildCtx(items: CtxItem[]): void {
   ctxEl.innerHTML = ''

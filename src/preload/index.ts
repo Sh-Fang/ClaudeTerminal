@@ -242,6 +242,8 @@ export interface TermBridge {
   floaterHide(): void
   // 悬浮窗右键弹菜单时，菜单可能比卡片宽 → 让主进程临时把窗口放大，关菜单再缩回
   floaterSetFocusable(on: boolean): void
+  floaterMoveTo(x: number, y: number): void
+  floaterDragState(on: boolean): void
   // 主窗口侧：悬浮窗被右键菜单关掉时通知一下，刷新内存里的 settings 副本
   onFloaterHidden(cb: () => void): () => void
   // 右键菜单"在此处打开 Claude Terminal"：主进程 argv 里解析出 path 后推给 renderer
@@ -337,6 +339,8 @@ const api: TermBridge = {
   floaterFocusMain: () => ipcRenderer.send('floater:focusMain'),
   floaterHide: () => ipcRenderer.send('floater:hide'),
   floaterSetFocusable: (on) => ipcRenderer.send('floater:setFocusable', !!on),
+  floaterMoveTo: (x, y) => ipcRenderer.send('floater:moveTo', { x, y }),
+  floaterDragState: (on) => ipcRenderer.send('floater:dragState', !!on),
   onFloaterHidden: (cb) => {
     const h = (): void => cb()
     ipcRenderer.on('floater:hidden', h)

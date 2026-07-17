@@ -110,10 +110,12 @@ export class SavedManager {
     this.body.addEventListener('keydown', (e) => this.onBodyKey(e))
   }
 
-  // 打开管理弹窗；focusId 不空时自动切到分组页、展开该分组并滚动到位 ——
+  // 打开管理弹窗。tab 指定落到哪个页（跟随侧边栏当前视图）；
+  // focusId 不空时自动切到分组页、展开该分组并滚动到位 ——
   // 给侧边栏右键"管理本分组"用，省得用户进了弹窗还要再找一遍。
-  open(focusId?: string): void {
+  open(focusId?: string, tab?: ManageTabName): void {
     this.scrim.hidden = false
+    if (tab) this.activeTab = tab
     if (focusId) {
       this.activeTab = 'groups'
       this.expanded.add(focusId)

@@ -17,6 +17,9 @@
       /* 卡片：pill 风、深色半透明，固定画在窗口中央偏移 (200, 130) 处 ——
          必须与主进程 floater.ts 的 PILL_OFF_X/Y 保持一致。四周的透明留白是
          右键菜单的活动空间，平时整窗鼠标穿透，不影响点击底下的东西。
+         拖动不用 -webkit-app-region:drag（OS 交互拖动会把"窗口顶边"钳在屏幕内，
+         而窗口顶部有 130px 留白 → 胶囊永远贴不到屏顶），改由 bootstrap 手动拖 +
+         主进程 setPosition（程序化移窗不受钳制）。
          去掉外 drop-shadow —— 窗口透明，阴影投在空气里看着像污渍 */
       .card {
         box-sizing: border-box;
@@ -28,13 +31,9 @@
         border: 1px solid rgba(255, 255, 255, 0.06);
         padding: 0 10px;
         display: flex; align-items: center; justify-content: center;
-        -webkit-app-region: drag;
         backdrop-filter: blur(12px);
         color: #f5f5f5;
       }
-      /* 菜单期间：切到 no-drag，让 mousedown 能正常派发到 renderer 关菜单
-         （drag 区域 OS 会把 mousedown 抢走） */
-      .card.menu-open { -webkit-app-region: no-drag; }
       #items {
         display: flex; align-items: center; gap: 9px;
         flex: 1; min-width: 0; overflow: hidden;
