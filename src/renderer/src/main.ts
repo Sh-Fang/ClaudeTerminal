@@ -1,9 +1,9 @@
 import '@xterm/xterm/css/xterm.css'
 import { TerminalTab, type SessionRecord } from './terminal-tab'
-import { Sidebar, type GroupView, type SavedView } from './sidebar'
+import { Sidebar, type GroupView, type SavedView, type SavedWorkspaceView } from './sidebar'
 import { Toolbar } from './toolbar'
 import { SettingsPanel } from './settings-panel'
-import { DEFAULT_SETTINGS, type Settings } from './themes'
+import { DEFAULT_SETTINGS, backgroundFor, type Settings } from './themes'
 import {
   closePickTabs,
   confirmDialog,
@@ -20,7 +20,7 @@ import {
   type PickItem
 } from './ui-helpers'
 import { icon } from './svg-icons'
-import { SavedManager, type ManageGroupView } from './saved-manager'
+import { SavedManager, type ManageGroupView, type ManageWorkspaceView } from './saved-manager'
 import { UsageIndicator } from './usage-indicator'
 import { SessionInfoBar } from './session-info'
 import { HistoryManager, type HistoryEntry } from './history-manager'
@@ -113,8 +113,26 @@ interface SavedGroup {
   srcId?: string
 }
 
+interface SavedWorkspaceSnapshotTab extends SavedTab {}
+interface SavedWorkspaceSnapshotGroup {
+  id: string
+  name: string
+  cwd: string
+  tabs: SavedWorkspaceSnapshotTab[]
+}
+interface SavedWorkspace {
+  id: string
+  name: string
+  savedAt: string
+  snapshot: {
+    groups: SavedWorkspaceSnapshotGroup[]
+    activeTabId: string | null
+  }
+}
+
 const groups: Group[] = []
 const savedGroups: SavedGroup[] = []
+const savedWorkspaces: SavedWorkspace[] = []
 let activeTabId: string | null = null
 let saveDebounceTimer: number | null = null
 let settings: Settings = DEFAULT_SETTINGS
@@ -142,9 +160,22 @@ function applySettingsToAll(): void {
   for (const g of groups) for (const t of g.tabs) t.applySettings(settings)
 }
 
+// 应用主题：CSS 变量整套换肤，挂在 <html data-app-theme> 上（浅色 = 不挂属性）
+function applyAppTheme(theme: Settings['appTheme']): void {
+  if (theme === 'dark') document.documentElement.dataset.appTheme = 'dark'
+  else delete document.documentElement.dataset.appTheme
+}
+
+// 终端区背板跟随终端主题背景：term-host 左侧 4px 缓冲带 / 空态露出的就是它
+function syncHostsBackdrop(): void {
+  hostsEl.style.background = backgroundFor(settings.terminal.theme)
+}
+
 function updateSettings(s: Settings): void {
   const prevFloater = settings.showFloater
   settings = s
+  applyAppTheme(settings.appTheme)
+  syncHostsBackdrop()
   applySettingsToAll()
   usageIndicator.applySettings(settings.showClaudeUsage)
   // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
@@ -241,6 +272,29 @@ function scheduleSave(): void {
             activeSessionId: t.activeSessionId,
             autoLaunchCC: t.autoLaunchCC
           }))
+        }
+      })),
+      savedWorkspaces: savedWorkspaces.map((w) => ({
+        id: w.id,
+        name: w.name,
+        savedAt: w.savedAt,
+        groupCount: w.snapshot.groups.length,
+        tabCount: w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0),
+        snapshot: {
+          groups: w.snapshot.groups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            cwd: g.cwd,
+            collapsed: false,
+            tabs: g.tabs.map((t) => ({
+              id: t.id,
+              name: t.name,
+              sessions: t.sessions,
+              activeSessionId: t.activeSessionId,
+              autoLaunchCC: t.autoLaunchCC
+            }))
+          })),
+          activeTabId: w.snapshot.activeTabId
         }
       })),
       activeTabId
@@ -363,6 +417,7 @@ function makeTab(group: Group, opts: {
       openSearch,
       onRequestNewTab: () => promptNewTabInGroup(group.id),
       onRequestCloseSelf: () => closeTab(id),
+      onRequestSaveGroup: saveActiveDirtyGroup,
       onPtyStarted: () => void launchCC(tabRef),
       onUserAbort: () => {
         if (tabRef.status !== 'busy') return
@@ -892,15 +947,9 @@ function closeGroup(groupId: string): void {
     scheduleSave()
     toast(`已关闭分组「${g.name}」`)
   }
-  // 纯 pwsh 分组 + 无 busy → 直接关闭，confirmCloseUnsaved 也无视
-  //（该设置保护的是 cc 会话数据，纯 pwsh 没数据可丢）
+  // 纯 pwsh 分组 + 无 busy → 直接关闭（保护的是 cc 会话数据，纯 pwsh 没数据可丢）。
+  // 其余情况一律二次确认（不再提供关闭确认的开关）。
   if (pureNonCc && busyCount === 0) {
-    doClose()
-    return
-  }
-  // 未保存分组 + 用户关掉了二次确认 + 无 busy 标签 → 直接关闭不打扰。
-  // 已保存分组（可恢复）保持原确认；有 busy 标签则强制确认，避免误中断运行中的任务。
-  if (!saved && !settings.confirmCloseUnsaved && busyCount === 0) {
     doClose()
     return
   }
@@ -1339,19 +1388,181 @@ function openTabCtx(tabId: string, x: number, y: number): void {
   )
 }
 
-function openSavedCtx(savedId: string, x: number, y: number): void {
-  // hover 已经能从 saved-row 上直接点删除（带二次确认），整行点击直达 pick 弹窗（
-  // 那里能删单个标签），日常用不到批量管理 → 不再在右键里挂"管理本分组"。
+// ─── 保存/恢复整个工作区（当前 groups+activeTabId 打包） ────────────
+function nextWorkspaceDefaultName(): string {
+  // 默认名 "工作区N"：找当前 savedWorkspaces 里最大数字 + 1
+  let max = 0
+  for (const w of savedWorkspaces) {
+    const m = /^工作区(\d+)$/.exec(w.name)
+    if (m) max = Math.max(max, parseInt(m[1], 10))
+  }
+  return `工作区${max + 1}`
+}
+
+function promptSaveWorkspace(): void {
+  if (groups.length === 0) {
+    toast('当前工作区为空，没什么可保存的')
+    return
+  }
+  openModal({
+    kind: 'rename',
+    title: '保存该工作区',
+    sub: '把当前打开的分组、每个分组下的标签整体存档，之后可一键恢复。',
+    name: nextWorkspaceDefaultName(),
+    okLabel: '保存',
+    onOk: (v) => {
+      const nm = v.name.trim() || nextWorkspaceDefaultName()
+      saveCurrentAsWorkspace(nm)
+    }
+  })
+}
+
+function saveCurrentAsWorkspace(name: string): void {
+  const savedAt = new Date().toISOString()
+  const snapshotGroups: SavedWorkspaceSnapshotGroup[] = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    cwd: g.cwd,
+    tabs: g.tabs.map((t) => ({
+      id: t.id,
+      name: t.name,
+      sessions: t.sessions,
+      activeSessionId: t.activeSessionId,
+      autoLaunchCC: t.autoLaunchCC,
+      savedAt
+    }))
+  }))
+  savedWorkspaces.unshift({
+    id: uid('ws_'),
+    name,
+    savedAt,
+    snapshot: { groups: snapshotGroups, activeTabId }
+  })
+  sidebar.render()
+  savedManager.render()
+  scheduleSave()
+  toast(`已保存工作区「${name}」（${snapshotGroups.length} 个分组）`)
+}
+
+// 把快照分组追加恢复到当前工作区（工作区整体恢复 / 单分组恢复共用）。
+// 返回新建标签数。已打开的同分组不覆盖，只补齐缺失的标签。
+async function restoreSnapshotGroups(
+  sgs: SavedWorkspaceSnapshotGroup[],
+  preferActiveTabId: string | null
+): Promise<number> {
+  const created: TerminalTab[] = []
+  let firstTab: TerminalTab | null = null
+  for (const sg of sgs) {
+    // 用已存在的同 id/同名同 cwd 分组，否则新建（与 restoreSavedTabs 逻辑保持一致）
+    let g = findGroup(sg.id)
+      || groups.find((x) => x.name === sg.name && x.cwd === sg.cwd)
+    if (!g) g = ensureGroup({ name: sg.name, cwd: sg.cwd })
+    const liveIds = new Set(g.tabs.map((t) => t.id))
+    for (const t of sg.tabs) {
+      if (liveIds.has(t.id)) continue
+      const tab = makeTab(g, {
+        id: t.id,
+        name: t.name,
+        sessions: t.sessions,
+        activeSessionId: t.activeSessionId,
+        autoLaunchCC: t.autoLaunchCC,
+        dirty: false
+      })
+      created.push(tab)
+      if (!firstTab) firstTab = tab
+    }
+  }
+  // 优先激活快照里存的 active tab，若不在恢复出来的集合就退到首个新建 tab
+  if (preferActiveTabId && created.some((t) => t.id === preferActiveTabId)) {
+    activeTabId = preferActiveTabId
+  } else if (firstTab) {
+    activeTabId = firstTab.id
+  }
+  sidebar.render()
+  toolbar.render()
+  if (activeTabId) activateUI(activeTabId)
+  for (const t of created) await spawnTabPty(t)
+  scheduleSave()
+  return created.length
+}
+
+async function restoreSavedWorkspace(wsId: string): Promise<void> {
+  const w = savedWorkspaces.find((x) => x.id === wsId)
+  if (!w) return
+  const tabCount = w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0)
+  confirmDialog({
+    title: `恢复工作区「${w.name}」`,
+    message:
+      `即将追加恢复 <b>${w.snapshot.groups.length}</b> 个分组、<b>${tabCount}</b> 个标签到当前工作区。<br>` +
+      `已打开的同分组不会被覆盖，只会补齐缺失的标签。`,
+    okLabel: '恢复',
+    danger: false,
+    onOk: async () => {
+      const n = await restoreSnapshotGroups(w.snapshot.groups, w.snapshot.activeTabId)
+      toast(`已恢复工作区「${w.name}」的 ${n} 个新标签`)
+    }
+  })
+}
+
+function restoreWorkspaceGroup(wsId: string, groupId: string): void {
+  const w = savedWorkspaces.find((x) => x.id === wsId)
+  const sg = w?.snapshot.groups.find((g) => g.id === groupId)
+  if (!sg) return
+  void restoreSnapshotGroups([sg], null).then((n) => {
+    toast(`已恢复分组「${sg.name}」的 ${n} 个新标签`)
+  })
+}
+
+function deleteWorkspaceGroup(wsId: string, groupId: string): void {
+  const w = savedWorkspaces.find((x) => x.id === wsId)
+  if (!w) return
+  const idx = w.snapshot.groups.findIndex((g) => g.id === groupId)
+  if (idx < 0) return
+  w.snapshot.groups.splice(idx, 1)
+  sidebar.render()
+  savedManager.render()
+  scheduleSave()
+}
+
+function renameSavedWorkspace(wsId: string, newName: string): void {
+  const w = savedWorkspaces.find((x) => x.id === wsId)
+  if (!w) return
+  const nm = newName.trim()
+  if (!nm || nm === w.name) return
+  w.name = nm
+  sidebar.render()
+  savedManager.render()
+  scheduleSave()
+}
+
+function deleteSavedWorkspace(wsId: string): void {
+  const idx = savedWorkspaces.findIndex((x) => x.id === wsId)
+  if (idx < 0) return
+  const w = savedWorkspaces[idx]
+  confirmDialog({
+    title: '删除已保存的工作区',
+    message: `确定删除「${escapeHtml(w.name)}」？<br>只删除这份工作区留档，不会删除任何分组和标签页。`,
+    okLabel: '删除',
+    danger: true,
+    onOk: () => {
+      savedWorkspaces.splice(idx, 1)
+      sidebar.render()
+      savedManager.render()
+      scheduleSave()
+    }
+  })
+}
+
+function openWorkspacePaneCtx(x: number, y: number): void {
   showCtxMenu(
     [
-      { label: '选择恢复', icon: icon('rotate-ccw'), act: () => openRestoreSelect(savedId) },
-      { label: '一键恢复分组', icon: icon('rotate-ccw'), act: () => restoreSavedAll(savedId) },
-      { label: '重命名', icon: icon('edit'), act: () => renameSaved(savedId) },
-      { sep: true },
-      { label: '删除保存', icon: icon('trash'), danger: true, act: () => deleteSaved(savedId) }
+      {
+        label: '保存该工作区',
+        icon: icon('rotate-ccw'),
+        act: () => promptSaveWorkspace()
+      }
     ],
-    x,
-    y
+    x, y
   )
 }
 
@@ -1377,6 +1588,16 @@ const sidebar = new Sidebar({
         tabCount: s.snapshot.tabs.length,
         savedAt: formatTs(s.savedAt)
       })),
+  getSavedWorkspaces: (): SavedWorkspaceView[] =>
+    [...savedWorkspaces]
+      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .map((w) => ({
+        id: w.id,
+        name: w.name,
+        savedAt: formatTs(w.savedAt),
+        groupCount: w.snapshot.groups.length,
+        tabCount: w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0)
+      })),
   getActiveTabId: () => activeTabId,
   activateTab,
   closeTab,
@@ -1384,7 +1605,7 @@ const sidebar = new Sidebar({
   toggleGroupCollapse,
   onGroupCtx: openGroupCtx,
   onTabCtx: openTabCtx,
-  onSavedCtx: openSavedCtx,
+  onWorkspacePaneCtx: openWorkspacePaneCtx,
   addTabInGroup: promptNewTabInGroup,
   newGroup: () => void newGroup(),
   reorderGroups: (ids) => {
@@ -1399,6 +1620,7 @@ const sidebar = new Sidebar({
     sidebar.render()
   },
   restoreSaved: openRestoreSelect,
+  restoreSavedWorkspace: (id) => void restoreSavedWorkspace(id),
   openManageSaved: () => savedManager.open()
 })
 
@@ -1630,10 +1852,31 @@ const offState = window.term.onStateEvent((ev) => {
 })
 
 // ─── 全局键 ───────────────────────────────────────────────────────
+// Ctrl+S：把当前活动标签所在的脏分组保存到"已保存分组"。
+// 终端聚焦时由 TerminalTab 的 attachCustomKeyEventHandler 调这里（并拦掉 XOFF）；
+// 焦点在别处（侧边栏/弹窗）时走 window keydown 兜底。
+function saveActiveDirtyGroup(): void {
+  const g = groups.find((x) => x.tabs.some((t) => t.id === activeTabId))
+  if (!g) return
+  if (!isGroupDirty(g)) {
+    toast(`「${g.name}」没有未保存的改动`)
+    return
+  }
+  saveGroup(g.id)
+}
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     // ESC 关闭可能打开的浮层
     searchUI.classList.remove('open')
+  }
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+    // 输入框 / 行内改名里不抢 Ctrl+S（虽然它们也用不上，但别打断输入心流）
+    const t = e.target as HTMLElement
+    if (!(t instanceof HTMLInputElement) && !t.closest?.('[contenteditable="true"]')) {
+      e.preventDefault()
+      saveActiveDirtyGroup()
+    }
   }
   if (e.ctrlKey && e.key === 'Tab') {
     e.preventDefault()
@@ -1670,11 +1913,11 @@ window.addEventListener('beforeunload', () => {
 })
 
 // ─── 关闭 app 时确认（兜底：任何情况都弹一次） ─────────────────────
-// 有脏分组且开启对应设置时展示分组明细；其他情况仍弹一个通用确认，防止误关。
+// 有脏分组时展示分组明细；其他情况仍弹一个通用确认，防止误关。
 window.term.onWindowCloseRequest(() => {
   if (isConfirmOpen()) return // 已有确认弹窗在显示，忽略重复触发
   const dirtyGroups = groups.filter((g) => isGroupDirty(g) && g.tabs.length > 0)
-  const showDirty = dirtyGroups.length > 0 && settings.confirmCloseUnsaved
+  const showDirty = dirtyGroups.length > 0
   if (showDirty) {
     const lines = dirtyGroups
       .map((g) => `• <b>${escapeHtml(g.name)}</b>（${g.tabs.length} 个标签）`)
@@ -1846,7 +2089,7 @@ const savedManager = new SavedManager({
     if (!s) return
     confirmDialog({
       title: `删除已保存的「${s.name}」？`,
-      message: '只删除保存记录，不影响当前打开的分组。',
+      message: '会删除该分组下的所有标签页。只动保存记录，已打开的实例不受影响。',
       okLabel: '删除',
       onOk: () => {
         const idx = savedGroups.findIndex((x) => x.id === id)
@@ -1857,6 +2100,21 @@ const savedManager = new SavedManager({
         toast('已删除保存的分组')
       }
     })
+  },
+  onRenameTab: (savedId, tabId, newName) => {
+    const s = savedGroups.find((x) => x.id === savedId)
+    if (!s) return
+    const t = s.snapshot.tabs.find((x) => x.id === tabId)
+    if (!t || t.name === newName) return
+    t.name = newName
+    // 同步到已打开的同 id 标签（若存在），保持命名一致
+    for (const g of groups) {
+      const live = g.tabs.find((x) => x.id === tabId)
+      if (live) { live.name = newName }
+    }
+    sidebar.render()
+    savedManager.render()
+    scheduleSave()
   },
   onDeleteTab: (savedId, tabId) => {
     const s = savedGroups.find((x) => x.id === savedId)
@@ -1869,7 +2127,29 @@ const savedManager = new SavedManager({
     scheduleSave()
   },
   onRestoreAll: (id) => restoreSavedAll(id),
-  onRestoreSelect: (id) => openRestoreSelect(id)
+  onRestoreSelect: (id) => openRestoreSelect(id),
+  onRestoreOneTab: (savedId, tabId) => void restoreSavedTabs(savedId, [tabId]),
+  getSavedWorkspaces: (): ManageWorkspaceView[] =>
+    [...savedWorkspaces]
+      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .map((w) => ({
+        id: w.id,
+        name: w.name,
+        savedAt: w.savedAt,
+        groupCount: w.snapshot.groups.length,
+        tabCount: w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0),
+        groups: w.snapshot.groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          cwd: g.cwd,
+          tabCount: g.tabs.length
+        }))
+      })),
+  onRenameWorkspace: renameSavedWorkspace,
+  onDeleteWorkspace: deleteSavedWorkspace,
+  onRestoreWorkspace: (id) => void restoreSavedWorkspace(id),
+  onRestoreWorkspaceGroup: restoreWorkspaceGroup,
+  onDeleteWorkspaceGroup: deleteWorkspaceGroup
 })
 
 // ─── 标签历史窗口 ────────────────────────────────────────────────
@@ -1920,6 +2200,8 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
 // 启动即空状态，等用户点「新建分组」或从已保存的分组恢复。
 ;(async () => {
   settings = await window.term.loadSettings()
+  applyAppTheme(settings.appTheme)
+  syncHostsBackdrop()
   applySidebarLayout()
   usageIndicator.applySettings(settings.showClaudeUsage)
   const ws = await window.term.loadWorkspace()
@@ -1946,6 +2228,29 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
   }
   // 历史数据可能有同名同路径的重复条目（之前没合并），启动时统一收拢
   dedupSavedByNameCwd()
+  for (const w of ws.savedWorkspaces ?? []) {
+    savedWorkspaces.push({
+      id: w.id,
+      name: w.name,
+      savedAt: w.savedAt,
+      snapshot: {
+        activeTabId: w.snapshot.activeTabId ?? null,
+        groups: w.snapshot.groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          cwd: g.cwd,
+          tabs: g.tabs.map((t) => ({
+            id: t.id,
+            name: t.name,
+            sessions: t.sessions,
+            activeSessionId: t.activeSessionId,
+            autoLaunchCC: t.autoLaunchCC !== false,
+            savedAt: w.savedAt
+          }))
+        }))
+      }
+    })
+  }
   sidebar.render()
   toolbar.render()
   // 启动时按当前设置同步悬浮窗（主进程也会按自己读到的设置拉起；这里再保一道，

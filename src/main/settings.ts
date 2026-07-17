@@ -2,7 +2,8 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-light'
+export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
+export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 
 export interface Settings {
@@ -20,6 +21,7 @@ export interface Settings {
     scrollback: number
     theme: ThemePreset
   }
+  appTheme: AppTheme  // 应用（chrome）主题：浅色 / 深色，与终端主题相互独立
   defaults: {
     cwd: string
     autoLaunchCC: boolean
@@ -35,8 +37,7 @@ export interface Settings {
   sidebarCollapsed: boolean
   savedCollapsed: boolean  // 「已保存的分组」区是否折叠到底部
   sidebarSavedHeight: number  // 「已保存的分组」区的像素高度（0 = 用 CSS 默认 40%）
-  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
-  confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
+  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle（1~10）
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
   showFloater: boolean         // 开启常驻悬浮窗（显示待查看 / 待决策 / 运行中 数）
   floaterX: number | null      // 悬浮窗最近一次屏幕位置（null = 未持久化，走默认位）
@@ -52,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cursor: { style: 'block', blink: true },
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
+  appTheme: 'light',
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
@@ -62,7 +64,6 @@ export const DEFAULT_SETTINGS: Settings = {
   savedCollapsed: false,
   sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
-  confirmCloseUnsaved: true,
   showClaudeUsage: true,
   showFloater: false,
   floaterX: null,
@@ -71,7 +72,8 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
 
-const THEMES: ThemePreset[] = ['vscode-dark', 'vercel-dark', 'one-light']
+const THEMES: ThemePreset[] = ['vscode-dark', 'vercel-dark', 'one-dark']
+const APP_THEMES: AppTheme[] = ['light', 'dark']
 const CURSORS: CursorStyle[] = ['block', 'underline', 'bar']
 
 function pick<T extends string>(v: unknown, allow: T[], fallback: T): T {
@@ -112,8 +114,10 @@ function normalize(raw: unknown): Settings {
     },
     terminal: {
       scrollback: clampNum(term.scrollback, 100, 100000, DEFAULT_SETTINGS.terminal.scrollback),
-      theme: pick(term.theme, THEMES, DEFAULT_SETTINGS.terminal.theme)
+      // 老配置里的 one-light 已下线（cc 深色渲染在浅色终端下不可读）→ 迁移到 one-dark
+      theme: pick(term.theme === 'one-light' ? 'one-dark' : term.theme, THEMES, DEFAULT_SETTINGS.terminal.theme)
     },
+    appTheme: pick(r.appTheme, APP_THEMES, DEFAULT_SETTINGS.appTheme),
     defaults: {
       cwd: typeof def.cwd === 'string' ? def.cwd : DEFAULT_SETTINGS.defaults.cwd,
       autoLaunchCC: typeof def.autoLaunchCC === 'boolean' ? def.autoLaunchCC : DEFAULT_SETTINGS.defaults.autoLaunchCC,
@@ -137,9 +141,7 @@ function normalize(raw: unknown): Settings {
     sidebarCollapsed: typeof r.sidebarCollapsed === 'boolean' ? r.sidebarCollapsed : DEFAULT_SETTINGS.sidebarCollapsed,
     savedCollapsed: typeof r.savedCollapsed === 'boolean' ? r.savedCollapsed : DEFAULT_SETTINGS.savedCollapsed,
     sidebarSavedHeight: clampNum(r.sidebarSavedHeight, 0, 4000, DEFAULT_SETTINGS.sidebarSavedHeight),
-    statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 5, DEFAULT_SETTINGS.statusDowngradeSec),
-    confirmCloseUnsaved:
-      typeof r.confirmCloseUnsaved === 'boolean' ? r.confirmCloseUnsaved : DEFAULT_SETTINGS.confirmCloseUnsaved,
+    statusDowngradeSec: clampNum(r.statusDowngradeSec, 1, 10, DEFAULT_SETTINGS.statusDowngradeSec),
     showClaudeUsage:
       typeof r.showClaudeUsage === 'boolean' ? r.showClaudeUsage : DEFAULT_SETTINGS.showClaudeUsage,
     showFloater:

@@ -20,9 +20,18 @@ export interface SavedView {
   savedAt: string
 }
 
+export interface SavedWorkspaceView {
+  id: string
+  name: string
+  savedAt: string
+  groupCount: number
+  tabCount: number
+}
+
 export interface SidebarHooks {
   getGroups(): GroupView[]
   getSaved(): SavedView[]
+  getSavedWorkspaces(): SavedWorkspaceView[]
   getActiveTabId(): string | null
 
   activateTab(tabId: string): void
@@ -32,12 +41,13 @@ export interface SidebarHooks {
 
   onGroupCtx(groupId: string, x: number, y: number): void
   onTabCtx(tabId: string, x: number, y: number): void
-  onSavedCtx(savedId: string, x: number, y: number): void
+  onWorkspacePaneCtx(x: number, y: number): void
 
   addTabInGroup(groupId: string): void
   newGroup(): void
   reorderGroups(orderedIds: string[]): void
   restoreSaved(savedId: string): void
+  restoreSavedWorkspace(wsId: string): void
   openManageSaved(): void
 }
 
@@ -74,7 +84,10 @@ export class Sidebar {
     this.listEl.addEventListener('drop', (e) => this.onGroupDrop(e))
     this.listEl.addEventListener('dragend', () => this.onGroupDragEnd())
     this.savedEl.addEventListener('click', (e) => this.onSavedClick(e))
-    this.savedEl.addEventListener('contextmenu', (e) => this.onSavedCtxEvent(e))
+    // saved 行不再有右键菜单 —— 左键即恢复（分组弹选择窗，工作区弹确认窗）
+    // 「工作区」区（顶部打开区）空白处右键 → 保存当前工作区
+    const openSection = this.listEl.closest('.side-open') as HTMLElement | null
+    openSection?.addEventListener('contextmenu', (e) => this.onOpenPaneCtx(e))
     this.newGroupBtn.addEventListener('click', () => this.hooks.newGroup())
     this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved())
   }
@@ -91,7 +104,7 @@ export class Sidebar {
     if (groups.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
-      empty.textContent = '还没有分组，点右上角「+」新建。'
+      empty.textContent = '工作区为空'
       this.listEl.appendChild(empty)
       return
     }
@@ -154,17 +167,17 @@ export class Sidebar {
   }
 
   private renderSaved(): void {
+    // 分组在前、工作区在后混排：同一行样式，靠图标（↺ / 层叠）与副文案区分
     const saved = this.hooks.getSaved()
+    const workspaces = this.hooks.getSavedWorkspaces()
     this.savedEl.innerHTML = ''
-    if (saved.length === 0) {
+    if (saved.length === 0 && workspaces.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
       empty.textContent = '右键分组「保存分组」可在此一键恢复。'
       this.savedEl.appendChild(empty)
       return
     }
-    // 不再按 limit 切片：已保存分组全量渲染，由 .side-saved-body 自身的 overflow:auto
-     // 容器内滚动；右上角"展开管理"按钮仍然可用，进入弹窗做重命名/删除/排序等批量操作。
     for (const s of saved) {
       const el = document.createElement('div')
       el.className = 'saved-row'
@@ -172,14 +185,24 @@ export class Sidebar {
       const savedCwd = s.cwd
         ? escapeHtml(s.cwd)
         : '<span class="path-placeholder">(默认目录)</span>'
-      // 整行点击 → 打开 pick 弹窗（restoreSaved 内部走的），删除走 pick 弹窗里
-      // 每个标签后面的小垃圾桶（删完最后一个就把整组也清掉）。原本侧栏行尾的
-      // 整组删除按钮去掉 —— 入口集中到一处，列表干净。
       el.innerHTML = `
         <div class="saved-ic">${icon('rotate-ccw')}</div>
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
           <div class="saved-sub">${s.tabCount} 个标签 · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
+        </div>
+      `
+      this.savedEl.appendChild(el)
+    }
+    for (const w of workspaces) {
+      const el = document.createElement('div')
+      el.className = 'saved-row'
+      el.dataset.savedWs = w.id
+      el.innerHTML = `
+        <div class="saved-ic saved-ic-ws">${icon('layers')}</div>
+        <div class="saved-meta">
+          <div class="saved-name">${escapeHtml(w.name)}</div>
+          <div class="saved-sub">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(w.savedAt)}</div>
         </div>
       `
       this.savedEl.appendChild(el)
@@ -251,8 +274,10 @@ export class Sidebar {
     const old = el.textContent ?? ''
     el.contentEditable = 'true'
     el.focus()
+    // 不全选：光标 collapse 到末尾，视觉上就是在原始文字上继续改
     const range = document.createRange()
     range.selectNodeContents(el)
+    range.collapse(false)
     const sel = window.getSelection()
     sel?.removeAllRanges()
     sel?.addRange(range)
@@ -288,14 +313,21 @@ export class Sidebar {
   private onSavedClick(e: MouseEvent): void {
     const tgt = e.target as HTMLElement
     const row = tgt.closest('[data-saved]') as HTMLElement | null
-    if (row?.dataset.saved) this.hooks.restoreSaved(row.dataset.saved)
+    if (row?.dataset.saved) {
+      this.hooks.restoreSaved(row.dataset.saved)
+      return
+    }
+    const wsRow = tgt.closest('[data-saved-ws]') as HTMLElement | null
+    if (wsRow?.dataset.savedWs) this.hooks.restoreSavedWorkspace(wsRow.dataset.savedWs)
   }
 
-  private onSavedCtxEvent(e: MouseEvent): void {
-    const row = (e.target as HTMLElement).closest('[data-saved]') as HTMLElement | null
-    if (!row) return
+  private onOpenPaneCtx(e: MouseEvent): void {
+    // 「工作区」区的右键：命中分组头/标签行时交给 onListCtx 的行级菜单，
+    // 其余（空白、区标题）弹「保存该工作区」
+    const tgt = e.target as HTMLElement
+    if (tgt.closest('[data-t]') || tgt.closest('[data-g]')) return
     e.preventDefault()
-    this.hooks.onSavedCtx(row.dataset.saved!, e.clientX, e.clientY)
+    this.hooks.onWorkspacePaneCtx(e.clientX, e.clientY)
   }
 
   // ─── 分组拖动排序 ─────────────────────────────────────────────

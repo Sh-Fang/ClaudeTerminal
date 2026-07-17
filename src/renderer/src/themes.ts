@@ -1,6 +1,7 @@
 import type { ITheme } from '@xterm/xterm'
 
-export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-light'
+export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
+export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 
 export interface Settings {
@@ -8,6 +9,7 @@ export interface Settings {
   font: { family: string; size: number; lineHeight: number }
   cursor: { style: CursorStyle; blink: boolean }
   terminal: { scrollback: number; theme: ThemePreset }
+  appTheme: AppTheme
   // model = cc `--model <arg>` 实参：alias（如 'fable'/'haiku'）或完整 id（如
   // 'claude-opus-4-8'）；空串 = 不带 --model，跟随 cc 默认。只在新建会话（非
   // --resume）时生效，避免覆盖旧会话原有模型。
@@ -20,8 +22,7 @@ export interface Settings {
   sidebarCollapsed: boolean
   savedCollapsed: boolean
   sidebarSavedHeight: number   // 「已保存的分组」区像素高度（0 = 用 CSS 默认 40%）
-  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle
-  confirmCloseUnsaved: boolean // 关闭未保存分组前是否二次确认
+  statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle（1~10）
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
   showFloater: boolean         // 开启常驻悬浮窗
   floaterX: number | null
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cursor: { style: 'block', blink: true },
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
+  appTheme: 'light',
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
@@ -47,7 +49,6 @@ export const DEFAULT_SETTINGS: Settings = {
   savedCollapsed: false,
   sidebarSavedHeight: 0,
   statusDowngradeSec: 5,
-  confirmCloseUnsaved: true,
   showClaudeUsage: true,
   showFloater: false,
   floaterX: null,
@@ -105,23 +106,25 @@ export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss
     brightCyan: '#a9fff0',
     brightWhite: '#ffffff'
   },
-  'one-light': {
-    label: 'One Light',
-    backgroundCss: '#fafafa',
-    background: '#fafafa',
-    foreground: '#383a42',
-    cursor: '#383a42',
-    cursorAccent: '#fafafa',
-    selectionBackground: '#e5e5e6',
-    black: '#383a42',
-    red: '#e45649',
-    green: '#50a14f',
-    yellow: '#c18401',
-    blue: '#0184bc',
-    magenta: '#a626a4',
-    cyan: '#0997b3',
-    white: '#fafafa',
-    brightBlack: '#a0a1a7',
+  // One Light 已下线：cc 的 diff / 代码块按深色终端假设绘制（深底 + 默认前景），
+  // 浅色终端里"默认前景 = 深色"落在深底上直接看不见。换成同族的 One Dark。
+  'one-dark': {
+    label: 'One Dark',
+    backgroundCss: '#282c34',
+    background: '#282c34',
+    foreground: '#abb2bf',
+    cursor: '#528bff',
+    cursorAccent: '#282c34',
+    selectionBackground: '#3e4451',
+    black: '#282c34',
+    red: '#e06c75',
+    green: '#98c379',
+    yellow: '#e5c07b',
+    blue: '#61afef',
+    magenta: '#c678dd',
+    cyan: '#56b6c2',
+    white: '#abb2bf',
+    brightBlack: '#5c6370',
     brightRed: '#e06c75',
     brightGreen: '#98c379',
     brightYellow: '#d19a66',

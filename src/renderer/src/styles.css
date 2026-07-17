@@ -33,6 +33,55 @@
   --sh-5: 0 0 0 1px #0000000d, 0px 1px 1px #00000005, 0px 8px 16px -4px #0000000a, 0px 24px 32px -8px #0000000f;
 }
 
+/* ─── 应用深色主题（One Dark 配色）：整套换 CSS 变量，浅色 = 不挂属性 ────────
+   与终端主题相互独立：终端配色由 xterm ITheme 控制，这里只管应用 chrome。
+   取色自 Atom One Dark：bg #282c34 / 深一档 #21252b / 文本 #abb2bf /
+   蓝 #61afef 绿 #98c379 红 #e06c75 黄 #e5c07b 紫 #c678dd 青 #56b6c2 */
+:root[data-app-theme='dark'] {
+  --ink: #dcdfe4;
+  --body: #abb2bf;
+  --mute: #7f848e;
+  --on-primary: #282c34;
+  --canvas: #282c34;
+  --canvas-soft: #21252b;
+  --canvas-soft-2: #323842;
+  --hairline: #3a3f4b;
+  --hairline-strong: #545b68;
+  --link: #61afef;
+  --error: #e06c75;
+  --warning-soft: #3a3323;
+  --warning-deep: #e5c07b;
+  --cyan: #56b6c2;
+  --cyan-deep: #56b6c2;
+  --violet: #c678dd;
+  --pink: #e06c75;
+  --g-prev-start: #c678dd;
+  --g-prev-end: #61afef;
+  --sh-1: 0 0 0 1px #ffffff12;
+  --sh-3: 0 0 0 1px #ffffff10, 0px 2px 2px #00000047, 0px 8px 8px -8px #00000047;
+  --sh-5: 0 0 0 1px #ffffff14, 0px 1px 1px #00000038, 0px 8px 16px -4px #00000052, 0px 24px 32px -8px #00000066;
+}
+/* 深色下补偿少数写死的状态色（浅底深字 → 深底亮字），统一走 One Dark 色板 */
+:root[data-app-theme='dark'] .st-busy { color: #61afef; }
+:root[data-app-theme='dark'] .st-done { color: #98c379; }
+:root[data-app-theme='dark'] .trow-badge.bs-busy { color: #61afef; }
+:root[data-app-theme='dark'] .trow-badge.bs-done { color: #98c379; }
+:root[data-app-theme='dark'] .start-cc-btn {
+  color: #61afef;
+  background: rgba(97, 175, 239, 0.12);
+  border-color: rgba(97, 175, 239, 0.3);
+}
+:root[data-app-theme='dark'] .start-cc-btn:hover { background: rgba(97, 175, 239, 0.2); border-color: #61afef; }
+:root[data-app-theme='dark'] .sp-busy { background: rgba(97, 175, 239, 0.14); color: #61afef; }
+:root[data-app-theme='dark'] .sp-done { background: rgba(152, 195, 121, 0.14); color: #98c379; }
+:root[data-app-theme='dark'] .set-hint.ok,
+:root[data-app-theme='dark'] .cc-ver-hint.ok { color: #98c379; }
+/* 深色下拖动条 / 分隔线：hover 提示线压暗一档，避免在暗底上显得刺眼 */
+:root[data-app-theme='dark'] .sidebar-resizer:hover::after,
+:root[data-app-theme='dark'] .sidebar-resizer.dragging::after,
+:root[data-app-theme='dark'] .saved-resizer:hover::after,
+:root[data-app-theme='dark'] .saved-resizer.dragging::after { background: var(--hairline); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {
@@ -219,6 +268,7 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
   min-height: 0;
   padding: 0 8px 8px;
 }
+.side-saved-body[hidden] { display: none; }
 .side-saved-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 /* 折叠态：盖掉 height/min/max，只显标题行 */
 .side-saved.collapsed {
@@ -397,13 +447,7 @@ button.saved-toggle:hover { color: var(--ink); }
   flex: 1; font-size: 13px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }
-.trow-name[contenteditable="true"] {
-  outline: 1px solid var(--link);
-  background: var(--canvas);
-  padding: 0 4px;
-  border-radius: 3px;
-  color: var(--ink);
-}
+/* 行内重命名的编辑态样式统一收口在「inline rename」段（见 mg 区块附近） */
 .trow-badge { font-family: var(--mono); font-size: 10px; color: var(--mute); }
 .trow-badge.bs-busy { color: #0761d1; }
 .trow-badge.bs-attention { color: var(--warning-deep); font-weight: 600; }
@@ -442,6 +486,8 @@ button.saved-toggle:hover { color: var(--ink); }
   border: 1px solid var(--hairline);
   color: var(--violet);
 }
+/* 工作区快照行：换个色相跟单分组行区分（图标已不同，颜色只是加强） */
+.saved-ic-ws { color: var(--cyan-deep); }
 .saved-meta { min-width: 0; flex: 1; }
 .saved-name {
   font-size: 13px; font-weight: 500; color: var(--ink);
@@ -570,8 +616,20 @@ button.saved-toggle:hover { color: var(--ink); }
   box-shadow: var(--sh-5);
   padding: 6px;
   display: none;
+  /* 高度封顶：不许伸出窗口，列表区内部滚动（滚动条隐藏） */
+  max-height: min(560px, calc(100vh - 96px));
+  flex-direction: column;
 }
-.session-menu.open { display: block; animation: pop 0.14s ease; }
+.session-menu.open { display: flex; animation: pop 0.14s ease; }
+.session-menu .menu-eyebrow,
+.session-menu .menu-foot { flex: 0 0 auto; }
+.session-menu #sessList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.session-menu #sessList::-webkit-scrollbar { width: 0; height: 0; }
 @keyframes pop {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: none; }
@@ -626,7 +684,10 @@ button.saved-toggle:hover { color: var(--ink); }
 #hosts {
   flex: 1; min-height: 0;
   position: relative;
-  background: var(--ink);
+  /* 终端区背板：跟随终端主题背景（JS 侧 syncHostsBackdrop 动态覆盖）。
+     不能用 var(--ink) —— 应用深色主题下 ink 是亮色，会在 term-host 左侧
+     4px 缓冲带露出一条亮条。这里放个深色兜底，避免首帧闪白。 */
+  background: #171717;
   overflow: hidden;
 }
 #hosts-empty {
@@ -1123,9 +1184,77 @@ button.saved-toggle:hover { color: var(--ink); }
 /* 隐藏浏览器原生 type=search 的清除按钮（webkit），交互在 ESC / 删字符上 */
 .mg-head .mg-search::-webkit-search-cancel-button { -webkit-appearance: none; }
 
+/* 弹窗内 Tab：已保存分组 / 已保存工作区。有 tabbar 时分隔线由 tabbar 承担 */
+.modal-manage .mg-head:has(+ .mg-tabbar) { border-bottom: none; padding-bottom: 6px; }
+.mg-tabbar {
+  display: flex; gap: 4px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+.mg-tab-btn {
+  border: none; background: transparent; color: var(--mute);
+  padding: 8px 10px; cursor: pointer;
+  font-family: inherit; font-size: 13px; letter-spacing: -0.1px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.mg-tab-btn:hover { color: var(--body); }
+.mg-tab-btn.active { color: var(--ink); border-bottom-color: var(--ink); font-weight: 500; }
+
+/* 主体区：左缘 A~Z 跳转条 + 列表 */
+.mg-body-wrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.mg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.mg-az {
+  flex: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 14px;
+  opacity: 0.35;
+  transition: opacity 0.18s ease;
+  user-select: none;
+}
+.mg-az:hover { opacity: 1; }
+.mg-az-letter {
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1;
+  padding: 2.5px 0;
+  width: 100%;
+  text-align: center;
+  color: var(--mute);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease, color 0.1s ease;
+}
+.mg-az-letter:hover {
+  color: var(--ink);
+  font-weight: 700;
+  transform: scale(1.6);
+}
+.mg-az-letter.disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 .mg-body {
   flex: 1; overflow-y: auto;
-  padding: 16px 24px 24px;
+  padding: 16px 24px 24px 8px;
   /* Firefox：滚动条整条隐藏 */
   scrollbar-width: none;
 }
@@ -1255,11 +1384,16 @@ button.saved-toggle:hover { color: var(--ink); }
   max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mg-name:hover { background: var(--canvas-soft-2); }
-.mg-name[contenteditable='true'] {
-  background: var(--canvas);
-  outline: 1px solid var(--link);
+/* ─── inline rename：所有行内重命名（侧边栏标签 / 弹窗分组名 / 标签名 / 工作区名）
+   共用一套编辑态：无边框无底色无选区高亮 —— 光标落在最后一个字后面，
+   看起来就是直接在原始文字上改（JS 侧把 selection collapse 到末尾）。 */
+.trow-name[contenteditable='true'],
+.mg-name[contenteditable='true'],
+.mg-tab-name[contenteditable='true'] {
+  outline: none;
+  background: transparent;
   cursor: text;
+  white-space: nowrap;
 }
 .mg-meta {
   font-family: var(--mono); font-size: 11px;
@@ -1308,6 +1442,16 @@ button.saved-toggle:hover { color: var(--ink); }
 .mg-tab-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg-tab-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); flex: 0 0 auto; }
 .mg-tab .mg-btn { width: 24px; height: 24px; flex: 0 0 24px; }
+.mg-tab .mg-tab-restore { color: var(--body); }
+.mg-tab .mg-tab-restore:hover { color: var(--ink); background: var(--canvas-soft-2); }
+/* 工作区展开后的分组展示行：纯展示，无操作位 */
+.mg-ws-grp { cursor: default; }
+.mg-ws-grp .mg-ws-grp-ic {
+  flex: 0 0 auto; color: var(--mute);
+  display: inline-grid; place-items: center;
+}
+.mg-tab-name[data-rename-tab] { cursor: default; }
+.mg-name[data-rename-group] { cursor: pointer; }
 .mg-tab-empty {
   padding: 8px 10px;
   font-size: 12px;
@@ -1472,6 +1616,7 @@ button.saved-toggle:hover { color: var(--ink); }
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* 标题就是标题：纯文字，可选中，点击不触发任何控件（HTML 侧已不写 for 关联） */
 .set-row label {
   display: block;
   font-family: var(--mono);
@@ -1480,7 +1625,11 @@ button.saved-toggle:hover { color: var(--ink); }
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 6px;
+  user-select: text;
+  cursor: auto;
 }
+/* 绿点停留 1~10s 这类多档位分段：档位窄一点免得撑爆一行 */
+.seg-group.seg-compact .seg-item { padding: 5px 9px; }
 .set-row input,
 .set-row select {
   width: 100%;

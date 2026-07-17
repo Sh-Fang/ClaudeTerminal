@@ -27,7 +27,7 @@ import {
   upsertTabHistory,
   type HistoryEntry
 } from './tab-history'
-import { pushCountsToFloater, resizeFloater, setFloaterEnabled, setFloaterFocusable } from './floater'
+import { pushCountsToFloater, setFloaterEnabled, setFloaterFocusable } from './floater'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -254,10 +254,6 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     if (w.isMinimized()) w.restore()
     w.show()
     w.focus()
-  })
-  ipcMain.on('floater:resize', (_e, p: { w: number; h: number }) => {
-    if (!p || typeof p !== 'object') return
-    resizeFloater(Number(p.w), Number(p.h))
   })
   ipcMain.on('floater:setFocusable', (_e, on: boolean) => setFloaterFocusable(!!on))
 

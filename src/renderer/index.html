@@ -33,10 +33,10 @@
     </div>
     <div class="app">
       <aside class="sidebar" id="sidebar">
-        <!-- 打开的分组：占满剩余高度，超长时在本区内部滚动 -->
+        <!-- 工作区（当前打开的分组集合）：占满剩余高度，超长时在本区内部滚动 -->
         <section class="side-section side-open">
           <div class="side-section-label">
-            打开的分组<span class="line"></span>
+            工作区<span class="line"></span>
             <button id="newGroupBtn" class="side-head-btn" type="button" title="新建分组" aria-label="新建分组">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 5v14M5 12h14"/>
@@ -61,15 +61,15 @@
         </section>
         <!-- 横向拉条：调整「已保存」区高度（即同时调整「打开」区剩余高度的占比） -->
         <div id="savedResizer" class="saved-resizer" title="拖动调整已保存区高度" aria-hidden="true"></div>
-        <!-- 已保存的分组：固定在底部，点标题可收起；右上角入口直达"展开管理" -->
+        <!-- 分组/工作区管理：底部区，已保存分组与工作区混排（图标区分），管理入口进弹窗 -->
         <section class="side-section side-saved" id="savedSection">
           <div class="side-section-label saved-head">
-            <button class="saved-toggle" id="savedToggle" type="button" title="收起 / 展开已保存的分组">
+            <button class="saved-toggle" id="savedToggle" type="button" title="收起 / 展开分组/工作区管理">
               <span class="saved-caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
-              已保存的分组
+              分组/工作区管理
             </button>
             <span class="line"></span>
-            <button id="manageSavedBtn" class="side-head-btn" type="button" title="管理全部已保存的分组" aria-label="展开管理">
+            <button id="manageSavedBtn" class="side-head-btn" type="button" title="管理已保存的分组/工作区" aria-label="展开管理">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
           </div>
@@ -209,18 +209,27 @@
       <div class="modal modal-manage" role="dialog" aria-modal="true" aria-labelledby="mg-title">
         <div class="mg-head">
           <div>
-            <h2 id="mg-title">管理已保存的分组</h2>
-            <p class="sub">按名称自动排序。点名称可重命名，展开可管理标签。</p>
+            <h2 id="mg-title">分组/工作区管理</h2>
+            <p class="sub" id="mg-sub">按名称自动排序。右键名称可重命名，展开可管理标签。</p>
           </div>
           <input id="mg-search" class="mg-search" type="search" placeholder="搜索：分组名 / 路径 / 标签名（支持模糊匹配）" autocomplete="off" spellcheck="false" />
           <button id="mg-close" class="mg-close-btn" type="button" aria-label="关闭">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div class="mg-body" id="mg-body"></div>
-        <div class="mg-empty" id="mg-empty" hidden>
-          <div>还没有已保存的分组。</div>
-          <div class="sub">右键打开的分组「保存分组」就会出现在这里。</div>
+        <div class="mg-tabbar" role="tablist">
+          <button class="mg-tab-btn active" data-mg-tab="groups" type="button" role="tab">已保存分组</button>
+          <button class="mg-tab-btn" data-mg-tab="workspaces" type="button" role="tab">已保存工作区</button>
+        </div>
+        <div class="mg-body-wrap">
+          <div class="mg-az" id="mg-az" aria-label="按首字母跳转"></div>
+          <div class="mg-main">
+            <div class="mg-body" id="mg-body"></div>
+            <div class="mg-empty" id="mg-empty" hidden>
+              <div>还没有已保存的分组。</div>
+              <div class="sub">右键打开的分组「保存分组」就会出现在这里。</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -297,25 +306,32 @@
           <div class="settings-pane">
             <div class="set-section" data-section="appearance">
               <div class="set-row">
-                <label for="set-font-family">字体族</label>
+                <label>字体族</label>
                 <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
               </div>
               <div class="set-row two">
                 <div>
-                  <label for="set-font-size">字号 (px)</label>
+                  <label>字号 (px)</label>
                   <input id="set-font-size" type="number" min="8" max="40" step="1" />
                 </div>
                 <div>
-                  <label for="set-line-height">行高</label>
+                  <label>行高</label>
                   <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
                 </div>
               </div>
               <div class="set-row">
-                <label>主题</label>
-                <div class="seg-group" id="set-theme" role="radiogroup" aria-label="主题">
+                <label>终端主题</label>
+                <div class="seg-group" id="set-theme" role="radiogroup" aria-label="终端主题">
                   <button class="seg-item" data-val="vscode-dark" type="button" role="radio">VSCode Dark</button>
                   <button class="seg-item" data-val="vercel-dark" type="button" role="radio">Vercel Dark</button>
-                  <button class="seg-item" data-val="one-light" type="button" role="radio">One Light</button>
+                  <button class="seg-item" data-val="one-dark" type="button" role="radio">One Dark</button>
+                </div>
+              </div>
+              <div class="set-row">
+                <label>应用主题</label>
+                <div class="seg-group" id="set-app-theme" role="radiogroup" aria-label="应用主题">
+                  <button class="seg-item" data-val="light" type="button" role="radio">浅色</button>
+                  <button class="seg-item" data-val="dark" type="button" role="radio">深色</button>
                 </div>
               </div>
             </div>
@@ -323,20 +339,21 @@
             <div class="set-section" data-section="general" hidden>
               <div class="set-row">
                 <label>完成/待办绿点停留时间</label>
-                <div class="seg-group" id="set-downgrade-sec" role="radiogroup" aria-label="绿点停留时间">
+                <div class="seg-group seg-compact" id="set-downgrade-sec" role="radiogroup" aria-label="绿点停留时间">
                   <button class="seg-item" data-val="1" type="button" role="radio">1s</button>
                   <button class="seg-item" data-val="2" type="button" role="radio">2s</button>
                   <button class="seg-item" data-val="3" type="button" role="radio">3s</button>
                   <button class="seg-item" data-val="4" type="button" role="radio">4s</button>
                   <button class="seg-item" data-val="5" type="button" role="radio">5s</button>
+                  <button class="seg-item" data-val="6" type="button" role="radio">6s</button>
+                  <button class="seg-item" data-val="7" type="button" role="radio">7s</button>
+                  <button class="seg-item" data-val="8" type="button" role="radio">8s</button>
+                  <button class="seg-item" data-val="9" type="button" role="radio">9s</button>
+                  <button class="seg-item" data-val="10" type="button" role="radio">10s</button>
                 </div>
               </div>
               <div class="set-row set-row-toggle">
-                <label for="set-confirm-close">关闭未保存的分组前二次确认</label>
-                <input id="set-confirm-close" type="checkbox" />
-              </div>
-              <div class="set-row set-row-toggle">
-                <label for="set-show-floater">开启悬浮窗（屏幕角落显示待查看 / 待决策 / 运行中 数）</label>
+                <label>开启悬浮窗（屏幕角落显示待查看 / 待决策 / 运行中 数）</label>
                 <input id="set-show-floater" type="checkbox" />
               </div>
             </div>
@@ -360,59 +377,39 @@
                 </div>
               </div>
               <div class="set-row">
-                <label for="set-scrollback">回滚缓冲（行）</label>
+                <label>回滚缓冲（行）</label>
                 <input id="set-scrollback" type="number" min="100" max="100000" step="500" />
               </div>
               <div class="set-row set-row-toggle">
-                <label for="set-cursor-blink">光标闪烁</label>
+                <label>光标闪烁</label>
                 <input id="set-cursor-blink" type="checkbox" />
               </div>
             </div>
 
             <div class="set-section" data-section="defaults" hidden>
-              <div class="set-row">
-                <label for="set-default-cwd">默认新建分组路径</label>
-                <div class="row-with-btn">
-                  <input id="set-default-cwd" class="mono" type="text" autocomplete="off" spellcheck="false" />
-                  <button id="set-default-cwd-pick" class="btn btn-secondary" type="button" title="选择目录">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                    </svg>
-                    <span>浏览</span>
-                  </button>
-                </div>
-              </div>
               <div class="set-row set-row-toggle">
-                <label for="set-default-cc">新建标签默认自动启动 Claude Code</label>
+                <label>新建标签默认自动启动 Claude Code</label>
                 <input id="set-default-cc" type="checkbox" />
               </div>
             </div>
 
             <div class="set-section" data-section="claude" hidden>
               <div class="set-row">
-                <label for="set-claude-path">claude 可执行路径（留空 = 走 PATH）</label>
-                <div class="row-with-btn">
-                  <input id="set-claude-path" class="mono" type="text" autocomplete="off" spellcheck="false"
-                    placeholder="例如 C:\nvm4w\nodejs\claude.cmd" />
-                  <button id="set-claude-detect" class="btn btn-secondary" type="button">自动检测</button>
-                </div>
-              </div>
-              <div class="set-row">
-                <label for="set-default-model">新建会话默认模型（<code>--resume</code> 不受影响）</label>
+                <label>新建会话默认模型（<code>--resume</code> 不受影响）</label>
                 <button type="button" class="picker-select" id="set-default-model" data-val=""></button>
               </div>
               <div class="set-row set-row-toggle">
-                <label for="set-disable-update">禁止 cc 自动升级</label>
+                <label>禁止 cc 自动升级</label>
                 <input id="set-disable-update" type="checkbox" />
               </div>
               <div class="set-row set-row-toggle">
-                <label for="set-show-usage">底部状态栏显示 Claude 用量</label>
+                <label>底部状态栏显示 Claude 用量</label>
                 <input id="set-show-usage" type="checkbox" />
               </div>
 
               <div class="set-subhead">版本管理</div>
               <div class="set-row">
-                <label for="set-npm-registry">npm 镜像</label>
+                <label>npm 镜像</label>
                 <input id="set-npm-registry" class="mono" type="text" autocomplete="off" spellcheck="false"
                   placeholder="https://registry.npmmirror.com" />
               </div>

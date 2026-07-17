@@ -19,6 +19,14 @@ export function naturalNameCompare(a: string, b: string): number {
   return NAME_COLLATOR.compare(nameSortKey(a), nameSortKey(b))
 }
 
+// 名称的拼音首字母（a-z），非字母开头（数字/符号）归到 '#'。
+// 与 naturalNameCompare 同一套拼音转换，保证 A~Z 跳转条和排序结果对得上。
+export function nameInitial(s: string): string {
+  const py = pinyin(s.trim(), { toneType: 'none', type: 'string', nonZh: 'consecutive' })
+  const ch = py.trim().charAt(0).toLowerCase()
+  return /[a-z]/.test(ch) ? ch : '#'
+}
+
 // 仅当 mousedown 与 mouseup（click）都落在 scrim 自身时触发关闭。
 // 防止用户在 modal 里按住选文字 → 拖到外部释放被误判为"点外部"。
 export function bindScrimDismiss(scrim: HTMLElement, onDismiss: () => void): void {

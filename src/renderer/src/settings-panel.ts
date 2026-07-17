@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type CursorStyle } from './themes'
+import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle } from './themes'
 import { bindScrimDismiss, confirmDialog, showCtxMenu } from './ui-helpers'
 import { icon } from './svg-icons'
 import { MODEL_GROUPS } from './session-info'
@@ -43,20 +43,16 @@ export class SettingsPanel {
   private fSize = document.getElementById('set-font-size') as HTMLInputElement
   private fLine = document.getElementById('set-line-height') as HTMLInputElement
   private fTheme = document.getElementById('set-theme') as HTMLDivElement
+  private fAppTheme = document.getElementById('set-app-theme') as HTMLDivElement
   private fCursorGroup = document.getElementById('set-cursor-style') as HTMLDivElement
   private fCursorBlink = document.getElementById('set-cursor-blink') as HTMLInputElement
   private fScrollback = document.getElementById('set-scrollback') as HTMLInputElement
-  private fDefaultCwd = document.getElementById('set-default-cwd') as HTMLInputElement
   private fDefaultCC = document.getElementById('set-default-cc') as HTMLInputElement
-  private fClaudePath = document.getElementById('set-claude-path') as HTMLInputElement
   private fDefaultModel = document.getElementById('set-default-model') as HTMLButtonElement
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
-  private fConfirmClose = document.getElementById('set-confirm-close') as HTMLInputElement
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
   private fShowFloater = document.getElementById('set-show-floater') as HTMLInputElement
-  private detectBtn = document.getElementById('set-claude-detect') as HTMLButtonElement
-  private pickCwdBtn = document.getElementById('set-default-cwd-pick') as HTMLButtonElement
   private fNpmReg = document.getElementById('set-npm-registry') as HTMLInputElement
   private ccList = document.getElementById('cc-ver-list') as HTMLDivElement
   private ccPager = document.getElementById('cc-ver-pager') as HTMLDivElement
@@ -97,7 +93,7 @@ export class SettingsPanel {
     this.resetBtn.addEventListener('click', () => {
       confirmDialog({
         title: '恢复默认设置',
-        message: '确定把所有设置恢复到默认？<br>字体 / 光标 / 主题 / Claude 路径 / 镜像 等都会被重置。<br>此操作不可撤销。',
+        message: '确定把所有设置恢复到默认？<br>字体 / 光标 / 主题 / 镜像 等都会被重置。<br>此操作不可撤销。',
         okLabel: '恢复',
         danger: true,
         onOk: () => {
@@ -126,16 +122,15 @@ export class SettingsPanel {
     }
 
     this.initSeg(this.fTheme)
+    this.initSeg(this.fAppTheme)
     this.initSeg(this.fDowngradeSec)
     this.fDefaultModel.addEventListener('click', (e) => {
       e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
       this.openModelPicker()
     })
 
-    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fDefaultCwd, this.fClaudePath, this.fNpmReg]
-    const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fConfirmClose, this.fShowUsage, this.fShowFloater]
-    this.detectBtn.addEventListener('click', () => void this.runDetect())
-    this.pickCwdBtn.addEventListener('click', () => void this.pickDefaultCwd())
+    const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fNpmReg]
+    const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fShowUsage, this.fShowFloater]
     for (const el of live) {
       el.addEventListener('input', () => this.commitChange())
       el.addEventListener('change', () => this.commitChange())
@@ -425,7 +420,6 @@ export class SettingsPanel {
   private async activateVersion(path: string): Promise<void> {
     const cur = this.hooks.getSettings()
     if (cur.claudePath === path) return
-    this.fClaudePath.value = path
     const next = { ...cur, claudePath: path }
     this.hooks.setSettings(next)
     // hooks.setSettings 走 300ms 去抖落盘 —— 但下面 refresh 立即通过 IPC 让主进程读磁盘
@@ -583,15 +577,6 @@ export class SettingsPanel {
     showCtxMenu(items, r.left, r.bottom + 4, () => this.fDefaultModel.classList.remove('open'))
   }
 
-  private async pickDefaultCwd(): Promise<void> {
-    const cur = this.fDefaultCwd.value.trim()
-    const picked = await window.term.pickDirectory(cur || undefined)
-    if (picked) {
-      this.fDefaultCwd.value = picked
-      this.commitChange()
-    }
-  }
-
   // 设置里勾了「禁止自动升级」但系统环境变量还没写（如默认勾选、从未触发过写入）→
   // 补写一次，保持设置与系统状态一致。
   private async ensureUpdConsistency(): Promise<void> {
@@ -608,47 +593,22 @@ export class SettingsPanel {
     this.fSize.value = String(s.font.size)
     this.fLine.value = String(s.font.lineHeight)
     this.setSeg(this.fTheme, s.terminal.theme)
+    this.setSeg(this.fAppTheme, s.appTheme)
     this.currentCursor = s.cursor.style
     this.paintCursorActive()
     this.fCursorBlink.checked = s.cursor.blink
     this.fScrollback.value = String(s.terminal.scrollback)
-    this.fDefaultCwd.value = s.lastUsedCwd || s.defaults.cwd
     this.fDefaultCC.checked = s.defaults.autoLaunchCC
     // 未知的 model arg 兜底到空（跟随 cc 默认）—— 老配置里存了已退役 id 时不至于白屏
     const known = new Set<string>(['', ...MODEL_GROUPS.flatMap((g) => g.rows.map((r) => r.arg))])
     this.fDefaultModel.dataset.val = known.has(s.defaults.model) ? s.defaults.model : ''
     this.paintModelPicker()
-    this.fClaudePath.value = s.claudePath
     this.fNpmReg.value = s.npmRegistry
     this.fDisableUpd.checked = s.disableAutoupdater
     this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
-    this.fConfirmClose.checked = s.confirmCloseUnsaved
     this.fShowUsage.checked = s.showClaudeUsage
     this.fShowFloater.checked = s.showFloater
     this.lastDisableUpd = s.disableAutoupdater
-  }
-
-  private async runDetect(): Promise<void> {
-    const old = this.detectBtn.textContent
-    this.detectBtn.disabled = true
-    this.detectBtn.textContent = '检测中…'
-    try {
-      const path = await window.term.claudeDetect()
-      if (path) {
-        this.fClaudePath.value = path
-        this.commitChange()
-        this.detectBtn.textContent = '已填入 ✓'
-      } else {
-        this.detectBtn.textContent = '没找到'
-      }
-    } catch {
-      this.detectBtn.textContent = '检测失败'
-    } finally {
-      setTimeout(() => {
-        this.detectBtn.textContent = old ?? '自动检测'
-        this.detectBtn.disabled = false
-      }, 1600)
-    }
   }
 
   private clamp(n: number, min: number, max: number, fb: number): number {
@@ -676,20 +636,19 @@ export class SettingsPanel {
         scrollback: this.clamp(Number(this.fScrollback.value), 100, 100000, cur.terminal.scrollback),
         theme: (this.getSeg(this.fTheme) as ThemePreset) || cur.terminal.theme
       },
+      appTheme: (this.getSeg(this.fAppTheme) as AppTheme) || cur.appTheme,
       defaults: {
-        cwd: this.fDefaultCwd.value,
+        // cwd 预填全靠 lastUsedCwd 自动记忆，设置面板不再提供手动默认路径
+        cwd: cur.defaults.cwd,
         autoLaunchCC: this.fDefaultCC.checked,
         model: this.fDefaultModel.dataset.val ?? ''
       },
-      claudePath: this.fClaudePath.value.trim(),
+      // claudePath 由 CC 版本管理 / 首启自动检测维护，面板不直接编辑（...cur 已带上）
       npmRegistry: this.fNpmReg.value.trim() || DEFAULT_SETTINGS.npmRegistry,
       disableAutoupdater: this.fDisableUpd.checked,
-      statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 5, cur.statusDowngradeSec),
-      confirmCloseUnsaved: this.fConfirmClose.checked,
+      statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 10, cur.statusDowngradeSec),
       showClaudeUsage: this.fShowUsage.checked,
-      showFloater: this.fShowFloater.checked,
-      // 「默认新建分组路径」框即代表下次预填，写回时同步 lastUsedCwd 让它立即生效
-      lastUsedCwd: this.fDefaultCwd.value
+      showFloater: this.fShowFloater.checked
     }
     this.hooks.setSettings(next)
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {

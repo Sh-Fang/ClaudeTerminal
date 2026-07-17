@@ -39,10 +39,23 @@ export interface SavedGroupRecord {
   srcId?: string
 }
 
+export interface SavedWorkspaceRecord {
+  id: string
+  name: string
+  savedAt: string
+  groupCount: number
+  tabCount: number
+  snapshot: {
+    groups: GroupRecord[]
+    activeTabId: string | null
+  }
+}
+
 export interface Workspace {
   version: 2
   groups: GroupRecord[]
   savedGroups: SavedGroupRecord[]
+  savedWorkspaces: SavedWorkspaceRecord[]
   activeTabId: string | null
 }
 
@@ -72,7 +85,8 @@ export interface HookPaths {
   pwshProfilePs1: string
 }
 
-export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-light'
+export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
+export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 
 export interface Settings {
@@ -80,6 +94,7 @@ export interface Settings {
   font: { family: string; size: number; lineHeight: number }
   cursor: { style: CursorStyle; blink: boolean }
   terminal: { scrollback: number; theme: ThemePreset }
+  appTheme: AppTheme
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   npmRegistry: string
@@ -90,7 +105,6 @@ export interface Settings {
   savedCollapsed: boolean
   sidebarSavedHeight: number
   statusDowngradeSec: number
-  confirmCloseUnsaved: boolean
   showClaudeUsage: boolean
   showFloater: boolean
   floaterX: number | null
@@ -225,7 +239,6 @@ export interface TermBridge {
   floaterFocusMain(): void
   floaterHide(): void
   // 悬浮窗右键弹菜单时，菜单可能比卡片宽 → 让主进程临时把窗口放大，关菜单再缩回
-  floaterResize(w: number, h: number): void
   floaterSetFocusable(on: boolean): void
   // 主窗口侧：悬浮窗被右键菜单关掉时通知一下，刷新内存里的 settings 副本
   onFloaterHidden(cb: () => void): () => void
@@ -321,7 +334,6 @@ const api: TermBridge = {
   },
   floaterFocusMain: () => ipcRenderer.send('floater:focusMain'),
   floaterHide: () => ipcRenderer.send('floater:hide'),
-  floaterResize: (w, h) => ipcRenderer.send('floater:resize', { w, h }),
   floaterSetFocusable: (on) => ipcRenderer.send('floater:setFocusable', !!on),
   onFloaterHidden: (cb) => {
     const h = (): void => cb()

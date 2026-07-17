@@ -46,16 +46,30 @@ export interface SavedGroupRecord {
   srcId?: string // 原始 group.id，用于「同组覆盖」
 }
 
+// 保存整个工作区：当前 groups + activeTabId 完整快照，用于一键恢复整套开发上下文
+export interface SavedWorkspaceRecord {
+  id: string
+  name: string
+  savedAt: string
+  groupCount: number
+  tabCount: number
+  snapshot: {
+    groups: GroupRecord[]
+    activeTabId: string | null
+  }
+}
+
 export interface Workspace {
   version: 2
   groups: GroupRecord[]
   savedGroups: SavedGroupRecord[]
+  savedWorkspaces: SavedWorkspaceRecord[]
   activeTabId: string | null
 }
 
 const FILE = () => join(app.getPath('userData'), 'workspace.json')
 
-const EMPTY: Workspace = { version: 2, groups: [], savedGroups: [], activeTabId: null }
+const EMPTY: Workspace = { version: 2, groups: [], savedGroups: [], savedWorkspaces: [], activeTabId: null }
 
 function normalizeSession(s: unknown): SessionRecord | null {
   if (!s || typeof s !== 'object') return null
@@ -141,6 +155,26 @@ function normalizeSaved(s: unknown): SavedGroupRecord | null {
   }
 }
 
+function normalizeSavedWorkspace(s: unknown): SavedWorkspaceRecord | null {
+  if (!s || typeof s !== 'object') return null
+  const r = s as Record<string, unknown>
+  if (typeof r.id !== 'string' || typeof r.name !== 'string') return null
+  const rawSnap = (r.snapshot ?? {}) as Record<string, unknown>
+  const groups = Array.isArray(rawSnap.groups)
+    ? rawSnap.groups.map(normalizeGroup).filter((g): g is GroupRecord => !!g)
+    : []
+  const activeTabId = typeof rawSnap.activeTabId === 'string' ? rawSnap.activeTabId : null
+  const tabCount = groups.reduce((n, g) => n + g.tabs.length, 0)
+  return {
+    id: r.id,
+    name: r.name,
+    savedAt: typeof r.savedAt === 'string' ? r.savedAt : new Date().toISOString(),
+    groupCount: typeof r.groupCount === 'number' ? r.groupCount : groups.length,
+    tabCount: typeof r.tabCount === 'number' ? r.tabCount : tabCount,
+    snapshot: { groups, activeTabId }
+  }
+}
+
 function migrateV1(data: Record<string, unknown>): Workspace {
   // v1: { version:1, tabs:[{id,name,cwd,...}], activeTabId }
   const v1Tabs = Array.isArray(data.tabs) ? data.tabs : []
@@ -170,6 +204,7 @@ function migrateV1(data: Record<string, unknown>): Workspace {
     version: 2,
     groups,
     savedGroups: [],
+    savedWorkspaces: [],
     activeTabId: typeof data.activeTabId === 'string' ? data.activeTabId : null
   }
 }
@@ -198,10 +233,14 @@ export function loadWorkspace(): Workspace {
     const savedGroups = Array.isArray(data.savedGroups)
       ? data.savedGroups.map(normalizeSaved).filter((s): s is SavedGroupRecord => !!s)
       : []
+    const savedWorkspaces = Array.isArray(data.savedWorkspaces)
+      ? data.savedWorkspaces.map(normalizeSavedWorkspace).filter((s): s is SavedWorkspaceRecord => !!s)
+      : []
     return {
       version: 2,
       groups,
       savedGroups,
+      savedWorkspaces,
       activeTabId: typeof data.activeTabId === 'string' ? data.activeTabId : null
     }
   } catch {

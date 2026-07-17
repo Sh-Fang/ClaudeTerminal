@@ -7,7 +7,8 @@ import { SessionEventWatcher } from './session-events'
 import { StateEventWatcher } from './state-events'
 import { isSafeExternalUrl } from './url-safety'
 import { setFloaterEnabled, destroyFloater } from './floater'
-import { loadSettings } from './settings'
+import { loadSettings, saveSettings } from './settings'
+import { detectClaudePath } from './claude-helper'
 import { logEvent, startLogging, stopLogging } from './app-log'
 
 let mainWindow: BrowserWindow | null = null
@@ -312,6 +313,18 @@ app.whenReady().then(() => {
   // 启动时按设置决定是否拉起悬浮窗
   try {
     if (loadSettings().showFloater) setFloaterEnabled(true)
+  } catch {}
+  // claudePath 为空（首次启动 / 从未配置）→ 自动检测一次并持久化；
+  // 找到就写死绝对路径，之后由 CC 版本管理接手维护。找不到保持空（走 PATH）。
+  try {
+    const s = loadSettings()
+    if (!s.claudePath.trim()) {
+      const detected = detectClaudePath()
+      if (detected) {
+        saveSettings({ ...s, claudePath: detected })
+        logEvent('claude_path_autodetected', { path: detected })
+      }
+    }
   } catch {}
 
   app.on('activate', () => {

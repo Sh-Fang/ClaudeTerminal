@@ -9,6 +9,8 @@ export interface TermTabHandlers {
   openSearch: () => void
   onRequestNewTab: () => void
   onRequestCloseSelf: () => void
+  // Ctrl+S：把当前脏分组保存到"已保存分组"
+  onRequestSaveGroup?: () => void
   onPtyStarted?: () => void
   // 用户在 busy 中按 ESC 撤回提示词时，Claude 不会发 hook，由 renderer 兜底重置
   onUserAbort?: () => void
@@ -288,6 +290,8 @@ export class TerminalTab {
         if (e.key === 't' || e.key === 'T') { this.handlers.onRequestNewTab(); return false }
         if (e.key === 'w' || e.key === 'W') { this.handlers.onRequestCloseSelf(); return false }
         if (e.key === 'f' || e.key === 'F') { this.handlers.openSearch(); return false }
+        // Ctrl+S：保存当前分组（顺带挡掉 XOFF —— 裸 \x13 会把终端"冻住"，几乎不会是用户本意）
+        if (e.key === 's' || e.key === 'S') { this.handlers.onRequestSaveGroup?.(); return false }
         // Ctrl+P：命令面板(由 CommandPalette 在 window capture 阶段自行处理)。
         // 这里只负责不让 xterm 把它译成 pty 输入(pwsh PSReadLine 会把 Ctrl+P 当"历史上一条")。
         if (e.key === 'p' || e.key === 'P') return false

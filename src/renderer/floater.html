@@ -14,13 +14,14 @@
         overflow: hidden;
         cursor: default;
       }
-      /* 卡片：pill 风、深色半透明、固定 100×30 在左上角，不随窗口拉伸。
-         窗口被菜单撑大时，空出来的区域就是菜单的位置；card 永远是 pill 自己。
+      /* 卡片：pill 风、深色半透明，固定画在窗口中央偏移 (200, 130) 处 ——
+         必须与主进程 floater.ts 的 PILL_OFF_X/Y 保持一致。四周的透明留白是
+         右键菜单的活动空间，平时整窗鼠标穿透，不影响点击底下的东西。
          去掉外 drop-shadow —— 窗口透明，阴影投在空气里看着像污渍 */
       .card {
         box-sizing: border-box;
         position: absolute;
-        top: 0; left: 0;
+        top: 130px; left: 200px;
         width: 130px; height: 34px;
         background: rgba(40, 40, 42, 0.94);
         border-radius: 17px;

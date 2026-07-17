@@ -1,4 +1,8 @@
-// 悬浮窗渲染入口：订阅主进程推送的计数 → 渲染。
+// 悬浮窗渲染入口（重写版）：订阅主进程推送的计数 → 渲染胶囊；
+// 窗口是"菜单包络"大小的透明窗，胶囊固定在中央偏移处（见 floater.html .card）。
+// 鼠标穿透由主进程轮询光标位置管理（胶囊是 app-region:drag，页面收不到它上面的
+// 鼠标事件，渲染层做不了悬停检测）；这里只负责画胶囊和右键菜单。
+// 右键菜单直接在窗口内展开，零窗口 resize。
 // 复用主窗口同款 preload，所以 window.term 是可用的。
 // 这里手抄一份 FloaterCounts 结构，避免跨 tsconfig 直接 import preload。
 interface FloaterCounts {
@@ -14,10 +18,11 @@ const cardEl = document.querySelector('.card') as HTMLDivElement
 
 interface CtxItem { label?: string; icon?: string; danger?: boolean; sep?: boolean; act?: () => void }
 
-const FLOATER_W = 130
-const FLOATER_H = 34
-const MENU_PAD = 6
+const MENU_PAD = 8
 
+let menuOpen = false
+
+// ─── 右键菜单（UI 与主窗口 .ctx 同款） ───────────────────────────────
 function buildCtx(items: CtxItem[]): void {
   ctxEl.innerHTML = ''
   for (const it of items) {
@@ -37,40 +42,51 @@ function buildCtx(items: CtxItem[]): void {
   }
 }
 
-function showCtx(items: CtxItem[], x: number, y: number): void {
+function openCtx(items: CtxItem[], x: number, y: number): void {
   buildCtx(items)
+  menuOpen = true
   ctxEl.classList.add('open')
-  // 先放到不可见处量一下尺寸，再决定窗口要撑多大
+  // 量一下实际尺寸，再决定往哪边展开
   ctxEl.style.left = '-9999px'
   ctxEl.style.top = '0px'
   const w = ctxEl.offsetWidth
   const h = ctxEl.offsetHeight
-  // 用户语义：鼠标点击处 = 菜单左上角；窗口必须装下菜单
-  const desiredW = Math.max(FLOATER_W, x + w + MENU_PAD)
-  const desiredH = Math.max(FLOATER_H, y + h + MENU_PAD)
-  window.term?.floaterResize?.(desiredW, desiredH)
+  // 窗口可能有一截伸出屏幕外（胶囊贴屏幕边缘时），翻转判断要用"屏幕剩余空间"，
+  // 不能只看窗口内坐标 —— 否则菜单会展开到屏幕外的窗口区域里。
+  const sx = window.screenX + x
+  const sy = window.screenY + y
+  const scr = window.screen
+  const availL = scr.availLeft ?? 0
+  const availT = scr.availTop ?? 0
+  let px = sx + w + MENU_PAD <= availL + scr.availWidth ? x : x - w
+  let py = sy + h + MENU_PAD <= availT + scr.availHeight ? y : y - h
+  // 兜底夹回窗口内
+  px = Math.min(Math.max(0, px), window.innerWidth - w - 2)
+  py = Math.min(Math.max(0, py), window.innerHeight - h - 2)
+  ctxEl.style.left = `${px}px`
+  ctxEl.style.top = `${py}px`
   // 菜单打开期间让卡片不抢拖动事件，确保 mousedown 能派发到 renderer 关菜单
   cardEl?.classList.add('menu-open')
-  // 临时变成可聚焦并 focus，下面 blur 监听就能捕捉到"点了悬浮窗外面"
+  // 临时变成可聚焦并 focus：blur 监听用来捕捉"点了悬浮窗外面"；
+  // 同时 focusable=true 也是主进程侧"菜单开着，别切穿透"的信号
   window.term?.floaterSetFocusable?.(true)
-  // 等一帧 OS / Chromium 把新尺寸刷上，再把菜单贴到 (x, y)
-  requestAnimationFrame(() => {
-    ctxEl.style.left = `${x}px`
-    ctxEl.style.top = `${y}px`
-  })
 }
+
 function closeCtx(): void {
-  if (!ctxEl.classList.contains('open')) return
+  if (!menuOpen) return
+  menuOpen = false
   ctxEl.classList.remove('open')
   cardEl?.classList.remove('menu-open')
   window.term?.floaterSetFocusable?.(false)
-  window.term?.floaterResize?.(FLOATER_W, FLOATER_H)
 }
+
 // 关闭路径：
-// 1. 点到菜单以外（卡片上）—— 走 mousedown 监听
+// 1. 左键点到菜单以外（胶囊上）—— 走 mousedown 监听
 // 2. 点到悬浮窗外面（其他 app / 桌面）—— 走 window blur
 // 3. Esc 键
+// 右键不在 mousedown 里关（交给 contextmenu 的 toggle 语义处理）。
 document.addEventListener('mousedown', (e) => {
+  if (e.button === 2) return
   if (!(e.target as HTMLElement).closest('#ctx')) closeCtx()
 })
 window.addEventListener('blur', () => closeCtx())
@@ -83,14 +99,15 @@ const ICON_OPEN =
 const ICON_EYE_OFF =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.79 19.79 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.78 19.78 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
 
+// 穿透态下右键会被 OS 接走，能触发到这里的 contextmenu 必然发生在胶囊/菜单上
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault()
   // 已经开着 → 再次右键当作关闭（toggle），不要在新位置重开导致闪烁
-  if (ctxEl.classList.contains('open')) {
+  if (menuOpen) {
     closeCtx()
     return
   }
-  showCtx(
+  openCtx(
     [
       { label: '打开主窗口', icon: ICON_OPEN, act: () => window.term?.floaterFocusMain?.() },
       { sep: true },
@@ -101,6 +118,7 @@ window.addEventListener('contextmenu', (e) => {
   )
 })
 
+// ─── 计数渲染 ─────────────────────────────────────────────────────
 function render(c: FloaterCounts): void {
   // 顺序：黄(待决策) → 蓝(运行中) → 绿(待查看)。三块常驻不隐藏 0，
   // 中间用竖条分隔。固定三列让数字位置稳定，扫一眼就能定位。

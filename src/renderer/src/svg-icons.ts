@@ -10,6 +10,7 @@ type IconName =
   | 'folder'
   | 'folder-filled'
   | 'rotate-ccw'
+  | 'layers'
   | 'clock'
   | 'settings'
   | 'edit'
@@ -53,6 +54,7 @@ const PATHS: Record<IconName, string> = {
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   'folder-filled': '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   'rotate-ccw': '<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   settings:
     '<circle cx="12" cy="12" r="3"/>' +
