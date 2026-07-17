@@ -1,4 +1,4 @@
-import { BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
+import { app, BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
@@ -94,6 +94,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   })
   ipcMain.handle('window:isMaximized', (e) => winFromEvent(e)?.isMaximized() ?? false)
 
+  ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('claude:available', () => isClaudeAvailable())
   ipcMain.handle('claude:sessionExists', (_e, sessionId: string) => sessionExists(sessionId))
   ipcMain.handle('claude:sessionMeta', (_e, sessionId: string) => readSessionMeta(sessionId))

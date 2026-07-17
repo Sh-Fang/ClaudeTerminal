@@ -200,6 +200,7 @@ export interface TermBridge {
   claudeSessionMeta(sessionId: string): Promise<SessionMeta>
   claudeSessionUsage(sessionId: string): Promise<SessionUsage>
   claudeDetect(): Promise<string | null>
+  appVersion(): Promise<string>
   ccListInstalled(): Promise<InstalledCcVersion[]>
   ccListRemote(): Promise<CcRemoteResult>
   ccInstall(version: string): Promise<CcInstallResult>
@@ -267,6 +268,7 @@ const api: TermBridge = {
   claudeSessionMeta: (sessionId) => ipcRenderer.invoke('claude:sessionMeta', sessionId),
   claudeSessionUsage: (sessionId) => ipcRenderer.invoke('claude:sessionUsage', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
+  appVersion: () => ipcRenderer.invoke('app:version'),
   ccListInstalled: () => ipcRenderer.invoke('cc:listInstalled'),
   ccListRemote: () => ipcRenderer.invoke('cc:listRemote'),
   ccInstall: (version) => ipcRenderer.invoke('cc:install', version),

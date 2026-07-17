@@ -55,6 +55,10 @@ export class SettingsPanel {
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
   private fShowFloater = document.getElementById('set-show-floater') as HTMLInputElement
   private fNpmReg = document.getElementById('set-npm-registry') as HTMLInputElement
+  private aboutVersion = document.getElementById('about-version') as HTMLSpanElement
+  private aboutCheckBtn = document.getElementById('about-check-update') as HTMLButtonElement
+  private aboutHint = document.getElementById('about-hint') as HTMLDivElement
+  private aboutVersionLoaded = false
   private ccList = document.getElementById('cc-ver-list') as HTMLDivElement
   private ccPager = document.getElementById('cc-ver-pager') as HTMLDivElement
   private ccCurLabel = document.getElementById('cc-ver-current-label') as HTMLSpanElement
@@ -144,6 +148,18 @@ export class SettingsPanel {
     this.ccRefreshBtn.addEventListener('click', () => void this.refresh(true))
     this.ccSearch.addEventListener('input', () => { this.ccPage = 1; this.renderList() })
     this.ccOnlyInstalled.addEventListener('change', () => { this.ccPage = 1; this.renderList() })
+
+    // 检查更新：目前是壳子，更新服务接入后替换这里的实现
+    this.aboutCheckBtn.addEventListener('click', () => {
+      this.aboutCheckBtn.disabled = true
+      this.aboutCheckBtn.textContent = '检查中…'
+      this.aboutHint.textContent = ''
+      window.setTimeout(() => {
+        this.aboutCheckBtn.disabled = false
+        this.aboutCheckBtn.textContent = '检查更新'
+        this.aboutHint.textContent = '更新服务尚未接入，敬请期待。'
+      }, 900)
+    })
   }
 
   open(): void {
@@ -163,6 +179,10 @@ export class SettingsPanel {
       this.ensureInstallPhaseSub()
       // 首次打开必拉；之后只刷新已安装（远端保持缓存，靠「刷新」按钮显式重拉）
       void this.refresh(!this.ccLoaded)
+    }
+    if (name === 'about' && !this.aboutVersionLoaded) {
+      this.aboutVersionLoaded = true
+      void window.term.appVersion().then((v) => { this.aboutVersion.textContent = v })
     }
   }
 

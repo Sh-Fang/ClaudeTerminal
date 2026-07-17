@@ -1458,6 +1458,11 @@ async function restoreSnapshotGroups(
     let g = findGroup(sg.id)
       || groups.find((x) => x.name === sg.name && x.cwd === sg.cwd)
     if (!g) g = ensureGroup({ name: sg.name, cwd: sg.cwd })
+    // 该分组若有单分组保存记录，把 srcId 重绑到本次的 live 分组 ——
+    // isGroupDirty / autoSyncTabToSaved 都只按 srcId 找记录，不重绑的话
+    // "明明已保存的分组"恢复出来就会因 srcId 对不上被标脏（黄点）。
+    const saved = findSavedForGroup(g)
+    if (saved) saved.srcId = g.id
     const liveIds = new Set(g.tabs.map((t) => t.id))
     for (const t of sg.tabs) {
       if (liveIds.has(t.id)) continue
