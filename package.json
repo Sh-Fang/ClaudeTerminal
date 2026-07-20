@@ -1,7 +1,7 @@
 {
   "name": "claude-terminal",
-  "version": "0.5.10",
-  "description": "定制化终端（Electron + PowerShell 7），适配 Windows",
+  "version": "0.5.11",
+  "description": "适配 Claude Code 的多窗口管理终端",
   "private": true,
   "type": "commonjs",
   "main": "out/main/index.js",

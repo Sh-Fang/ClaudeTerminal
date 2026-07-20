@@ -315,20 +315,6 @@
           <div class="settings-pane">
             <div class="set-section" data-section="appearance">
               <div class="set-row">
-                <label>字体族</label>
-                <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
-              </div>
-              <div class="set-row two">
-                <div>
-                  <label>字号 (px)</label>
-                  <input id="set-font-size" type="number" min="8" max="40" step="1" />
-                </div>
-                <div>
-                  <label>行高</label>
-                  <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
-                </div>
-              </div>
-              <div class="set-row">
                 <label>终端主题</label>
                 <div class="seg-group" id="set-theme" role="radiogroup" aria-label="终端主题">
                   <button class="seg-item" data-val="vscode-dark" type="button" role="radio">VSCode Dark</button>
@@ -343,6 +329,9 @@
                   <button class="seg-item" data-val="dark" type="button" role="radio">深色</button>
                 </div>
               </div>
+            </div>
+
+            <div class="set-section" data-section="general" hidden>
               <div class="set-row">
                 <label>额度显示样式</label>
                 <div class="seg-group" id="set-usage-style" role="radiogroup" aria-label="额度显示样式">
@@ -350,9 +339,6 @@
                   <button class="seg-item" data-val="ring" type="button" role="radio">圆环</button>
                 </div>
               </div>
-            </div>
-
-            <div class="set-section" data-section="general" hidden>
               <div class="set-row">
                 <label>完成/待办绿点停留时间</label>
                 <div class="seg-group seg-compact" id="set-downgrade-sec" role="radiogroup" aria-label="绿点停留时间">
@@ -375,6 +361,20 @@
             </div>
 
             <div class="set-section" data-section="terminal" hidden>
+              <div class="set-row">
+                <label>字体族</label>
+                <input id="set-font-family" class="mono" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="set-row two">
+                <div>
+                  <label>字号 (px)</label>
+                  <input id="set-font-size" type="number" min="8" max="40" step="1" />
+                </div>
+                <div>
+                  <label>行高</label>
+                  <input id="set-line-height" type="number" min="1.0" max="2.0" step="0.05" />
+                </div>
+              </div>
               <div class="set-row">
                 <label>光标样式</label>
                 <div class="seg-group" id="set-cursor-style" role="radiogroup" aria-label="光标样式">
