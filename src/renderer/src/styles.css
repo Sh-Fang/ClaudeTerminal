@@ -863,6 +863,9 @@ button.saved-toggle:hover { color: var(--ink); }
   display: flex;
   align-items: center;
 }
+/* display:flex 会盖掉 [hidden] 的 display:none，得显式让 hidden 赢，否则关掉「显示剩余额度」
+   还留一条空的 56px 底栏 */
+.side-usage[hidden] { display: none; }
 .side-usage > * { flex: 1; min-width: 0; }
 .usage-bars {
   display: grid;
@@ -1729,11 +1732,11 @@ button.saved-toggle:hover { color: var(--ink); }
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-/* 显示剩余额度 + 额度显示样式 同一行：左开关右样式；关掉开关时右侧整块收起 */
+/* 显示剩余额度 + 额度显示样式 竖排：上开关下样式；关掉开关时下面整块收起 */
 .set-row-usage {
   display: flex;
-  align-items: flex-start;
-  gap: 28px;
+  flex-direction: column;
+  gap: 12px;
 }
 .set-row-usage .usage-cell { min-width: 0; }
 .set-row-usage .usage-cell label { margin-bottom: 6px; }

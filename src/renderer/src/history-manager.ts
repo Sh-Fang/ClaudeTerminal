@@ -237,7 +237,7 @@ export class HistoryManager {
       const id = restore.dataset.restore!
       const entry = this.entries.find((x) => x.tabId === id)
       if (entry) {
-        this.close()
+        // 不关弹窗：后台恢复，用户可能连着恢复多条（与「分组/工作区管理」一致）
         this.hooks.onRestore(entry)
       }
       return
@@ -263,7 +263,7 @@ export class HistoryManager {
     if (row && row.dataset.tabId) {
       const entry = this.entries.find((x) => x.tabId === row.dataset.tabId)
       if (entry) {
-        this.close()
+        // 不关弹窗：后台恢复，用户可能连着恢复多条（与「分组/工作区管理」一致）
         this.hooks.onRestore(entry)
       }
     }
