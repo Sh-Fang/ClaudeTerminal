@@ -14,6 +14,7 @@ import {
   naturalNameCompare,
   openModal,
   openPickTabs,
+  recencyDesc,
   shortPath,
   showCtxMenu,
   toast,
@@ -105,6 +106,7 @@ interface SavedGroup {
   name: string
   cwd: string
   savedAt: string
+  lastRestoredAt?: string
   snapshot: {
     name: string
     cwd: string
@@ -124,6 +126,7 @@ interface SavedWorkspace {
   id: string
   name: string
   savedAt: string
+  lastRestoredAt?: string
   snapshot: {
     groups: SavedWorkspaceSnapshotGroup[]
     activeTabId: string | null
@@ -259,6 +262,7 @@ function scheduleSave(): void {
         name: s.name,
         cwd: s.cwd,
         savedAt: s.savedAt,
+        lastRestoredAt: s.lastRestoredAt,
         tabCount: s.snapshot.tabs.length,
         srcId: s.srcId,
         snapshot: {
@@ -279,6 +283,7 @@ function scheduleSave(): void {
         id: w.id,
         name: w.name,
         savedAt: w.savedAt,
+        lastRestoredAt: w.lastRestoredAt,
         groupCount: w.snapshot.groups.length,
         tabCount: w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0),
         snapshot: {
@@ -661,8 +666,10 @@ function addTabToSavedGroup(savedId: string): void {
   })
 }
 
-// 查看降级：用户切到 done/attention 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
+// 查看降级：用户切到 done 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
 // 用意：误点切走时绿点仍保留；真正"我看过了"才消失。
+// attention（待决策）不参与降级：决策没做完前该信号一直成立，只能由 cc 发新状态
+// （用户回答后 busy→done）或手动"标记为已查看"来清，倒计时无权把它抹成 idle。
 //
 // 焦点门：用户切到该标签但主窗口在后台（在别的 app 上工作）→ 不应该算"看过了"，
 // 不启动倒计时；倒计时进行中失去焦点 → 暂停；回到焦点 → 重新走完整 N 秒。
@@ -676,7 +683,7 @@ function clearDowngradeTimer(): void {
 }
 function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
   if (activeTabId !== tabId) return
-  if (st !== 'done' && st !== 'attention') return
+  if (st !== 'done') return
   // 主窗口失焦时不启动倒计时；focus 事件回来时 resumeDowngradeIfNeeded 会再调一次
   if (!document.hasFocus()) return
   clearDowngradeTimer()
@@ -699,7 +706,7 @@ function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
   }, settings.statusDowngradeSec * 1000)
 }
 
-// 焦点回到主窗口：如果当前激活的 tab 正好处于 done/attention，按完整 N 秒重启倒计时
+// 焦点回到主窗口：如果当前激活的 tab 正好处于 done，按完整 N 秒重启倒计时（attention 不降级）
 function resumeDowngradeIfNeeded(): void {
   if (!activeTabId) return
   const ctx = findTab(activeTabId)
@@ -1059,6 +1066,9 @@ async function restoreSavedTabs(
     // 立刻写入 saved snapshot，保持分组"已保存"状态（用户期望：在恢复里新建的默认就保存）
     autoSyncTabToSaved(blank, g)
   }
+  // 真正带进来了标签（恢复或新建空白）才算"动过"→ 记恢复时间，把卡片顶到侧边栏最前。
+  // 纯 no-op（点恢复但都已打开）不改时间，避免无谓重排。
+  if (created.length > 0) s.lastRestoredAt = new Date().toISOString()
   // 恢复后焦点切到刚 created 的第一个 —— 用户语义就是"打开这个保存的分组进去看看"。
   // created 为空（点恢复但所有 tab 已在 live 里）才回退到原有 active / 组内首个。
   const firstCreated = created[0]
@@ -1545,6 +1555,10 @@ async function restoreSavedWorkspace(wsId: string): Promise<void> {
     danger: false,
     onOk: async () => {
       const n = await restoreSnapshotGroups(w.snapshot.groups, w.snapshot.activeTabId)
+      // 确认恢复即算"动过"（哪怕都已打开、n=0），把该工作区顶到侧边栏最前
+      w.lastRestoredAt = new Date().toISOString()
+      sidebar.render()
+      scheduleSave()
       toast(`已恢复工作区「${w.name}」的 ${n} 个新标签`)
     }
   })
@@ -1624,9 +1638,11 @@ const sidebar = new Sidebar({
       dirty: isGroupDirty(g)
     })),
   // 侧边栏渲染：按名称排序（中文拼音 + 数字自然），与管理弹窗保持一致
+  // 侧边栏快捷区：按「最近一次动过的时间」倒序（恢复优先，没恢复过就用保存时间）。
+  // 管理页仍走 naturalNameCompare，两处刻意不同。
   getSaved: (): SavedView[] =>
     [...savedGroups]
-      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .sort((a, b) => recencyDesc(a.lastRestoredAt ?? a.savedAt, b.lastRestoredAt ?? b.savedAt))
       .map((s) => ({
         id: s.id,
         name: s.name,
@@ -1636,7 +1652,7 @@ const sidebar = new Sidebar({
       })),
   getSavedWorkspaces: (): SavedWorkspaceView[] =>
     [...savedWorkspaces]
-      .sort((a, b) => naturalNameCompare(a.name, b.name))
+      .sort((a, b) => recencyDesc(a.lastRestoredAt ?? a.savedAt, b.lastRestoredAt ?? b.savedAt))
       .map((w) => ({
         id: w.id,
         name: w.name,
@@ -2261,6 +2277,7 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
       name: s.name,
       cwd: s.cwd,
       savedAt: s.savedAt,
+      lastRestoredAt: s.lastRestoredAt,
       srcId: s.srcId,
       snapshot: {
         name: s.snapshot.name,
@@ -2283,6 +2300,7 @@ historyOpenBtn?.addEventListener('click', () => void historyManager.open())
       id: w.id,
       name: w.name,
       savedAt: w.savedAt,
+      lastRestoredAt: w.lastRestoredAt,
       snapshot: {
         activeTabId: w.snapshot.activeTabId ?? null,
         groups: w.snapshot.groups.map((g) => ({

@@ -34,6 +34,7 @@ export interface SavedGroupRecord {
   name: string
   cwd: string
   savedAt: string
+  lastRestoredAt?: string
   tabCount: number
   snapshot: GroupRecord
   srcId?: string
@@ -43,6 +44,7 @@ export interface SavedWorkspaceRecord {
   id: string
   name: string
   savedAt: string
+  lastRestoredAt?: string
   groupCount: number
   tabCount: number
   snapshot: {

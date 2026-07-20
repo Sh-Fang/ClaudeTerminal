@@ -41,6 +41,7 @@ export interface SavedGroupRecord {
   name: string
   cwd: string
   savedAt: string
+  lastRestoredAt?: string // 最近一次恢复的时间；侧边栏按 lastRestoredAt ?? savedAt 倒序
   tabCount: number
   snapshot: GroupRecord
   srcId?: string // 原始 group.id，用于「同组覆盖」
@@ -51,6 +52,7 @@ export interface SavedWorkspaceRecord {
   id: string
   name: string
   savedAt: string
+  lastRestoredAt?: string // 最近一次恢复的时间；侧边栏按 lastRestoredAt ?? savedAt 倒序
   groupCount: number
   tabCount: number
   snapshot: {
@@ -149,6 +151,7 @@ function normalizeSaved(s: unknown): SavedGroupRecord | null {
     name: r.name,
     cwd: r.cwd,
     savedAt: typeof r.savedAt === 'string' ? r.savedAt : new Date().toISOString(),
+    lastRestoredAt: typeof r.lastRestoredAt === 'string' ? r.lastRestoredAt : undefined,
     tabCount: typeof r.tabCount === 'number' ? r.tabCount : snap.tabs.length,
     snapshot: snap,
     srcId: typeof r.srcId === 'string' ? r.srcId : undefined
@@ -169,6 +172,7 @@ function normalizeSavedWorkspace(s: unknown): SavedWorkspaceRecord | null {
     id: r.id,
     name: r.name,
     savedAt: typeof r.savedAt === 'string' ? r.savedAt : new Date().toISOString(),
+    lastRestoredAt: typeof r.lastRestoredAt === 'string' ? r.lastRestoredAt : undefined,
     groupCount: typeof r.groupCount === 'number' ? r.groupCount : groups.length,
     tabCount: typeof r.tabCount === 'number' ? r.tabCount : tabCount,
     snapshot: { groups, activeTabId }

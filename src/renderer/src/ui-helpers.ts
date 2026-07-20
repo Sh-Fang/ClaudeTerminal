@@ -19,6 +19,11 @@ export function naturalNameCompare(a: string, b: string): number {
   return NAME_COLLATOR.compare(nameSortKey(a), nameSortKey(b))
 }
 
+// 两个 ISO 时间串的「新→旧」比较。ISO 串字典序即时序，直接比即可。
+export function recencyDesc(a: string, b: string): number {
+  return a < b ? 1 : a > b ? -1 : 0
+}
+
 // 名称的拼音首字母（a-z），非字母开头（数字/符号）归到 '#'。
 // 与 naturalNameCompare 同一套拼音转换，保证 A~Z 跳转条和排序结果对得上。
 export function nameInitial(s: string): string {
