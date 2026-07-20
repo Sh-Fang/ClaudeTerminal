@@ -489,23 +489,165 @@ bindScrimDismiss(pickScrim, () => {
   cb?.()
 })
 
-// 子序列模糊匹配：needle 的字符按顺序依次出现在 haystack 即算命中（不要求相邻）。
-// 例："clat" 命中 "Claude Terminal"（c-l-a-...-t），大小写不敏感。
-// 跨多个 haystack 用任一命中 = 整体命中。
-export function fuzzyMatch(needle: string, haystacks: string | string[]): boolean {
-  const n = needle.trim().toLowerCase()
-  if (!n) return true
-  const list = Array.isArray(haystacks) ? haystacks : [haystacks]
-  for (const raw of list) {
-    if (!raw) continue
-    const h = raw.toLowerCase()
-    let i = 0
-    for (let k = 0; k < h.length && i < n.length; k++) {
-      if (h.charCodeAt(k) === n.charCodeAt(i)) i++
+// ─── 模糊搜索：评分 + 空格分词(AND) + 拼音(中文) + 命中高亮 ──────────────
+// fuzzySearch(query, fields) 返回命中分数与每个 field 的高亮区间；不命中返回 null。
+//  · 空格把 query 拆成多个词，每个词都必须命中某个 field（AND）。
+//  · 每个词优先「连续子串」命中（高分），退而求「子序列」命中（低分）；词首/字段首加权。
+//  · 中文字段额外按拼音建索引：输入 "lkgd" 能命中「理科工单」，命中回映到原字符做高亮。
+//  · 结果分数供调用方倒序排列；高亮区间供 highlightRanges 渲染。
+export type Range = [number, number] // [start, end) 原始字符下标
+
+const SEP_RE = /[\s\-_/\\.,:：·|]/
+const CJK_RE = /[一-鿿]/
+
+// 一个字段的检索索引：raw = 小写原串（下标即原下标）；pyFlat = 拼音展开串，pyMap 把
+// pyFlat 下标映射回原字符下标。无中文时 pyFlat 置空，避免和 raw 重复匹配。
+interface Hay {
+  raw: string
+  pyFlat: string
+  pyMap: number[]
+}
+const hayCache = new Map<string, Hay>()
+function buildHay(text: string): Hay {
+  const cached = hayCache.get(text)
+  if (cached) return cached
+  let pyFlat = ''
+  const pyMap: number[] = []
+  let hasCJK = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (CJK_RE.test(ch)) {
+      hasCJK = true
+      const py = pinyin(ch, { toneType: 'none', type: 'string', nonZh: 'removed' }).toLowerCase() || ch.toLowerCase()
+      for (const c of py) { pyFlat += c; pyMap.push(i) }
+    } else {
+      pyFlat += ch.toLowerCase()
+      pyMap.push(i)
     }
-    if (i === n.length) return true
   }
-  return false
+  const hay: Hay = { raw: text.toLowerCase(), pyFlat: hasCJK ? pyFlat : '', pyMap }
+  if (hayCache.size > 2000) hayCache.clear() // 简单封顶，防长会话无限增长
+  hayCache.set(text, hay)
+  return hay
+}
+
+function isBoundary(flat: string, pos: number): boolean {
+  return pos === 0 || SEP_RE.test(flat[pos - 1])
+}
+
+// 单个词在一条 flat 串里的最佳命中，返回 { score, positions(flat 下标) } 或 null。
+function matchInFlat(term: string, flat: string): { score: number; positions: number[] } | null {
+  if (!term) return { score: 0, positions: [] }
+  // 1) 连续子串：质量最高，取「词首加权 + 越靠前越好」的最佳一处
+  let best: { score: number; positions: number[] } | null = null
+  for (let idx = flat.indexOf(term); idx >= 0; idx = flat.indexOf(term, idx + 1)) {
+    let score = 1000 + (isBoundary(flat, idx) ? 200 : 0) - idx
+    if (idx === 0 && term.length === flat.length) score += 500 // 整字段精确命中
+    if (!best || score > best.score) {
+      best = { score, positions: Array.from({ length: term.length }, (_, k) => idx + k) }
+    }
+  }
+  if (best) return best
+  // 2) 子序列：字符按序出现即可（跨分隔符也算），分数低
+  const positions: number[] = []
+  let i = 0
+  for (let k = 0; k < flat.length && i < term.length; k++) {
+    if (flat.charCodeAt(k) === term.charCodeAt(i)) { positions.push(k); i++ }
+  }
+  if (i < term.length) return null
+  const gaps = positions[positions.length - 1] - positions[0] - (term.length - 1)
+  const score = 400 + (isBoundary(flat, positions[0]) ? 100 : 0) - gaps * 8 - positions[0]
+  return { score, positions }
+}
+
+function toRanges(indices: number[]): Range[] {
+  const uniq = [...new Set(indices)].sort((a, b) => a - b)
+  const ranges: Range[] = []
+  for (const idx of uniq) {
+    const last = ranges[ranges.length - 1]
+    if (last && idx === last[1]) last[1] = idx + 1
+    else ranges.push([idx, idx + 1])
+  }
+  return ranges
+}
+
+function mergeRanges(ranges: Range[]): Range[] {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0])
+  const out: Range[] = []
+  for (const r of sorted) {
+    const last = out[out.length - 1]
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1])
+    else out.push([r[0], r[1]])
+  }
+  return out
+}
+
+// 一个词命中一个字段：raw 与 pinyin 两条索引都试，取高分；命中位置回映成原字符区间。
+function matchTermInField(term: string, hay: Hay): { score: number; ranges: Range[] } | null {
+  const rawM = matchInFlat(term, hay.raw)
+  let best = rawM ? { score: rawM.score, positions: rawM.positions, map: null as number[] | null } : null
+  if (hay.pyFlat) {
+    const pyM = matchInFlat(term, hay.pyFlat)
+    // 拼音命中略降权，等分时优先直接命中
+    if (pyM && (!best || pyM.score - 50 > best.score)) {
+      best = { score: pyM.score - 50, positions: pyM.positions, map: hay.pyMap }
+    }
+  }
+  if (!best) return null
+  const orig = best.map ? best.positions.map((p) => best!.map![p]) : best.positions
+  return { score: best.score, ranges: toRanges(orig) }
+}
+
+export interface FuzzyResult {
+  score: number
+  highlights: Range[][] // 与 fields 等长，每项是该字段的高亮区间
+}
+
+// query 命中 fields（任一词命中任一字段即为该词命中；所有词都命中才算整体命中）。
+// weights 可给字段加权（如分组名 > 路径）。空 query → 命中且 score=0（调用方保持原序）。
+export function fuzzySearch(query: string, fields: string[], weights?: number[]): FuzzyResult | null {
+  const highlights: Range[][] = fields.map(() => [])
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return { score: 0, highlights }
+  const hays = fields.map(buildHay)
+  let total = 0
+  for (const term of terms) {
+    let bestIdx = -1
+    let bestScore = -Infinity
+    let bestRanges: Range[] = []
+    for (let fi = 0; fi < fields.length; fi++) {
+      if (!fields[fi]) continue
+      const m = matchTermInField(term, hays[fi])
+      if (!m) continue
+      const s = m.score * (weights?.[fi] ?? 1)
+      if (s > bestScore) { bestScore = s; bestIdx = fi; bestRanges = m.ranges }
+    }
+    if (bestIdx < 0) return null // 有词一个字段都没命中 → 整体失败
+    total += bestScore
+    highlights[bestIdx] = mergeRanges([...highlights[bestIdx], ...bestRanges])
+  }
+  return { score: total, highlights }
+}
+
+// 兼容旧调用：只要不要分数/高亮的布尔判断。
+export function fuzzyMatch(needle: string, haystacks: string | string[]): boolean {
+  const list = Array.isArray(haystacks) ? haystacks : [haystacks]
+  return fuzzySearch(needle, list) !== null
+}
+
+// 按区间把 text 包上 <mark class="hl">，其余转义。ranges 为原字符下标 [start,end)。
+export function highlightRanges(text: string, ranges?: Range[]): string {
+  if (!ranges || ranges.length === 0) return escapeHtml(text)
+  const sorted = mergeRanges(ranges)
+  let out = ''
+  let pos = 0
+  for (const [s, e] of sorted) {
+    if (s > pos) out += escapeHtml(text.slice(pos, s))
+    out += `<mark class="hl">${escapeHtml(text.slice(s, e))}</mark>`
+    pos = e
+  }
+  if (pos < text.length) out += escapeHtml(text.slice(pos))
+  return out
 }
 
 export function escapeHtml(s: string): string {

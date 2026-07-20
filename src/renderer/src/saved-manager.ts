@@ -2,7 +2,7 @@
 // 主程通过 hooks 暴露最小接口，本类只负责 UI 渲染与交互。
 
 import { icon } from './svg-icons'
-import { escapeHtml, formatTs, fuzzyMatch, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, type CtxItem } from './ui-helpers'
+import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, type CtxItem, type Range } from './ui-helpers'
 
 export interface ManageTabView {
   id: string
@@ -154,10 +154,19 @@ export class SavedManager {
     this.searchInput.placeholder = '搜索：分组名 / 路径 / 标签名（支持模糊匹配）'
     const all = this.hooks.getSaved()
     const q = this.searchQuery.trim()
-    // 命中规则：分组名 / 路径 / 任一标签名 任一命中 = 整组保留
-    const list = q
-      ? all.filter((g) => fuzzyMatch(q, [g.name, g.cwd, ...g.tabs.map((t) => t.name)]))
-      : all
+    // 命中规则：分组名 / 路径 / 任一标签名 任一命中 = 整组保留；有搜索时按匹配分倒序。
+    // 路径用完整串匹配（保留全路径可搜），但只高亮名字/标签 —— 短显示串下标对不上，路径不高亮。
+    const list: Array<{ g: ManageGroupView; hl: Range[][] }> = q
+      ? all
+          .map((g) => {
+            const fields = [g.name, g.cwd, ...g.tabs.map((t) => t.name)]
+            const weights = [3, 1, ...g.tabs.map(() => 2)]
+            const r = fuzzySearch(q, fields, weights)
+            return r ? { g, hl: r.highlights, score: r.score } : null
+          })
+          .filter((x): x is { g: ManageGroupView; hl: Range[][]; score: number } => !!x)
+          .sort((a, b) => b.score - a.score)
+      : all.map((g) => ({ g, hl: [] as Range[][] }))
     this.body.innerHTML = ''
     if (list.length === 0) {
       this.renderAz([])
@@ -168,18 +177,26 @@ export class SavedManager {
       return
     }
     this.empty.hidden = true
-    for (const g of list) {
-      const el = this.row(g, !!q)
+    for (const { g, hl } of list) {
+      const el = this.row(g, hl, !!q)
       el.dataset.initial = nameInitial(g.name)
       this.body.appendChild(el)
     }
-    this.renderAz(list.map((g) => nameInitial(g.name)))
+    this.renderAz(list.map(({ g }) => nameInitial(g.name)))
   }
 
   private renderWorkspaces(): void {
     const all = this.hooks.getSavedWorkspaces()
     const q = this.searchQuery.trim()
-    const list = q ? all.filter((w) => fuzzyMatch(q, [w.name])) : all
+    const list: Array<{ w: ManageWorkspaceView; hl: Range[][] }> = q
+      ? all
+          .map((w) => {
+            const r = fuzzySearch(q, [w.name])
+            return r ? { w, hl: r.highlights, score: r.score } : null
+          })
+          .filter((x): x is { w: ManageWorkspaceView; hl: Range[][]; score: number } => !!x)
+          .sort((a, b) => b.score - a.score)
+      : all.map((w) => ({ w, hl: [] as Range[][] }))
     this.body.innerHTML = ''
     if (list.length === 0) {
       this.renderAz([])
@@ -190,12 +207,12 @@ export class SavedManager {
       return
     }
     this.empty.hidden = true
-    for (const w of list) {
-      const el = this.wsRow(w, !!q)
+    for (const { w, hl } of list) {
+      const el = this.wsRow(w, hl, !!q)
       el.dataset.initial = nameInitial(w.name)
       this.body.appendChild(el)
     }
-    this.renderAz(list.map((w) => nameInitial(w.name)))
+    this.renderAz(list.map(({ w }) => nameInitial(w.name)))
   }
 
   // 左缘 A~Z 竖排跳转条：只点亮当前列表里出现过的首字母；
@@ -218,7 +235,7 @@ export class SavedManager {
 
   // 工作区行：与分组行同一套 mg-row 外观，展开显示分组列表（不再下钻到标签页）。
   // 行上不放操作按钮 —— 恢复/重命名/删除都在右键菜单里。
-  private wsRow(w: ManageWorkspaceView, forceExpand = false): HTMLDivElement {
+  private wsRow(w: ManageWorkspaceView, hl: Range[][] = [], forceExpand = false): HTMLDivElement {
     const expanded = forceExpand || this.expanded.has(w.id)
     const wrap = document.createElement('div')
     wrap.className = 'mg-row is-visible' + (expanded ? ' is-expanded' : '')
@@ -227,7 +244,7 @@ export class SavedManager {
       <div class="mg-head-row" data-ws-row="${escapeHtml(w.id)}">
         <span class="mg-folder">${icon('layers')}</span>
         <div class="mg-info">
-          <div class="mg-name" title="右键有更多操作，点击展开">${escapeHtml(w.name)}</div>
+          <div class="mg-name" title="右键有更多操作，点击展开">${highlightRanges(w.name, hl[0])}</div>
           <div class="mg-meta">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(formatTs(w.savedAt))}</div>
         </div>
         <button class="mg-btn mg-toggle" data-ws-toggle="${escapeHtml(w.id)}" title="${expanded ? '收起分组' : '展开分组'}">${icon('chevron-down', { size: 14 })}</button>
@@ -255,7 +272,7 @@ export class SavedManager {
     }).join('')
   }
 
-  private row(g: ManageGroupView, forceExpand = false): HTMLDivElement {
+  private row(g: ManageGroupView, hl: Range[][] = [], forceExpand = false): HTMLDivElement {
     // 搜索时强制展开，让用户一眼看到命中的是哪个标签
     const expanded = forceExpand || this.expanded.has(g.id)
     const wrap = document.createElement('div')
@@ -268,25 +285,26 @@ export class SavedManager {
       <div class="mg-head-row" data-group-row="${escapeHtml(g.id)}">
         <span class="mg-folder">${icon('folder')}</span>
         <div class="mg-info">
-          <div class="mg-name" data-rename-group="${escapeHtml(g.id)}" title="右键有更多操作，点击展开">${escapeHtml(g.name)}</div>
+          <div class="mg-name" data-rename-group="${escapeHtml(g.id)}" title="右键有更多操作，点击展开">${highlightRanges(g.name, hl[0])}</div>
           <div class="mg-meta">${cwd} · ${g.tabs.length} 个标签 · ${escapeHtml(formatTs(g.savedAt))}</div>
         </div>
         <button class="mg-btn mg-toggle" data-toggle="${escapeHtml(g.id)}" title="${expanded ? '收起标签' : '展开标签'}">${icon('chevron-down', { size: 14 })}</button>
       </div>
       <div class="mg-tabs" ${expanded ? '' : 'hidden'}>
-        ${this.tabsHtml(g)}
+        ${this.tabsHtml(g, hl)}
       </div>
     `
     return wrap
   }
 
-  private tabsHtml(g: ManageGroupView): string {
+  private tabsHtml(g: ManageGroupView, hl: Range[][] = []): string {
     if (g.tabs.length === 0) {
       return '<div class="mg-tab-empty">这个保存的分组里已没有标签。</div>'
     }
-    return g.tabs.map((t) => `
+    // 分组行 fields 顺序是 [name, cwd, tab0, tab1…]，所以标签 i 的高亮取 hl[2 + i]
+    return g.tabs.map((t, i) => `
       <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(t.id)}">
-        <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${escapeHtml(t.name)}</span>
+        <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${highlightRanges(t.name, hl[2 + i])}</span>
         <span class="mg-tab-meta">${t.sessions} 会话${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
         <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="恢复该标签页到当前工作区">${icon('rotate-ccw', { size: 13 })}</button>
       </div>

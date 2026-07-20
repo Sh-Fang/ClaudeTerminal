@@ -3,7 +3,7 @@
 // 切桶，左侧 nav 切换右侧列表。点行/恢复按钮 = 恢复成 live tab；垃圾桶 = 单条删除。
 
 import type { SessionRecord } from './terminal-tab'
-import { escapeHtml, formatTs, fuzzyMatch, shortPath, bindScrimDismiss, confirmDialog } from './ui-helpers'
+import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, type Range } from './ui-helpers'
 import { icon } from './svg-icons'
 
 export interface HistoryEntry {
@@ -140,10 +140,18 @@ export class HistoryManager {
   }
 
   // 取过滤后的桶列表；空 query 直接返回原桶
-  private filtered(b: Bucket): HistoryEntry[] {
+  // 命中项 + 每项高亮；有搜索时按匹配分倒序，无搜索时保持原（时间）序。
+  // 路径用完整串匹配（保留全路径可搜），只高亮分组名/标签名，路径不高亮。
+  private filtered(b: Bucket): Array<{ e: HistoryEntry; hl: Range[][] }> {
     const q = this.searchQuery.trim()
-    if (!q) return this.grouped[b]
-    return this.grouped[b].filter((e) => fuzzyMatch(q, [e.groupName, e.tabName, e.cwd]))
+    if (!q) return this.grouped[b].map((e) => ({ e, hl: [] as Range[][] }))
+    return this.grouped[b]
+      .map((e) => {
+        const r = fuzzySearch(q, [e.groupName, e.tabName, e.cwd], [3, 3, 1])
+        return r ? { e, hl: r.highlights, score: r.score } : null
+      })
+      .filter((x): x is { e: HistoryEntry; hl: Range[][]; score: number } => !!x)
+      .sort((a, b) => b.score - a.score)
   }
 
   private render(): void {
@@ -197,10 +205,10 @@ export class HistoryManager {
       }
       return
     }
-    for (const e of list) this.body.appendChild(this.row(e))
+    for (const { e, hl } of list) this.body.appendChild(this.row(e, hl))
   }
 
-  private row(e: HistoryEntry): HTMLDivElement {
+  private row(e: HistoryEntry, hl: Range[][] = []): HTMLDivElement {
     const wrap = document.createElement('div')
     wrap.className = 'mg-row is-visible'
     wrap.dataset.tabId = e.tabId
@@ -211,7 +219,7 @@ export class HistoryManager {
       <div class="mg-head-row">
         <span class="mg-folder">${icon('folder')}</span>
         <div class="mg-info">
-          <div class="mg-name">${escapeHtml(e.groupName)} <span class="mg-group-name">· ${escapeHtml(e.tabName)}</span></div>
+          <div class="mg-name">${highlightRanges(e.groupName, hl[0])} <span class="mg-group-name">· ${highlightRanges(e.tabName, hl[1])}</span></div>
           <div class="mg-meta">${cwd} · ${sessionMeta} · ${escapeHtml(formatTs(e.lastSeenAt))}</div>
         </div>
         <button class="mg-btn" data-restore="${escapeHtml(e.tabId)}" title="恢复成新标签">${icon('rotate-ccw', { size: 14 })}</button>

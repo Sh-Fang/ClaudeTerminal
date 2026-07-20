@@ -741,8 +741,8 @@ button.saved-toggle:hover { color: var(--ink); }
      getComputedStyle().height 推算可用行数，border-box 下这个值含 padding，FitAddon 只
      减 .xterm 自身的 padding(=0)，会多报 1 行给 cc 然后最后一行被 overflow:hidden 切掉。
      真要留视觉边距，就改 #hosts 的 padding 或这里的 inset，绝对不要回到 padding 方案。
-     左边留 4px 视觉缓冲（不至于贴死侧栏分隔线）。 */
-  inset: 0 0 0 4px;
+     左边留 8px 视觉缓冲，对齐 PowerShell/Windows Terminal 默认左内边距（原 4px 偏窄）。 */
+  inset: 0 0 0 8px;
   box-sizing: border-box;
   display: none;
   overflow: hidden;
@@ -1498,6 +1498,14 @@ button.saved-toggle:hover { color: var(--ink); }
   display: inline-block;
   max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 搜索命中高亮：分组/工作区/历史 三个面板共用，复用告警软/深色（明暗自适应） */
+mark.hl {
+  background: var(--warning-soft);
+  color: var(--warning-deep);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 700;
 }
 /* ─── inline rename：所有行内重命名（侧边栏标签 / 弹窗分组名 / 标签名 / 工作区名）
    共用一套编辑态：无边框无底色无选区高亮 —— 光标落在最后一个字后面，
