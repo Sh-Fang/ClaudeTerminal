@@ -294,10 +294,6 @@
               <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><polyline points="6.5 9 10 12 6.5 15"/><line x1="12.5" y1="15" x2="17.5" y2="15"/></svg></span>
               终端
             </button>
-            <button class="set-nav-item" data-section="defaults" type="button">
-              <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
-              新建默认值
-            </button>
             <button class="set-nav-item" data-section="claude" type="button">
               <span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 0-9 9"/><path d="M12 3v9l6 3"/></svg></span>
               Claude Code
@@ -329,15 +325,25 @@
                   <button class="seg-item" data-val="dark" type="button" role="radio">深色</button>
                 </div>
               </div>
+              <div class="set-row set-row-usage">
+                <div class="usage-cell set-row-toggle">
+                  <label>显示剩余额度</label>
+                  <input id="set-show-usage" type="checkbox" />
+                </div>
+                <div class="usage-cell" id="set-usage-style-wrap" hidden>
+                  <label>额度显示样式</label>
+                  <div class="seg-group" id="set-usage-style" role="radiogroup" aria-label="额度显示样式">
+                    <button class="seg-item" data-val="bar" type="button" role="radio">进度条</button>
+                    <button class="seg-item" data-val="ring" type="button" role="radio">圆环</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="set-section" data-section="general" hidden>
-              <div class="set-row">
-                <label>额度显示样式</label>
-                <div class="seg-group" id="set-usage-style" role="radiogroup" aria-label="额度显示样式">
-                  <button class="seg-item" data-val="bar" type="button" role="radio">进度条</button>
-                  <button class="seg-item" data-val="ring" type="button" role="radio">圆环</button>
-                </div>
+              <div class="set-row set-row-toggle">
+                <label>新建标签默认自动启动 Claude Code</label>
+                <input id="set-default-cc" type="checkbox" />
               </div>
               <div class="set-row">
                 <label>完成/待办绿点停留时间</label>
@@ -402,13 +408,6 @@
               </div>
             </div>
 
-            <div class="set-section" data-section="defaults" hidden>
-              <div class="set-row set-row-toggle">
-                <label>新建标签默认自动启动 Claude Code</label>
-                <input id="set-default-cc" type="checkbox" />
-              </div>
-            </div>
-
             <div class="set-section" data-section="claude" hidden>
               <div class="set-row">
                 <label>新建会话默认模型（<code>--resume</code> 不受影响）</label>
@@ -417,10 +416,6 @@
               <div class="set-row set-row-toggle">
                 <label>禁止 cc 自动升级</label>
                 <input id="set-disable-update" type="checkbox" />
-              </div>
-              <div class="set-row set-row-toggle">
-                <label>底部状态栏显示 Claude 用量</label>
-                <input id="set-show-usage" type="checkbox" />
               </div>
 
               <div class="set-subhead">版本管理</div>

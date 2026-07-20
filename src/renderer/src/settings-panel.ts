@@ -45,6 +45,7 @@ export class SettingsPanel {
   private fTheme = document.getElementById('set-theme') as HTMLDivElement
   private fAppTheme = document.getElementById('set-app-theme') as HTMLDivElement
   private fUsageStyle = document.getElementById('set-usage-style') as HTMLDivElement
+  private fUsageStyleWrap = document.getElementById('set-usage-style-wrap') as HTMLDivElement
   private fCursorGroup = document.getElementById('set-cursor-style') as HTMLDivElement
   private fCursorBlink = document.getElementById('set-cursor-blink') as HTMLInputElement
   private fScrollback = document.getElementById('set-scrollback') as HTMLInputElement
@@ -144,6 +145,8 @@ export class SettingsPanel {
     for (const el of changeOnly) {
       el.addEventListener('change', () => this.commitChange())
     }
+    // 关掉「显示剩余额度」就把「额度显示样式」整块收起
+    this.fShowUsage.addEventListener('change', () => this.syncUsageStyleVis())
 
     this.ccRefreshBtn.addEventListener('click', () => void this.refresh(true))
     this.ccSearch.addEventListener('input', () => { this.ccPage = 1; this.renderList() })
@@ -631,8 +634,14 @@ export class SettingsPanel {
     this.fDisableUpd.checked = s.disableAutoupdater
     this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
     this.fShowUsage.checked = s.showClaudeUsage
+    this.syncUsageStyleVis()
     this.fShowFloater.checked = s.showFloater
     this.lastDisableUpd = s.disableAutoupdater
+  }
+
+  // 「额度显示样式」只有在「显示剩余额度」开启时才露出
+  private syncUsageStyleVis(): void {
+    this.fUsageStyleWrap.hidden = !this.fShowUsage.checked
   }
 
   private clamp(n: number, min: number, max: number, fb: number): number {
