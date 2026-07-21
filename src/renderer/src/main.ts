@@ -483,6 +483,17 @@ async function spawnTabPty(tab: TerminalTab): Promise<void> {
   void refreshSessionMeta(tab)
 }
 
+// 每帧只处理一小批标签的 PTY，批内并发发起、批与批之间让出一帧主线程。
+// 目的：避免"N 个标签同步初始化 + 串行等 IPC"堆成一个长任务把 UI 线程占满
+// （表现为恢复多标签时掉帧、鼠标拖动卡顿）。
+const RESTORE_BATCH = 2
+async function spawnTabsBatched(tabs: TerminalTab[]): Promise<void> {
+  for (let i = 0; i < tabs.length; i += RESTORE_BATCH) {
+    if (i > 0) await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await Promise.all(tabs.slice(i, i + RESTORE_BATCH).map((t) => spawnTabPty(t)))
+  }
+}
+
 async function refreshSessionMeta(tab: TerminalTab): Promise<void> {
   let changed = false
   for (const s of tab.sessions) {
@@ -1099,7 +1110,7 @@ async function restoreSavedTabs(
   toolbar.render()
   savedManager.render()
   if (activeTabId) activateUI(activeTabId)
-  for (const t of created) await spawnTabPty(t)
+  await spawnTabsBatched(created)
   scheduleSave()
   // toast 文案区分：纯新建 / 恢复+新建 / 纯恢复
   const restoredN = created.length - (addBlank ? 1 : 0)
@@ -1518,8 +1529,9 @@ async function restoreSnapshotGroups(
   sgs: SavedWorkspaceSnapshotGroup[],
   preferActiveTabId: string | null
 ): Promise<number> {
-  const created: TerminalTab[] = []
-  let firstTab: TerminalTab | null = null
+  // 1) 先把分组建好、收集待恢复的标签规格（此步很轻，不创建 xterm 实例）。
+  //    把重活（new Terminal + mount + startPty）留到后面分批做，避免一次性堆成长任务。
+  const pending: { group: Group; spec: Parameters<typeof makeTab>[1] }[] = []
   for (const sg of sgs) {
     // 用已存在的同 id/同名同 cwd 分组，否则新建（与 restoreSavedTabs 逻辑保持一致）
     let g = findGroup(sg.id)
@@ -1533,30 +1545,52 @@ async function restoreSnapshotGroups(
     const liveIds = new Set(g.tabs.map((t) => t.id))
     for (const t of sg.tabs) {
       if (liveIds.has(t.id)) continue
-      const tab = makeTab(g, {
-        id: t.id,
-        name: t.name,
-        sessions: t.sessions,
-        activeSessionId: t.activeSessionId,
-        autoLaunchCC: t.autoLaunchCC,
-        dirty: false
+      pending.push({
+        group: g,
+        spec: {
+          id: t.id,
+          name: t.name,
+          sessions: t.sessions,
+          activeSessionId: t.activeSessionId,
+          autoLaunchCC: t.autoLaunchCC,
+          dirty: false
+        }
       })
-      created.push(tab)
-      if (!firstTab) firstTab = tab
     }
   }
-  // 优先激活快照里存的 active tab，若不在恢复出来的集合就退到首个新建 tab
-  if (preferActiveTabId && created.some((t) => t.id === preferActiveTabId)) {
-    activeTabId = preferActiveTabId
-  } else if (firstTab) {
-    activeTabId = firstTab.id
-  }
+  // 分组结构先渲染出来，标签随后分批冒出（配合"全部收起"就只先看到分组维度）
   sidebar.render()
   toolbar.render()
-  if (activeTabId) activateUI(activeTabId)
-  for (const t of created) await spawnTabPty(t)
+  if (pending.length === 0) return 0
+
+  // 2) 提前算好前台目标：快照里存的 active tab（若确实在待恢复集合里），否则第一个。
+  //    严格按快照顺序创建标签，保证组内标签顺序不乱；等目标标签所在那一批建好即激活它，
+  //    既让前台尽快可见、又不会"先激活错的再跳"闪烁。
+  const targetActiveId =
+    preferActiveTabId && pending.some((p) => p.spec.id === preferActiveTabId)
+      ? preferActiveTabId
+      : pending[0].spec.id
+
+  // 3) 分批创建 + 拉起 PTY：每批只建 RESTORE_BATCH 个 xterm，批与批之间让出一帧，
+  //    主线程始终有余量处理鼠标/绘制，不再因 N 个标签同步初始化整屏掉帧。
+  let activated = false
+  for (let i = 0; i < pending.length; i += RESTORE_BATCH) {
+    if (i > 0) await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    const batchTabs = pending.slice(i, i + RESTORE_BATCH).map((p) => makeTab(p.group, p.spec))
+    sidebar.render()
+    toolbar.render()
+    if (!activated) {
+      const hit = batchTabs.find((t) => t.id === targetActiveId)
+      if (hit) {
+        activeTabId = hit.id
+        activateUI(hit.id)
+        activated = true
+      }
+    }
+    await Promise.all(batchTabs.map((t) => spawnTabPty(t)))
+  }
   scheduleSave()
-  return created.length
+  return pending.length
 }
 
 async function restoreSavedWorkspace(wsId: string): Promise<void> {
