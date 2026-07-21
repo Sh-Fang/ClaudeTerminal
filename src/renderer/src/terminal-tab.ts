@@ -1,4 +1,4 @@
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type IUnicodeVersionProvider } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
@@ -204,7 +204,32 @@ export class TerminalTab {
     // 宽度表对齐：xterm 内置的是 Unicode 6 时代宽度表，emoji（如 ✅）被记 1 格，
     // 而 cc（string-width，新版 Unicode）按 2 格打印 —— buffer 格数和视觉字形错位，
     // 选中重绘时就会整段平移/凭空多空格。切到 Unicode 11 表与打印方对齐。
-    this.term.loadAddon(new Unicode11Addon())
+    //
+    // 再补一刀「VS16」：带变体选择符 U+FE0F 的符号（✔️/⚠️/↗️/ℹ️…）string-width 记 2 格，
+    // 而 Unicode11 表只按基字符宽度记 1 格 —— 代码块 diff 有背景色时，背景/列位错开一格特别明显。
+    // 先用一个「假 terminal」捕获 addon 内部的 UnicodeV11 provider（activate 走公开的
+    // terminal.unicode.register，minify 稳定），委托它的完整宽度表；再注册一个覆盖 '11' 的
+    // 包装：只把「基字符 + U+FE0F」的合并宽度强制成 2，和 string-width 对齐。
+    let baseV11: IUnicodeVersionProvider | undefined
+    new Unicode11Addon().activate({
+      unicode: { register: (p: IUnicodeVersionProvider) => (baseV11 = p) }
+    } as unknown as Terminal)
+    if (baseV11) {
+      const base = baseV11
+      const patched: IUnicodeVersionProvider = {
+        version: '11',
+        wcwidth: (cp) => base.wcwidth(cp),
+        // packed 布局（见 addon 源码）：bit0=shouldJoin，bit1-2=width。U+FE0F 时清宽度位再置 2。
+        charProperties: (cp, preceding) => {
+          const r = base.charProperties(cp, preceding)
+          return cp === 0xfe0f ? (r & ~0b110) | 0b100 : r
+        }
+      }
+      ;(this.term.unicode as unknown as { register(p: IUnicodeVersionProvider): void }).register(patched)
+    } else {
+      // 捕获失败（addon 内部结构变了）兜底：退回原始 Unicode11，至少纯 emoji 对齐
+      this.term.loadAddon(new Unicode11Addon())
+    }
     this.term.unicode.activeVersion = '11'
     this.term.loadAddon(
       new WebLinksAddon((event, uri) => {
