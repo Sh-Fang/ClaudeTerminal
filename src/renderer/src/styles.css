@@ -889,6 +889,9 @@ button.saved-toggle:hover { color: var(--ink); }
 .usage-bars .ubar-val.lv-ok { color: #23d18b; }
 .usage-bars .ubar-val.lv-warn { color: #f5a623; }
 .usage-bars .ubar-val.lv-danger { color: #f14c4c; }
+/* 无数据占位（横杠）：用 mute 灰，区别于真实 0% 的绿色 */
+.usage-bars .ubar-val.lv-none,
+.usage-bars.is-rings .uring-val.lv-none { color: var(--mute); }
 .usage-bars .ubar-reset { color: var(--mute); opacity: .75; white-space: nowrap; }
 
 /* 圆环样式：5h额度 / 本周额度 左右并排；每项 = 左圆环（心是百分比）+ 右侧两行（标题 / 重置倒计时） */

@@ -1,6 +1,6 @@
 {
   "name": "claude-terminal",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "适配 Claude Code 的多窗口管理终端",
   "private": true,
   "type": "commonjs",

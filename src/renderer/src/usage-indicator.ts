@@ -41,14 +41,16 @@ function lvOf(p: number): string {
   return 'lv-ok'
 }
 
-// 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版
-function bar(label: string, percent: number, reset: string): string {
-  const lv = lvOf(percent)
+// 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版。
+// percent 为 null = 最终没拿到数据 → 空轨 + 横杠占位（区别于真实 0%）。
+function bar(label: string, percent: number | null, reset: string): string {
+  const has = typeof percent === 'number'
+  const lv = has ? lvOf(percent as number) : 'lv-none'
   return (
     `<span class="ubar">` +
     `<span class="ubar-label">${label}</span>` +
-    `<span class="ubar-track"><i class="ubar-fill ${lv}" style="width:${percent}%"></i></span>` +
-    `<span class="ubar-val ${lv}">${percent}%</span>` +
+    `<span class="ubar-track"><i class="ubar-fill ${lv}" style="width:${has ? percent : 0}%"></i></span>` +
+    `<span class="ubar-val ${lv}">${has ? `${percent}%` : '—'}</span>` +
     (reset ? `<span class="ubar-reset">${reset}</span>` : '') +
     `</span>`
   )
@@ -58,9 +60,11 @@ function bar(label: string, percent: number, reset: string): string {
 // 横向排布：左侧圆环，右侧两行文字（标题 / 重置倒计时）。
 const RING_R = 15.5
 const RING_C = 2 * Math.PI * RING_R
-function ring(label: string, percent: number, reset: string): string {
-  const lv = lvOf(percent)
-  const offset = (RING_C * (100 - Math.min(100, Math.max(0, percent)))) / 100
+function ring(label: string, percent: number | null, reset: string): string {
+  const has = typeof percent === 'number'
+  const p = has ? Math.min(100, Math.max(0, percent as number)) : 0
+  const lv = has ? lvOf(percent as number) : 'lv-none'
+  const offset = (RING_C * (100 - p)) / 100
   return (
     `<span class="uring">` +
     `<span class="uring-box">` +
@@ -70,7 +74,7 @@ function ring(label: string, percent: number, reset: string): string {
     `stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" ` +
     `transform="rotate(-90 20 20)"></circle>` +
     `</svg>` +
-    `<span class="uring-val ${lv}">${percent}%</span>` +
+    `<span class="uring-val ${lv}">${has ? `${p}%` : '—'}</span>` +
     `</span>` +
     `<span class="uring-meta">` +
     `<span class="uring-label">${label}</span>` +
@@ -108,7 +112,9 @@ export class UsageIndicator {
     this.panel.hidden = false
     this.el.className = 'usage-bars loading'
     this.el.textContent = 'Claude 用量…'
-    void this.refresh(true)
+    // 非 force：快照/新鲜缓存(180s)直接秒显，过期或没有才真拉 —— 反复开关不重复打接口，
+    // 也不会无视失败冷却硬打；首次无缓存时仍会立即拉。
+    void this.refresh(false)
     this.pollTimer = window.setInterval(() => void this.refresh(false), POLL_MS)
     this.tickTimer = window.setInterval(() => this.paint(), TICK_MS)
   }
@@ -146,18 +152,17 @@ export class UsageIndicator {
       this.el.title = u.error || '获取失败'
       return
     }
-    const five = pct(u.fiveHour)
-    const week = pct(u.sevenDay)
-    const fiveReset = fmtCountdown(u.fiveHour?.resetsAt ?? null)
-    const weekReset = fmtCountdown(u.sevenDay?.resetsAt ?? null)
+    // 5h 缺失才跳过；本周额度始终渲染，最终没拿到就传 null → 显示横杠占位（区别于真实 0%）
+    const render = this.style === 'ring' ? ring : bar
+    const items: string[] = []
+    if (u.fiveHour) items.push(render('5h额度', pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt)))
+    items.push(
+      u.sevenDay
+        ? render('本周额度', pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt))
+        : render('本周额度', null, '')
+    )
     this.el.title = ''
-    if (this.style === 'ring') {
-      // 圆环样式：5h 额度和本周额度左右并排
-      this.el.className = 'usage-bars is-rings'
-      this.el.innerHTML = ring('5h额度', five, fiveReset) + ring('本周额度', week, weekReset)
-    } else {
-      this.el.className = 'usage-bars'
-      this.el.innerHTML = bar('5h额度', five, fiveReset) + bar('本周额度', week, weekReset)
-    }
+    this.el.className = this.style === 'ring' ? 'usage-bars is-rings' : 'usage-bars'
+    this.el.innerHTML = items.join('')
   }
 }
