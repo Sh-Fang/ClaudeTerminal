@@ -50,6 +50,8 @@ const savedSectionEl = document.getElementById('savedSection') as HTMLElement
 const savedResizer = document.getElementById('savedResizer') as HTMLDivElement
 const savedToggleBtn = document.getElementById('savedToggle') as HTMLButtonElement
 const historyOpenBtn = document.getElementById('historyOpenBtn') as HTMLButtonElement
+const expandAllBtn = document.getElementById('expandAllBtn') as HTMLButtonElement
+const collapseAllBtn = document.getElementById('collapseAllBtn') as HTMLButtonElement
 
 // ─── 状态 ───────────────────────────────────────────────────────────
 interface Group {
@@ -797,6 +799,21 @@ function toggleGroupCollapse(groupId: string): void {
   const g = findGroup(groupId)
   if (!g) return
   g.collapsed = !g.collapsed
+  sidebar.render()
+  scheduleSave()
+}
+
+// 一键把工作区里全部分组设为收起/展开：全收起只剩分组维度，全展开露出所有标签
+function setAllGroupsCollapsed(collapsed: boolean): void {
+  if (groups.length === 0) return
+  let changed = false
+  for (const g of groups) {
+    if (g.collapsed !== collapsed) {
+      g.collapsed = collapsed
+      changed = true
+    }
+  }
+  if (!changed) return
   sidebar.render()
   scheduleSave()
 }
@@ -2259,6 +2276,8 @@ const historyManager = new HistoryManager({
 })
 
 historyOpenBtn?.addEventListener('click', () => void historyManager.open())
+expandAllBtn?.addEventListener('click', () => setAllGroupsCollapsed(false))
+collapseAllBtn?.addEventListener('click', () => setAllGroupsCollapsed(true))
 
 // ─── 启动恢复 ────────────────────────────────────────────────────
 // 轻量模式：只读 settings + savedGroups，groups/activeTabId 一律不恢复。
