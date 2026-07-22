@@ -91,6 +91,7 @@ export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
+export type CloseBehavior = 'quit' | 'tray'
 
 export interface Settings {
   version: 1
@@ -110,6 +111,7 @@ export interface Settings {
   statusDowngradeSec: number
   showClaudeUsage: boolean
   usageStyle: UsageStyle
+  closeBehavior: CloseBehavior
   showFloater: boolean
   floaterX: number | null
   floaterY: number | null

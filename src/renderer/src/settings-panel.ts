@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle, type UsageStyle } from './themes'
+import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle, type UsageStyle, type CloseBehavior } from './themes'
 import { bindScrimDismiss, confirmDialog, showCtxMenu } from './ui-helpers'
 import { icon } from './svg-icons'
 import { MODEL_GROUPS } from './session-info'
@@ -55,6 +55,7 @@ export class SettingsPanel {
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
   private fShowFloater = document.getElementById('set-show-floater') as HTMLInputElement
+  private fCloseBehavior = document.getElementById('set-close-behavior') as HTMLDivElement
   private fNpmReg = document.getElementById('set-npm-registry') as HTMLInputElement
   private aboutVersion = document.getElementById('about-version') as HTMLSpanElement
   private aboutCheckBtn = document.getElementById('about-check-update') as HTMLButtonElement
@@ -131,6 +132,7 @@ export class SettingsPanel {
     this.initSeg(this.fAppTheme)
     this.initSeg(this.fUsageStyle)
     this.initSeg(this.fDowngradeSec)
+    this.initSeg(this.fCloseBehavior)
     this.fDefaultModel.addEventListener('click', (e) => {
       e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
       this.openModelPicker()
@@ -636,6 +638,8 @@ export class SettingsPanel {
     this.fShowUsage.checked = s.showClaudeUsage
     this.syncUsageStyleVis()
     this.fShowFloater.checked = s.showFloater
+    // 老配置没有该字段时兜底「确认后退出」（现状行为）
+    this.setSeg(this.fCloseBehavior, s.closeBehavior || 'quit')
     this.lastDisableUpd = s.disableAutoupdater
   }
 
@@ -682,7 +686,8 @@ export class SettingsPanel {
       disableAutoupdater: this.fDisableUpd.checked,
       statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 10, cur.statusDowngradeSec),
       showClaudeUsage: this.fShowUsage.checked,
-      showFloater: this.fShowFloater.checked
+      showFloater: this.fShowFloater.checked,
+      closeBehavior: (this.getSeg(this.fCloseBehavior) as CloseBehavior) || cur.closeBehavior
     }
     this.hooks.setSettings(next)
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {

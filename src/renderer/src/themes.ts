@@ -4,6 +4,7 @@ export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
+export type CloseBehavior = 'quit' | 'tray'
 
 export interface Settings {
   version: 1
@@ -26,6 +27,7 @@ export interface Settings {
   statusDowngradeSec: number   // done/attention 停留多少秒后降回 idle（1~10）
   showClaudeUsage: boolean     // 底部状态栏展示 Claude 账号用量（5h/周）
   usageStyle: UsageStyle       // 额度显示样式：进度条 / 左右并排圆环
+  closeBehavior: CloseBehavior // 点关闭按钮：quit = 确认后退出；tray = 不确认，收进托盘
   showFloater: boolean         // 开启常驻悬浮窗
   floaterX: number | null
   floaterY: number | null
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   statusDowngradeSec: 5,
   showClaudeUsage: true,
   usageStyle: 'bar',
+  closeBehavior: 'quit',
   showFloater: false,
   floaterX: null,
   floaterY: null

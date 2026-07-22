@@ -38,6 +38,7 @@ export interface SidebarHooks {
   closeTab(tabId: string): void
   renameTab(tabId: string, newName: string): void
   toggleGroupCollapse(groupId: string): void
+  setAllGroupsCollapsed(collapsed: boolean): void
 
   onGroupCtx(groupId: string, x: number, y: number): void
   onTabCtx(tabId: string, x: number, y: number): void
@@ -67,6 +68,7 @@ export class Sidebar {
   private listEl: HTMLDivElement
   private savedEl: HTMLDivElement
   private newGroupBtn: HTMLButtonElement
+  private toggleAllBtn: HTMLButtonElement | null
   private manageBtn: HTMLDivElement
   private viewButtons: HTMLButtonElement[]
   // 底部区当前展示：已保存分组 / 已保存工作区（分开展示，头部小切换）
@@ -77,6 +79,7 @@ export class Sidebar {
     this.listEl = document.getElementById('groupList') as HTMLDivElement
     this.savedEl = document.getElementById('savedList') as HTMLDivElement
     this.newGroupBtn = document.getElementById('newGroupBtn') as HTMLButtonElement
+    this.toggleAllBtn = document.getElementById('toggleAllBtn') as HTMLButtonElement | null
     this.manageBtn = document.getElementById('manageSavedBtn') as HTMLDivElement
     this.viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#savedViewSwitch .sv-item'))
     for (const btn of this.viewButtons) {
@@ -103,6 +106,12 @@ export class Sidebar {
     const openSection = this.listEl.closest('.side-open') as HTMLElement | null
     openSection?.addEventListener('contextmenu', (e) => this.onOpenPaneCtx(e))
     this.newGroupBtn.addEventListener('click', () => this.hooks.newGroup())
+    this.toggleAllBtn?.addEventListener('click', () => {
+      const gs = this.hooks.getGroups()
+      if (gs.length === 0) return
+      const allCollapsed = gs.every((g) => g.collapsed)
+      this.hooks.setAllGroupsCollapsed(!allCollapsed)
+    })
     this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved(this.savedView))
   }
 
@@ -111,9 +120,21 @@ export class Sidebar {
     this.renderSaved()
   }
 
+  // 展开/收起全部是同一个按钮：全收起时变「展开全部」，否则是「收起全部」
+  private updateToggleAllBtn(groups: GroupView[]): void {
+    if (!this.toggleAllBtn) return
+    const allCollapsed = groups.length > 0 && groups.every((g) => g.collapsed)
+    const label = allCollapsed ? '展开全部分组' : '收起全部分组'
+    this.toggleAllBtn.innerHTML = icon(allCollapsed ? 'expand-all' : 'collapse-all', { size: 13 })
+    this.toggleAllBtn.title = label
+    this.toggleAllBtn.setAttribute('aria-label', label)
+    this.toggleAllBtn.disabled = groups.length === 0
+  }
+
   private renderGroups(): void {
     const groups = this.hooks.getGroups()
     const activeTabId = this.hooks.getActiveTabId()
+    this.updateToggleAllBtn(groups)
     this.listEl.innerHTML = ''
     if (groups.length === 0) {
       const empty = document.createElement('div')

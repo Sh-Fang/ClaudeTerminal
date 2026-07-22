@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { registerPtyIpc } from './ipc'
 import { killAll } from './pty-manager'
@@ -13,6 +13,47 @@ import { logEvent, startLogging, stopLogging } from './app-log'
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
+let tray: Tray | null = null
+
+// ─── 关闭进托盘 ──────────────────────────────────────────────────
+// closeBehavior='tray' 时点关闭：不弹确认，窗口 hide + 挂托盘图标；会话进程全部保留。
+// 托盘图标只在「已收进托盘」期间存在，恢复窗口即销毁，平时不占托盘位。
+function destroyTray(): void {
+  try { tray?.destroy() } catch {}
+  tray = null
+}
+
+function restoreFromTray(): void {
+  destroyTray()
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function hideToTray(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!tray) {
+    // Windows 托盘用 ico（小尺寸清晰），其余平台用 png
+    const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+    tray = new Tray(join(__dirname, '../../resources', iconFile))
+    tray.setToolTip('Claude Terminal（会话仍在运行）')
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '打开 Claude Terminal', click: () => restoreFromTray() },
+      { type: 'separator' },
+      {
+        label: '退出（终止所有会话）',
+        click: () => {
+          allowClose = true
+          fastQuit('tray-quit')
+        }
+      }
+    ]))
+    tray.on('click', () => restoreFromTray())
+    tray.on('double-click', () => restoreFromTray())
+  }
+  mainWindow.hide()
+}
 
 // 未捕获错误：越早注册越好，不用等 ready；startLogging 之前落的会因文件未开而丢，
 // 但保底能进 electron 内置 stderr。startLogging 之后的都会 JSONL 落盘。
@@ -129,6 +170,8 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_e, argv) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
+    // 收在托盘里时再次启动 app → 不开新实例，把托盘里的窗口拉回来
+    if (!mainWindow.isVisible()) restoreFromTray()
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
     // 第二实例带 --open-here → push 到 pending 队列，并顺手 send 一次触发 renderer 消费
@@ -170,6 +213,13 @@ function createWindow(): void {
     if (allowClose) return
     if (!mainWindow || mainWindow.isDestroyed()) return
     e.preventDefault()
+    // 托盘模式：跳过一切确认，直接收进托盘（会话保留，从托盘/再次启动可回来）
+    try {
+      if (loadSettings().closeBehavior === 'tray') {
+        hideToTray()
+        return
+      }
+    } catch {}
     const wc = mainWindow.webContents
     // renderer 还活着 → 让它弹自绘对话框，回 window:closeConfirmed。
     // renderer 死掉了 → 走原生 messageBox 兜底，保证"任何情况都能确认关闭"。
@@ -199,7 +249,7 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
   // 主窗口一旦被销毁就把悬浮窗也带走 —— 悬浮窗 skipTaskbar，留着会卡住 window-all-closed
-  mainWindow.on('closed', () => { destroyFloater() })
+  mainWindow.on('closed', () => { destroyFloater(); destroyTray() })
 
   // 终端输出里的链接（xterm web-links 等）触发 window.open 时，只放行 http(s)，
   // 挡掉 file: / 自定义协议等可被恶意内容利用的 scheme。
@@ -260,6 +310,7 @@ function fastQuit(reason: string): void {
   if (fastQuitting) return
   fastQuitting = true
   try { stopWatchers() } catch {}
+  try { destroyTray() } catch {}
   try { destroyFloater() } catch {}
   try { stopLogging(reason) } catch {}
   hardExit()

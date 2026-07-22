@@ -42,13 +42,15 @@
                 <path d="M12 5v14M5 12h14"/>
               </svg>
             </button>
-            <button id="expandAllBtn" class="side-head-btn" type="button" title="展开全部分组" aria-label="展开全部分组">
+            <button id="locateActiveBtn" class="side-head-btn" type="button" title="定位当前标签" aria-label="定位当前标签">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M10 6h11M10 12h11M10 18h11"/>
-                <path d="m4 8 2-2 2 2M4 16l2 2 2-2"/>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+                <circle cx="12" cy="12" r="7"/>
+                <circle cx="12" cy="12" r="2"/>
               </svg>
             </button>
-            <button id="collapseAllBtn" class="side-head-btn" type="button" title="收起全部分组" aria-label="收起全部分组">
+            <!-- 展开/收起全部合一：图标与行为随分组状态切换，由 Sidebar 渲染时刷新 -->
+            <button id="toggleAllBtn" class="side-head-btn" type="button" title="收起全部分组" aria-label="收起全部分组">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M10 6h11M10 12h11M10 18h11"/>
                 <path d="m4 6 2 2 2-2M4 18l2-2 2 2"/>
@@ -375,6 +377,13 @@
               <div class="set-row set-row-toggle">
                 <label>开启悬浮窗（屏幕角落显示待查看 / 待决策 / 运行中 数）</label>
                 <input id="set-show-floater" type="checkbox" />
+              </div>
+              <div class="set-row">
+                <label>点击关闭按钮时</label>
+                <div class="seg-group" id="set-close-behavior" role="radiogroup" aria-label="点击关闭按钮时">
+                  <button class="seg-item" data-val="quit" type="button" role="radio">确认后退出</button>
+                  <button class="seg-item" data-val="tray" type="button" role="radio">收进托盘</button>
+                </div>
               </div>
             </div>
 

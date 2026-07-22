@@ -191,6 +191,8 @@ body {
   transition: background 0.12s, color 0.12s;
 }
 .side-head-btn:hover { background: var(--hairline); color: var(--ink); }
+.side-head-btn:disabled { opacity: 0.35; cursor: default; }
+.side-head-btn:disabled:hover { background: transparent; color: var(--mute); }
 .sidebar-resizer {
   position: absolute;
   top: 0; bottom: 0; right: -3px;
@@ -318,8 +320,10 @@ body.row-resizing * { cursor: row-resize !important; user-select: none !importan
   display: flex;
   align-items: center;
   gap: 6px;
+  /* 侧边栏拖窄时标题保持单行：先牺牲分隔线（可缩到 0），不许「工作区」竖排换行 */
+  white-space: nowrap;
 }
-.side-section-label .line { flex: 1; height: 1px; background: var(--hairline); }
+.side-section-label .line { flex: 1 1 0; min-width: 0; height: 1px; background: var(--hairline); }
 
 /* 已保存区标题：整行可点折叠 */
 /* saved-head 行：折叠按钮 + line + 管理按钮，与 .side-section-label 同款排版 */
@@ -443,6 +447,18 @@ button.saved-toggle:hover { color: var(--ink); }
   color: var(--ink);
   border-color: var(--hairline);
   box-shadow: var(--sh-1);
+}
+/* 反向定位：被定位到的标签行短暂闪烁两下后恢复原样 */
+.tab-row.locate-flash { animation: locate-flash 1.2s ease; }
+@keyframes locate-flash {
+  0%, 45% {
+    background: color-mix(in srgb, var(--link) 18%, transparent);
+    box-shadow: inset 0 0 0 1px var(--link);
+  }
+  22% {
+    background: color-mix(in srgb, var(--link) 6%, transparent);
+  }
+  100% { box-shadow: none; }
 }
 
 /* status dot */

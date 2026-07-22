@@ -50,8 +50,7 @@ const savedSectionEl = document.getElementById('savedSection') as HTMLElement
 const savedResizer = document.getElementById('savedResizer') as HTMLDivElement
 const savedToggleBtn = document.getElementById('savedToggle') as HTMLButtonElement
 const historyOpenBtn = document.getElementById('historyOpenBtn') as HTMLButtonElement
-const expandAllBtn = document.getElementById('expandAllBtn') as HTMLButtonElement
-const collapseAllBtn = document.getElementById('collapseAllBtn') as HTMLButtonElement
+const locateActiveBtn = document.getElementById('locateActiveBtn') as HTMLButtonElement
 
 // ─── 状态 ───────────────────────────────────────────────────────────
 interface Group {
@@ -827,6 +826,31 @@ function setAllGroupsCollapsed(collapsed: boolean): void {
   if (!changed) return
   sidebar.render()
   scheduleSave()
+}
+
+// 反向定位（类似 IDEA 的 Select Opened File）：在侧边栏里定位当前活动标签。
+// 所在分组若收起则只展开这一个分组，其余分组保持原状；随后滚动到该行并闪烁提示。
+function locateActiveTab(): void {
+  const ctx = activeContext()
+  if (!ctx) {
+    toast('当前没有活动标签')
+    return
+  }
+  if (ctx.group.collapsed) {
+    ctx.group.collapsed = false
+    sidebar.render()
+    scheduleSave()
+  }
+  const row = document.querySelector<HTMLElement>(
+    `#groupList .tab-row[data-t="${CSS.escape(ctx.tab.id)}"]`
+  )
+  if (!row) return
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  // 先移除再强制 reflow：连续点击时也能重新触发闪烁动画
+  row.classList.remove('locate-flash')
+  void row.offsetWidth
+  row.classList.add('locate-flash')
+  row.addEventListener('animationend', () => row.classList.remove('locate-flash'), { once: true })
 }
 
 function renameGroup(groupId: string): void {
@@ -1716,6 +1740,7 @@ const sidebar = new Sidebar({
   closeTab,
   renameTab,
   toggleGroupCollapse,
+  setAllGroupsCollapsed,
   onGroupCtx: openGroupCtx,
   onTabCtx: openTabCtx,
   onWorkspacePaneCtx: openWorkspacePaneCtx,
@@ -2310,8 +2335,7 @@ const historyManager = new HistoryManager({
 })
 
 historyOpenBtn?.addEventListener('click', () => void historyManager.open())
-expandAllBtn?.addEventListener('click', () => setAllGroupsCollapsed(false))
-collapseAllBtn?.addEventListener('click', () => setAllGroupsCollapsed(true))
+locateActiveBtn?.addEventListener('click', () => locateActiveTab())
 
 // ─── 启动恢复 ────────────────────────────────────────────────────
 // 轻量模式：只读 settings + savedGroups，groups/activeTabId 一律不恢复。
