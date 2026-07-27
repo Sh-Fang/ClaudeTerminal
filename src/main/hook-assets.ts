@@ -11,7 +11,9 @@ export interface HookPaths {
   stateDir: string
   statusDir: string
   statuslineJs: string
-  pwshProfilePs1: string
+  pwshProfilePs1: string  // Windows: pwsh shell-integration
+  zshProfile: string      // macOS: zsh shell-integration
+  bashProfile: string     // macOS: bash shell-integration
 }
 
 // cc 每 ~300ms 调一次 statusLine 命令并从 stdin 喂 JSON（含 context_window / model）。
@@ -79,12 +81,29 @@ process.stdin.on('end', () => {
 
 // 解析 node 可执行路径（cc 的 statusline shell 不一定有 PATH，尽量用绝对路径）
 function detectNodePath(): string {
+  if (process.platform === 'win32') {
+    try {
+      const out = execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true })
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (out[0]) return out[0]
+    } catch {
+      // 退回 PATH
+    }
+    return 'node'
+  }
+  // macOS/类 Unix：GUI 拉起的主进程 PATH 极简（拿不到 nvm/homebrew 的 node）。
+  // 用登录+交互 shell 解析真实 node 绝对路径；-i 让 ~/.zshrc 里的 PATH 也生效。
   try {
-    const out = execFileSync('where', ['node'], { encoding: 'utf8', windowsHide: true })
+    const shell = process.env.SHELL || '/bin/zsh'
+    const lines = execFileSync(shell, ['-lic', 'command -v node'], { encoding: 'utf8' })
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean)
-    if (out[0]) return out[0]
+    // 交互 shell 可能先吐别的内容 → 从末尾找第一条绝对路径行
+    const line = lines.reverse().find((l) => l.startsWith('/'))
+    if (line) return line
   } catch {
     // 退回 PATH
   }
@@ -243,6 +262,114 @@ function Global:cct {
 }
 `
 
+// cct（POSIX 函数，zsh / bash 通用）：手动启动一次能被 app 接管的 cc 会话。
+// 与 pwsh 版语义一致：复用 pty:create 注入的 TERMINAL_* env；无参 = 新会话
+// （--session-id 新 uuid --name <tab>），-r/--resume = cc 自己弹历史选择器。
+const CCT_SH = `cct() {
+  if [ -z "$TERMINAL_TAB_ID" ]; then
+    printf '%s\\n' "cct: 需要在 Claude Terminal 的 tab 里运行"; return 1
+  fi
+  if [ -z "$TERMINAL_HOOK_SETTINGS_JSON" ] || [ ! -f "$TERMINAL_HOOK_SETTINGS_JSON" ]; then
+    printf '%s\\n' "cct: 缺少 cc-hooks.json (TERMINAL_HOOK_SETTINGS_JSON)"; return 1
+  fi
+  local is_resume=0
+  local pass=()
+  local a
+  for a in "$@"; do
+    if [ "$a" = "-r" ] || [ "$a" = "--resume" ]; then is_resume=1; continue; fi
+    pass+=("$a")
+  done
+  local claude_bin=\${TERMINAL_CLAUDE_PATH:-claude}
+  if [ "$is_resume" -eq 1 ]; then
+    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" --resume "\${pass[@]}"
+  else
+    local sid
+    sid=$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')
+    [ -z "$sid" ] && sid=$(node -e 'console.log(require("crypto").randomUUID())' 2>/dev/null)
+    local name=\${TERMINAL_TAB_NAME:-cct}
+    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" --session-id "$sid" --name "$name" "\${pass[@]}"
+  fi
+}
+`
+
+// zsh shell-integration：给非 cc 命令做「运行态」检测（对齐渲染层消费的 OSC 子集）。
+//   preexec → 发 OSC 633;E;<cmd>（命令行原文，供过滤 cc）+ OSC 133;C（命令开始=busy）
+//   precmd  → 命令结束发 OSC 133;D;<code>，再发 133;A（回到 prompt=idle）
+// 用 zsh 内建 preexec/precmd hook；__terminal_osc 把 ESC/BEL 收敛到一处，减少转义面。
+// __TERMINAL_SHELL_INTEG 防重复注入（export 后子 shell 也不会重复挂）。
+const ZSH_PROFILE = `# Claude Terminal · zsh shell integration
+if [ -z "$__TERMINAL_SHELL_INTEG" ]; then
+  export __TERMINAL_SHELL_INTEG=1
+  typeset -g __terminal_in_flight=0
+  __terminal_osc() { printf '\\033]%s\\007' "$1"; }
+  __terminal_preexec() {
+    local cmd=\${1//[$'\\n\\r']/ }
+    __terminal_osc "633;E;$cmd"
+    __terminal_osc "133;C"
+    __terminal_in_flight=1
+  }
+  __terminal_precmd() {
+    local code=$?
+    if (( __terminal_in_flight )); then
+      __terminal_osc "133;D;$code"
+      __terminal_in_flight=0
+    fi
+    __terminal_osc "133;A"
+  }
+  autoload -Uz add-zsh-hook 2>/dev/null
+  if (( $+functions[add-zsh-hook] )); then
+    add-zsh-hook preexec __terminal_preexec
+    add-zsh-hook precmd __terminal_precmd
+  else
+    preexec_functions+=(__terminal_preexec)
+    precmd_functions+=(__terminal_precmd)
+  fi
+fi
+
+${CCT_SH}`
+
+// bash shell-integration：bash 无内建 preexec/precmd，用 DEBUG trap 近似 preexec、
+// PROMPT_COMMAND 近似 precmd（bash-preexec 的精简版，best-effort）。
+//   DEBUG trap：每条命令执行前触发，__terminal_preexec_done 保证一条命令只发一次
+//   PROMPT_COMMAND：先跑用户原有的，再发命令结束/回到 prompt 序列
+const BASH_PROFILE = `# Claude Terminal · bash shell integration (best-effort)
+if [ -z "$__TERMINAL_SHELL_INTEG" ] && [[ "$-" == *i* ]]; then
+  export __TERMINAL_SHELL_INTEG=1
+  __terminal_in_flight=0
+  __terminal_preexec_done=0
+  __terminal_osc() { printf '\\033]%s\\007' "$1"; }
+  __terminal_preexec() {
+    __terminal_osc "633;E;$1"
+    __terminal_osc "133;C"
+    __terminal_in_flight=1
+  }
+  __terminal_precmd() {
+    local code=$1
+    if (( __terminal_in_flight )); then
+      __terminal_osc "133;D;$code"
+      __terminal_in_flight=0
+    fi
+    __terminal_osc "133;A"
+    __terminal_preexec_done=0
+  }
+  __terminal_debug() {
+    [[ "$BASH_COMMAND" == "__terminal_prompt_cmd" ]] && return
+    (( __terminal_preexec_done )) && return
+    __terminal_preexec_done=1
+    __terminal_preexec "$BASH_COMMAND"
+  }
+  __terminal_orig_pc="$PROMPT_COMMAND"
+  __terminal_prompt_cmd() {
+    local ec=$?
+    if [ -n "$__terminal_orig_pc" ]; then eval "$__terminal_orig_pc"; fi
+    __terminal_precmd "$ec"
+  }
+  PROMPT_COMMAND=__terminal_prompt_cmd
+  trap '__terminal_debug' DEBUG
+fi
+
+${CCT_SH}`
+
 export function ensureHookAssets(): HookPaths {
   const userData = app.getPath('userData')
   if (!existsSync(userData)) mkdirSync(userData, { recursive: true })
@@ -258,10 +385,14 @@ export function ensureHookAssets(): HookPaths {
   const stateProbeJs = join(userData, 'state-probe.cjs')
   const statuslineJs = join(userData, 'statusline-probe.cjs')
   const pwshProfilePs1 = join(userData, 'shell-integration.ps1')
+  const zshProfile = join(userData, 'shell-integration.zsh')
+  const bashProfile = join(userData, 'shell-integration.bash')
   writeFileSync(sessionProbeJs, SESSION_PROBE_JS, 'utf8')
   writeFileSync(stateProbeJs, STATE_PROBE_JS, 'utf8')
   writeFileSync(statuslineJs, STATUSLINE_JS, 'utf8')
   writeFileSync(pwshProfilePs1, PWSH_PROFILE_PS1, 'utf8')
+  writeFileSync(zshProfile, ZSH_PROFILE, 'utf8')
+  writeFileSync(bashProfile, BASH_PROFILE, 'utf8')
 
   const nodePath = detectNodePath()
   const sessionCmd = `"${nodePath}" "${sessionProbeJs}" "${eventsDir}"`
@@ -296,5 +427,5 @@ export function ensureHookAssets(): HookPaths {
   const ccHooksJson = join(userData, 'cc-hooks.json')
   writeFileSync(ccHooksJson, JSON.stringify(settings, null, 2), 'utf8')
 
-  return { ccHooksJson, sessionProbeJs, stateProbeJs, eventsDir, stateDir, statusDir, statuslineJs, pwshProfilePs1 }
+  return { ccHooksJson, sessionProbeJs, stateProbeJs, eventsDir, stateDir, statusDir, statuslineJs, pwshProfilePs1, zshProfile, bashProfile }
 }

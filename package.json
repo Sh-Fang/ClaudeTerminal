@@ -1,6 +1,6 @@
 {
   "name": "claude-terminal",
-  "version": "0.5.20",
+  "version": "0.5.21",
   "description": "适配 Claude Code 的多窗口管理终端",
   "private": true,
   "type": "commonjs",
@@ -15,7 +15,9 @@
     "dist": "electron-vite build && electron-builder",
     "dist:nsis": "electron-vite build && electron-builder --win nsis",
     "dist:zip": "electron-vite build && electron-builder --win zip",
-    "dist:dir": "electron-vite build && electron-builder --dir"
+    "dist:dir": "electron-vite build && electron-builder --dir",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:mac:dir": "electron-vite build && electron-builder --mac --dir"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12",
@@ -28,7 +30,9 @@
     "pinyin-pro": "^3.28.1"
   },
   "optionalDependencies": {
-    "@lydell/node-pty-win32-x64": "^1.2.0-beta.12"
+    "@lydell/node-pty-win32-x64": "^1.2.0-beta.12",
+    "@lydell/node-pty-darwin-arm64": "^1.2.0-beta.12",
+    "@lydell/node-pty-darwin-x64": "^1.2.0-beta.12"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

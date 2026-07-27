@@ -173,7 +173,13 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         try { wc.send(channel, payload) } catch {}
       }
       const id = createPty(
-        { cols: opts?.cols, rows: opts?.rows, cwd: opts?.cwd, env, profilePath: hp.pwshProfilePs1 },
+        {
+          cols: opts?.cols,
+          rows: opts?.rows,
+          cwd: opts?.cwd,
+          env,
+          profiles: { pwsh: hp.pwshProfilePs1, zsh: hp.zshProfile, bash: hp.bashProfile }
+        },
         (sid, data) => safeSend('pty:data', { id: sid, data }),
         (sid, exitCode) => safeSend('pty:exit', { id: sid, exitCode })
       )

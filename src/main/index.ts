@@ -184,12 +184,18 @@ if (!gotSingleInstanceLock) {
 }
 
 function createWindow(): void {
+  const isMac = process.platform === 'darwin'
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 760,
     show: false,
     backgroundColor: '#ffffff',
-    frame: false,
+    // Windows/Linux：完全无边框，自绘标题栏 + 窗口按钮。
+    // macOS：用 hiddenInset 保留系统红绿灯（画在左侧），标题栏区仍可拖动；
+    //        渲染层据 platform 隐藏自绘的右侧窗口按钮，避免与红绿灯重复。
+    ...(isMac
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 12, y: 10 } }
+      : { frame: false }),
     autoHideMenuBar: true,
     icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {

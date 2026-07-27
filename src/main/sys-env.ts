@@ -1,5 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process'
 
+const IS_WIN = process.platform === 'win32'
+
 // 操作 Windows 用户级环境变量（HKCU\Environment）。
 // 写用 setx（会广播 WM_SETTINGCHANGE，之后**新启动**的进程从注册表读到新值）。
 // 已经在跑的 Electron 主进程 process.env 是启动时的快照，setx 不会刷新它。
@@ -20,6 +22,8 @@ function callExecFile(file: string, args: string[]): Promise<{ stdout: string; s
 // 读 HKCU\Environment 下某个变量当前值；不存在返回 null
 export function readUserEnv(name: string): string | null {
   if (!NAME_RE.test(name)) return null
+  // 非 Windows 没有"用户级注册表环境变量"这一层，直接读进程 env（够 UI 回显用）
+  if (!IS_WIN) return process.env[name] ?? null
   try {
     const out = execFileSync('reg', ['query', 'HKCU\\Environment', '/v', name], {
       encoding: 'utf8',
@@ -35,6 +39,7 @@ export function readUserEnv(name: string): string | null {
 
 export async function setUserEnv(name: string, value: string): Promise<boolean> {
   if (!NAME_RE.test(name)) return false
+  if (!IS_WIN) return false // 非 Windows 不做系统级持久化
   try {
     await callExecFile('setx', [name, value])
     return true
@@ -45,6 +50,7 @@ export async function setUserEnv(name: string, value: string): Promise<boolean> 
 
 export async function deleteUserEnv(name: string): Promise<boolean> {
   if (!NAME_RE.test(name)) return false
+  if (!IS_WIN) return false // 非 Windows 不做系统级持久化
   try {
     await callExecFile('reg', ['delete', 'HKCU\\Environment', '/v', name, '/f'])
     return true
@@ -102,6 +108,9 @@ function readRegistryEnv(path: string): Record<string, string> {
 }
 
 export function snapshotCurrentEnv(): Record<string, string> {
+  // 非 Windows：没有注册表这层，且 pty 走登录 shell 会自行补全 PATH（~/.zprofile 等），
+  // 这里直接返回主进程 env 即可。
+  if (!IS_WIN) return { ...(process.env as Record<string, string>) }
   const env: Record<string, string> = { ...(process.env as Record<string, string>) }
   const machine = readRegistryEnv(
     'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
@@ -132,6 +141,15 @@ export async function applyDisableAutoupdater(enabled: boolean): Promise<{
   systemWide: boolean
   message?: string
 }> {
+  // 非 Windows：不做系统级持久化。开关值存在 settings.disableAutoupdater 里，
+  // 每次 spawn pty 时由 ipc 注入 DISABLE_AUTOUPDATER=1，app 内会话即时生效。
+  if (!IS_WIN) {
+    return {
+      ok: true,
+      systemWide: false,
+      message: enabled ? '已启用（app 内新建会话生效）' : '已关闭（app 内新建会话生效）'
+    }
+  }
   try {
     if (enabled) {
       const ok = await setUserEnv('DISABLE_AUTOUPDATER', '1')

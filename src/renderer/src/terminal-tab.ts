@@ -194,7 +194,11 @@ export class TerminalTab {
       scrollback: opts.settings.terminal.scrollback,
       allowProposedApi: true,
       theme: themeForPreset(opts.settings.terminal.theme),
-      windowsPty: { backend: 'conpty' }
+      // windowsPty 让 xterm 按 ConPTY 语义处理换行/reflow，仅 Windows 需要；
+      // macOS/类 Unix 走系统 pty，设了反而不对，故按平台条件注入。
+      ...(window.term.platform === 'win32'
+        ? { windowsPty: { backend: 'conpty' as const } }
+        : {})
     })
 
     this.fit = new FitAddon()

@@ -85,6 +85,8 @@ export interface HookPaths {
   statusDir: string
   statuslineJs: string
   pwshProfilePs1: string
+  zshProfile: string
+  bashProfile: string
 }
 
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
@@ -193,6 +195,7 @@ export interface HistoryEntry {
 }
 
 export interface TermBridge {
+  platform: NodeJS.Platform  // 'win32' | 'darwin' | ...：渲染层据此切换 shell 引号/窗口按钮
   create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string }): Promise<number>
   send(id: number, data: string): void
   resize(id: number, cols: number, rows: number): void
@@ -261,6 +264,7 @@ export interface TermBridge {
 }
 
 const api: TermBridge = {
+  platform: process.platform,
   create: (opts) => ipcRenderer.invoke('pty:create', opts),
   send: (id, data) => ipcRenderer.send('pty:input', { id, data }),
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),

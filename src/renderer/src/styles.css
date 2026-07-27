@@ -159,6 +159,11 @@ body {
 .brand-icon svg line { stroke: var(--on-primary); }
 .titlebar-spacer { flex: 1; height: 100%; -webkit-app-region: drag; }
 
+/* macOS：系统红绿灯画在标题栏左侧 → 隐藏自绘的右侧窗口按钮，并给左侧留出红绿灯宽度，
+   避免 brand 图标压在红绿灯上。红绿灯本身由 hiddenInset + trafficLightPosition 定位。 */
+.platform-mac .win-ctrls { display: none; }
+.platform-mac .titlebar { padding-left: 78px; }
+
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w, 268px) 1fr;

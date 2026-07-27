@@ -198,8 +198,14 @@ function uid(prefix: string): string {
   return prefix + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 }
 
-function quotePs(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`
+const IS_WIN_PLATFORM = window.term.platform === 'win32'
+
+// 平台感知的 shell 引号：Windows 走 pwsh（单引号内 '' 转义），
+// macOS/类 Unix 走 POSIX（单引号内 '\'' 转义）。用于把绝对路径 / tab 名安全拼进命令行。
+function quoteShell(s: string): string {
+  return IS_WIN_PLATFORM
+    ? `'${s.replace(/'/g, "''")}'`
+    : `'${s.replace(/'/g, "'\\''")}'`
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -229,7 +235,7 @@ let cachedHookSettingsArg: string | null = null
 async function hookSettingsArg(): Promise<string> {
   if (cachedHookSettingsArg) return cachedHookSettingsArg
   const hp = await window.term.hookPaths()
-  cachedHookSettingsArg = ` --settings ${quotePs(hp.ccHooksJson)}`
+  cachedHookSettingsArg = ` --settings ${quoteShell(hp.ccHooksJson)}`
   return cachedHookSettingsArg
 }
 
@@ -352,10 +358,11 @@ async function launchCC(tab: TerminalTab): Promise<void> {
       return
     }
   }
-  // 自定义路径走 PS 引号；默认走裸 claude（让 PS 自己解析）
-  const claudeCmd = claudeBin ? quotePs(claudeBin) : 'claude'
-  // 用户填的是 .ps1/.cmd/.exe 都得加 & 调用操作符，否则 PS 不会执行带空格/反斜杠的绝对路径
-  const invoker = claudeBin ? '& ' : ''
+  // 自定义路径走平台引号；默认走裸 claude（让 shell 自己解析）
+  const claudeCmd = claudeBin ? quoteShell(claudeBin) : 'claude'
+  // Windows(pwsh)：带空格/反斜杠的绝对路径要加 & 调用操作符才执行；
+  // POSIX(zsh/bash)：引号包住的绝对路径可直接执行，无需前缀。
+  const invoker = claudeBin && IS_WIN_PLATFORM ? '& ' : ''
 
   const settingsArg = await hookSettingsArg()
   const active = tab.activeSessionId
@@ -375,7 +382,7 @@ async function launchCC(tab: TerminalTab): Promise<void> {
     // 只允许字母数字/-/./_，防注入（同时也能挡住"跟随 cc 默认"的空串）
     const model = settings.defaults.model
     const modelArg = /^[A-Za-z0-9._-]+$/.test(model) ? ` --model ${model}` : ''
-    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quotePs(tab.name)}${modelArg}${settingsArg}`
+    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quoteShell(tab.name)}${modelArg}${settingsArg}`
   }
   window.term.send(tab.ptyId, cmd + '\r')
 }
@@ -1899,6 +1906,9 @@ searchInput.addEventListener('keydown', (e) => {
 searchClose.addEventListener('click', () => closeSearch())
 
 // ─── Window controls ─────────────────────────────────────────────
+// 平台标记：macOS 用系统红绿灯（frame hiddenInset），CSS 据 body.platform-mac
+// 隐藏自绘的右侧窗口按钮并给标题栏左侧留出红绿灯位置。
+document.body.classList.add(window.term.platform === 'darwin' ? 'platform-mac' : 'platform-win')
 const winClose = document.getElementById('win-close') as HTMLButtonElement | null
 const winMin = document.getElementById('win-min') as HTMLButtonElement | null
 const winMax = document.getElementById('win-max') as HTMLButtonElement | null

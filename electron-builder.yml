@@ -33,6 +33,24 @@ win:
     - target: zip
       arch: x64
 
+# macOS：内部自用，不签名（identity: null）。universal 同时覆盖 Intel + Apple Silicon。
+# icon.icns 需先用 scripts/generate-icns 从 icon.png 生成（见 docs/MAC.md）。
+# 注意：mac target 只能在 macOS 上构建，Windows 上执行 dist:mac 会失败。
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.icns
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  identity: null            # 不做代码签名/公证（首次打开需右键→打开绕过 Gatekeeper）
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch: universal
+    - target: zip
+      arch: universal
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
 nsis:
   oneClick: false
   perMachine: false

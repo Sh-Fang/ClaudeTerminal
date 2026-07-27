@@ -11,6 +11,41 @@ import { dirname, join } from 'node:path'
 export const CC_PACKAGE = '@anthropic-ai/claude-code'
 export const DEFAULT_NPM_REGISTRY = 'https://registry.npmmirror.com'
 
+const IS_WIN = process.platform === 'win32'
+
+// `npm install -g pkg --prefix=<dir>` 的产物布局按平台不同：
+//   Windows：<dir>/claude.cmd（+ .ps1/无扩展）、包在 <dir>/node_modules/
+//   类 Unix：<dir>/bin/claude（无扩展）、       包在 <dir>/lib/node_modules/
+function claudeBinPath(prefix: string): string {
+  return IS_WIN ? join(prefix, 'claude.cmd') : join(prefix, 'bin', 'claude')
+}
+function pkgJsonPath(prefix: string): string {
+  return IS_WIN
+    ? join(prefix, 'node_modules', CC_PACKAGE, 'package.json')
+    : join(prefix, 'lib', 'node_modules', CC_PACKAGE, 'package.json')
+}
+// 从 claude 可执行路径反推安装 prefix：
+//   Windows：<prefix>/claude.cmd → dirname 即 prefix
+//   类 Unix：<prefix>/bin/claude → 上跳两级
+function prefixFromClaudeBin(binPath: string): string {
+  return IS_WIN ? dirname(binPath) : dirname(dirname(binPath))
+}
+
+// 用登录+交互 shell 解析某命令的绝对路径（macOS GUI 进程 PATH 极简，必须借登录 shell）
+function whichViaLoginShell(name: string): string | null {
+  try {
+    const shell = process.env.SHELL || '/bin/zsh'
+    const lines = execFileSync(shell, ['-lic', `command -v ${name}`], { encoding: 'utf8' })
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+    const line = lines.reverse().find((l) => l.startsWith('/') && existsSync(l))
+    return line || null
+  } catch {
+    return null
+  }
+}
+
 export interface InstalledVersion {
   version: string
   path: string        // claude.cmd 绝对路径
@@ -52,10 +87,15 @@ function cmpSemver(a: string, b: string): number {
   return ap < bp ? -1 : 1
 }
 
-// where.exe npm.cmd 找到系统 npm；结果缓存到进程生命周期
+// 找到系统 npm；结果缓存到进程生命周期。
+// Windows：where.exe npm.cmd / npm；类 Unix：登录 shell command -v npm。
 let cachedNpm: string | null | undefined
 export function detectNpm(): string | null {
   if (cachedNpm !== undefined) return cachedNpm
+  if (!IS_WIN) {
+    cachedNpm = whichViaLoginShell('npm')
+    return cachedNpm
+  }
   const tryOne = (name: string): string | null => {
     try {
       const out = execFileSync('where.exe', [name], { encoding: 'utf8', windowsHide: true })
@@ -69,15 +109,22 @@ export function detectNpm(): string | null {
   return cachedNpm
 }
 
-// Node 20+ 因 CVE-2024-27980 禁止直接 spawn .cmd（甩 EINVAL）。绕过：读 npm.cmd 所在
-// 目录里的 node.exe + node_modules/npm/bin/npm-cli.js，直接用 node 跑，彻底避开 .cmd。
-// 兼容 nvm4w / 官方 msi / winget 布局，也可退化到 where node 拿 node.exe 再拼 cli 路径。
-interface NpmInvocation { node: string; cli: string }
+// 统一的 npm 调用形式：spawn(file, [...lead, ...npmArgs])。
+//   类 Unix：file = npm（shell 脚本，可直接 spawn），lead = []
+//   Windows：Node 20+ 因 CVE-2024-27980 禁止直接 spawn .cmd（甩 EINVAL）。绕过：找 npm.cmd
+//            所在目录的 node.exe + npm-cli.js，用 node 跑，file = node.exe，lead = [cli]。
+//            兼容 nvm4w / 官方 msi / winget 布局，也可退化到 where node 拿 node.exe 再拼 cli。
+interface NpmInvocation { file: string; lead: string[] }
 let cachedInvoke: NpmInvocation | null | undefined
 function resolveNpmInvocation(): NpmInvocation | null {
   if (cachedInvoke !== undefined) return cachedInvoke
   const npmCmd = detectNpm()
   if (!npmCmd) { cachedInvoke = null; return null }
+  if (!IS_WIN) {
+    // npm 在 macOS/类 Unix 是普通 shell 脚本，直接 spawn 即可
+    cachedInvoke = { file: npmCmd, lead: [] }
+    return cachedInvoke
+  }
   const dir = dirname(npmCmd)
   const candidates: Array<{ node: string; cli: string }> = [
     { node: join(dir, 'node.exe'), cli: join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js') },
@@ -85,7 +132,10 @@ function resolveNpmInvocation(): NpmInvocation | null {
     { node: join(dir, 'node.exe'), cli: join(dir, 'node_modules', 'npm', 'lib', 'npm.js') }
   ]
   for (const c of candidates) {
-    if (existsSync(c.node) && existsSync(c.cli)) { cachedInvoke = c; return c }
+    if (existsSync(c.node) && existsSync(c.cli)) {
+      cachedInvoke = { file: c.node, lead: [c.cli] }
+      return cachedInvoke
+    }
   }
   // 兜底：where node.exe，再回来拼 cli
   try {
@@ -93,7 +143,7 @@ function resolveNpmInvocation(): NpmInvocation | null {
     const nodeExe = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l && existsSync(l))
     if (nodeExe) {
       const cli = join(dirname(nodeExe), 'node_modules', 'npm', 'bin', 'npm-cli.js')
-      if (existsSync(cli)) { cachedInvoke = { node: nodeExe, cli }; return cachedInvoke }
+      if (existsSync(cli)) { cachedInvoke = { file: nodeExe, lead: [cli] }; return cachedInvoke }
     }
   } catch {}
   cachedInvoke = null
@@ -110,7 +160,7 @@ function safeRegistry(reg: string): string {
 
 function readPkgVersion(dir: string): string | null {
   try {
-    const p = join(dir, 'node_modules', CC_PACKAGE, 'package.json')
+    const p = pkgJsonPath(dir)
     if (!existsSync(p)) return null
     const j = JSON.parse(readFileSync(p, 'utf8')) as { version?: unknown }
     return typeof j.version === 'string' ? j.version : null
@@ -133,7 +183,7 @@ export function listInstalled(activePath: string): InstalledVersion[] {
     if (!st.isDirectory()) continue
     const pkgVer = readPkgVersion(dir)
     if (!pkgVer) continue
-    const cmd = join(dir, 'claude.cmd')
+    const cmd = claudeBinPath(dir)
     if (!existsSync(cmd)) continue
     out.push({
       version: pkgVer,
@@ -152,8 +202,8 @@ export function listInstalled(activePath: string): InstalledVersion[] {
 // 找不到返回 null，UI 显示「未知版本」即可
 export function versionFromPath(claudePath: string): string | null {
   if (!claudePath) return null
-  // 优先当作 <prefix>/claude.cmd 处理
-  const prefix = dirname(claudePath)
+  // 优先当作我们托管布局的 claude 可执行处理，反推 prefix 再读版本
+  const prefix = prefixFromClaudeBin(claudePath)
   const v1 = readPkgVersion(prefix)
   if (v1) return v1
   // 或者路径直接指向 cli.js —— 向上找到 @anthropic-ai/claude-code/package.json
@@ -175,12 +225,12 @@ export function versionFromPath(claudePath: string): string | null {
 
 export async function listRemote(registry: string): Promise<string[]> {
   const inv = resolveNpmInvocation()
-  if (!inv) throw new Error('未找到 npm / node.exe，请检查 Node.js 安装')
+  if (!inv) throw new Error('未找到 npm，请检查 Node.js 安装')
   const reg = safeRegistry(registry)
   return new Promise((resolve, reject) => {
     execFile(
-      inv.node,
-      [inv.cli, 'view', CC_PACKAGE, 'versions', '--json', `--registry=${reg}`],
+      inv.file,
+      [...inv.lead, 'view', CC_PACKAGE, 'versions', '--json', `--registry=${reg}`],
       { encoding: 'utf8', windowsHide: true, maxBuffer: 20 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) return reject(new Error(stderr?.trim() || err.message))
@@ -222,7 +272,7 @@ export function install(
     return Promise.resolve({ ok: false, version: ver, error: '同一版本正在安装中' })
   }
   const inv = resolveNpmInvocation()
-  if (!inv) return Promise.resolve({ ok: false, version: ver, error: '未找到 npm / node.exe' })
+  if (!inv) return Promise.resolve({ ok: false, version: ver, error: '未找到 npm' })
   const reg = safeRegistry(registry)
   // 目录名先用请求的 ver；latest 用临时名，装完读 package.json 里真实版本改名
   const useTmp = ver === 'latest'
@@ -231,7 +281,7 @@ export function install(
   const createdDir = !existsSync(prefix)
   if (createdDir) mkdirSync(prefix, { recursive: true })
   const args = [
-    inv.cli,
+    ...inv.lead,
     'install', '-g', `${CC_PACKAGE}@${ver}`,
     `--prefix=${prefix}`,
     `--registry=${reg}`,
@@ -239,7 +289,7 @@ export function install(
   ]
   onPhase('准备…')
   return new Promise((resolve) => {
-    const p = spawn(inv.node, args, { windowsHide: true })
+    const p = spawn(inv.file, args, { windowsHide: true })
     const state: InflightInstall = { proc: p, prefix, createdDir, cancelled: false }
     inflightInstalls.set(ver, state)
     const cleanupOnFail = (): void => {
@@ -290,9 +340,9 @@ export function install(
           finalPrefix = prefix
         }
       }
-      const cmd = join(finalPrefix, 'claude.cmd')
+      const cmd = claudeBinPath(finalPrefix)
       if (!existsSync(cmd)) {
-        return resolve({ ok: false, version: realVer, error: '未生成 claude.cmd（可能包结构变了）' })
+        return resolve({ ok: false, version: realVer, error: '未生成 claude 可执行文件（可能包结构变了）' })
       }
       resolve({ ok: true, version: realVer, path: cmd })
     })
