@@ -42,7 +42,8 @@ export interface ClaudeUsage {
   ok: boolean
   error?: string
   fiveHour?: UsageWindow
-  sevenDay?: UsageWindow
+  sevenDay?: UsageWindow // 主显示的周额度：账号总池优先，缺总池才退回模型级（带 scopeLabel）
+  sevenDayModel?: UsageWindow | null // 模型级周额度（如 Fable）；仅在主条是账号总池时用于 hover 展示
   sevenDayOpus?: UsageWindow | null
   sevenDaySonnet?: UsageWindow | null
   fetchedAt: number
@@ -163,29 +164,42 @@ function pickWindow(v: unknown): UsageWindow | null {
   return { utilization: u, resetsAt: typeof o.resets_at === 'string' ? o.resets_at : null }
 }
 
-// 顶层 seven_day 常年为 null，真正的周额度在 limits[] 里 group/kind 带 "weekly" 的项。
-// 实测这些项常按模型 scope 拆分（如只用了 Fable → 只有一条 scope.model='Fable' 的 weekly，
-// 压根没有账号级总周额度）。可能有多条 → 取用量最高的那条；若它带模型 scope，则记下模型名
-// （scopeLabel），交给 UI 显示成「Fable额度」而非笼统的「本周额度」。
-function pickWeekly(raw: Record<string, unknown>): UsageWindow | null {
+// 顶层 seven_day 现已废弃恒为 null，真实周额度全搬进 limits[] 数组。官方把周额度拆成两类：
+//   · kind='weekly_all'    —— 账号级总周额度（全模型共享池），对应「本周额度」；
+//   · kind='weekly_scoped' —— 某模型专属周配额（带 scope.model.display_name，如 Fable / Sonnet），
+//                             对应「Fable额度」等。
+// 返回两条：overall = 账号总池（无 scopeLabel），scoped = 用量最高的模型级配额（带模型名）。
+// 用 kind 作主判据（最可靠）；对没有 kind 的旧结构兜底：scope 无模型 / 显式「All models」= 总池。
+function pickWeekly(raw: Record<string, unknown>): {
+  overall: UsageWindow | null
+  scoped: UsageWindow | null
+} {
   const limits = raw.limits
-  if (!Array.isArray(limits)) return null
-  let best: UsageWindow | null = null
+  if (!Array.isArray(limits)) return { overall: null, scoped: null }
+  let overall: UsageWindow | null = null // 账号级总池（无 scopeLabel → 显示「本周额度」）
+  let scoped: UsageWindow | null = null // 模型级里用量最高的一条
   for (const l of limits) {
     if (!l || typeof l !== 'object') continue
     const o = l as Record<string, unknown>
-    const isWeekly = o.group === 'weekly' || (typeof o.kind === 'string' && o.kind.includes('weekly'))
+    const kind = typeof o.kind === 'string' ? o.kind : ''
+    const isWeekly = o.group === 'weekly' || kind.includes('weekly')
     if (!isWeekly || typeof o.percent !== 'number') continue
-    if (best && o.percent <= best.utilization) continue
     const scope = o.scope as { model?: { display_name?: unknown } } | null | undefined
-    const model = scope?.model?.display_name
-    best = {
-      utilization: o.percent,
+    const m = scope?.model?.display_name
+    const model = typeof m === 'string' ? m.trim() : ''
+    const win = (label?: string): UsageWindow => ({
+      utilization: o.percent as number,
       resetsAt: typeof o.resets_at === 'string' ? o.resets_at : null,
-      scopeLabel: typeof model === 'string' && model.trim() ? model.trim() : undefined
+      scopeLabel: label
+    })
+    const isAll = kind === 'weekly_all' || !model || /^all models$/i.test(model)
+    if (isAll) {
+      if (!overall || (o.percent as number) > overall.utilization) overall = win()
+    } else {
+      if (!scoped || (o.percent as number) > scoped.utilization) scoped = win(model)
     }
   }
-  return best
+  return { overall, scoped }
 }
 
 async function fetchFresh(): Promise<ClaudeUsage> {
@@ -217,19 +231,23 @@ async function fetchFresh(): Promise<ClaudeUsage> {
   }
 
   const fiveHour = pickWindow(raw.five_hour)
-  // 顶层 seven_day 为 null 时退到 limits[] 里的 weekly 项
-  const sevenDay = pickWindow(raw.seven_day) || pickWeekly(raw)
+  // 顶层 seven_day 已废弃恒 null，真数据在 limits[]。总池优先当主条，缺总池才退回模型级。
+  const wk = pickWeekly(raw)
+  const overall = pickWindow(raw.seven_day) || wk.overall
+  const sevenDay = overall || wk.scoped
+  const sevenDayModel = wk.scoped
   if (!fiveHour && !sevenDay) {
     return fail('返回里没有用量字段', body.slice(0, 300))
   }
 
   debugLog(
-    `[${new Date(now).toISOString()}] OK five=${fiveHour?.utilization ?? '-'} week=${sevenDay?.utilization ?? '-'}`
+    `[${new Date(now).toISOString()}] OK five=${fiveHour?.utilization ?? '-'} week=${sevenDay?.utilization ?? '-'} model=${sevenDayModel?.scopeLabel ?? '-'}`
   )
   return {
     ok: true,
     fiveHour: fiveHour ?? undefined,
     sevenDay: sevenDay ?? undefined,
+    sevenDayModel: sevenDayModel ?? null,
     sevenDayOpus: pickWindow(raw.seven_day_opus),
     sevenDaySonnet: pickWindow(raw.seven_day_sonnet),
     fetchedAt: now
@@ -272,6 +290,7 @@ export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
       const api = await fetchApiUsage(force)
       if (api.ok && api.sevenDay) {
         snap.sevenDay = api.sevenDay
+        snap.sevenDayModel = api.sevenDayModel ?? null
         snap.sevenDayOpus = api.sevenDayOpus ?? null
         snap.sevenDaySonnet = api.sevenDaySonnet ?? null
       }

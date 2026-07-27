@@ -9,6 +9,7 @@ interface ClaudeUsage {
   error?: string
   fiveHour?: UsageWindow
   sevenDay?: UsageWindow
+  sevenDayModel?: UsageWindow | null // 模型级周额度（如 Fable），主条是总池时用于 hover 展示
   sevenDayOpus?: UsageWindow | null
   sevenDaySonnet?: UsageWindow | null
   fetchedAt: number
@@ -44,11 +45,11 @@ function lvOf(p: number): string {
 
 // 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版。
 // percent 为 null = 最终没拿到数据 → 空轨 + 横杠占位（区别于真实 0%）。
-function bar(label: string, percent: number | null, reset: string): string {
+function bar(label: string, percent: number | null, reset: string, mark = ''): string {
   const has = typeof percent === 'number'
   const lv = has ? lvOf(percent as number) : 'lv-none'
   return (
-    `<span class="ubar">` +
+    `<span class="ubar"${mark ? ' ' + mark : ''}>` +
     `<span class="ubar-label">${label}</span>` +
     `<span class="ubar-track"><i class="ubar-fill ${lv}" style="width:${has ? percent : 0}%"></i></span>` +
     `<span class="ubar-val ${lv}">${has ? `${percent}%` : '—'}</span>` +
@@ -61,13 +62,13 @@ function bar(label: string, percent: number | null, reset: string): string {
 // 横向排布：左侧圆环，右侧两行文字（标题 / 重置倒计时）。
 const RING_R = 15.5
 const RING_C = 2 * Math.PI * RING_R
-function ring(label: string, percent: number | null, reset: string): string {
+function ring(label: string, percent: number | null, reset: string, mark = ''): string {
   const has = typeof percent === 'number'
   const p = has ? Math.min(100, Math.max(0, percent as number)) : 0
   const lv = has ? lvOf(percent as number) : 'lv-none'
   const offset = (RING_C * (100 - p)) / 100
   return (
-    `<span class="uring">` +
+    `<span class="uring"${mark ? ' ' + mark : ''}>` +
     `<span class="uring-box">` +
     `<svg viewBox="0 0 40 40" aria-hidden="true">` +
     `<circle class="uring-track" cx="20" cy="20" r="${RING_R}"></circle>` +
@@ -157,16 +158,22 @@ export class UsageIndicator {
     const render = this.style === 'ring' ? ring : bar
     const items: string[] = []
     if (u.fiveHour) items.push(render('5h额度', pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt)))
-    // 周额度标签：账号级总额度 → 「本周额度」；只有某模型的专属周配额（如 Fable）→ 「Fable额度」；
+    // 周额度主条：账号级总池 → 「本周额度」；没有总池、只有模型专属配额（如 Fable）→ 「Fable额度」；
     // 彻底没拿到 → 仍用「本周额度」显示横杠占位。
     const weeklyLabel = u.sevenDay?.scopeLabel ? `${u.sevenDay.scopeLabel}额度` : '本周额度'
+    // hover 卡片：仅当主条是账号总池（无 scopeLabel）且另有模型级配额时，悬浮补显模型额度。
+    // 主条本身就是模型级（总池缺失退回 Fable）时不再重复展示，模型级缺失则 hover 无反应。
+    const model = (u.sevenDay && !u.sevenDay.scopeLabel && u.sevenDayModel) || null
     items.push(
       u.sevenDay
-        ? render(weeklyLabel, pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt))
+        ? render(weeklyLabel, pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt), model ? 'data-weekly' : '')
         : render('本周额度', null, '')
     )
+    const pop = model
+      ? `<div class="usage-pop">${render(`${model.scopeLabel}额度`, pct(model), fmtCountdown(model.resetsAt))}</div>`
+      : ''
     this.el.title = ''
     this.el.className = this.style === 'ring' ? 'usage-bars is-rings' : 'usage-bars'
-    this.el.innerHTML = items.join('')
+    this.el.innerHTML = items.join('') + pop
   }
 }

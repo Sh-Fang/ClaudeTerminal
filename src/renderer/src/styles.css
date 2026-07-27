@@ -884,12 +884,32 @@ button.saved-toggle:hover { color: var(--ink); }
 .side-usage[hidden] { display: none; }
 .side-usage > * { flex: 1; min-width: 0; }
 .usage-bars {
+  position: relative;   /* hover 卡片的定位锚点 */
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
   column-gap: 6px; row-gap: 4px;
   font-family: var(--mono); font-size: 11px; color: var(--mute);
 }
+/* 周额度主条带 data-weekly 时可 hover 看模型额度：给个 help 光标提示（cursor 会继承给子元素） */
+.usage-bars [data-weekly] { cursor: help; }
+/* hover 卡片：默认隐藏，鼠标落在「本周额度」那条（data-weekly）时浮现，样式与主条一致 */
+.usage-pop {
+  position: absolute;
+  left: 0; right: 0; bottom: calc(100% + 6px);
+  display: none;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 8px 10px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-5);
+  z-index: 80;
+}
+.usage-bars:has([data-weekly]:hover) .usage-pop,
+.usage-bars:has([data-weekly] *:hover) .usage-pop { display: grid; }
 .usage-bars.error,
 .usage-bars.loading { display: block; }   /* 文案态退回普通块，免得撑空网格 */
 .usage-bars.error { color: #f14c4c; }

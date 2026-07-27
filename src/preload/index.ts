@@ -134,6 +134,7 @@ export interface ClaudeUsage {
   error?: string
   fiveHour?: UsageWindow
   sevenDay?: UsageWindow
+  sevenDayModel?: UsageWindow | null // 模型级周额度（如 Fable），用于 hover 展示
   sevenDayOpus?: UsageWindow | null
   sevenDaySonnet?: UsageWindow | null
   fetchedAt: number
