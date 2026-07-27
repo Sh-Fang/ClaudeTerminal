@@ -34,6 +34,9 @@ const TTL_MS = 180_000 // 接口建议节流，180s 内复用缓存
 export interface UsageWindow {
   utilization: number // 0~100
   resetsAt: string | null // ISO，UTC
+  // 该周额度按模型 scope 拆分时的模型名（如 'Fable'）。有值 = 这是某个模型的专属周配额，
+  // 而非账号级总周额度 → UI 显示「Fable额度」而不是「本周额度」。无值 = 账号级总额度。
+  scopeLabel?: string
 }
 export interface ClaudeUsage {
   ok: boolean
@@ -161,7 +164,9 @@ function pickWindow(v: unknown): UsageWindow | null {
 }
 
 // 顶层 seven_day 常年为 null，真正的周额度在 limits[] 里 group/kind 带 "weekly" 的项。
-// 可能按模型 scope 拆成多条 → 取用量最高的那条代表"本周"。
+// 实测这些项常按模型 scope 拆分（如只用了 Fable → 只有一条 scope.model='Fable' 的 weekly，
+// 压根没有账号级总周额度）。可能有多条 → 取用量最高的那条；若它带模型 scope，则记下模型名
+// （scopeLabel），交给 UI 显示成「Fable额度」而非笼统的「本周额度」。
 function pickWeekly(raw: Record<string, unknown>): UsageWindow | null {
   const limits = raw.limits
   if (!Array.isArray(limits)) return null
@@ -171,8 +176,13 @@ function pickWeekly(raw: Record<string, unknown>): UsageWindow | null {
     const o = l as Record<string, unknown>
     const isWeekly = o.group === 'weekly' || (typeof o.kind === 'string' && o.kind.includes('weekly'))
     if (!isWeekly || typeof o.percent !== 'number') continue
-    if (!best || o.percent > best.utilization) {
-      best = { utilization: o.percent, resetsAt: typeof o.resets_at === 'string' ? o.resets_at : null }
+    if (best && o.percent <= best.utilization) continue
+    const scope = o.scope as { model?: { display_name?: unknown } } | null | undefined
+    const model = scope?.model?.display_name
+    best = {
+      utilization: o.percent,
+      resetsAt: typeof o.resets_at === 'string' ? o.resets_at : null,
+      scopeLabel: typeof model === 'string' && model.trim() ? model.trim() : undefined
     }
   }
   return best

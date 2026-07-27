@@ -127,6 +127,7 @@ export interface FloaterCounts {
 export interface UsageWindow {
   utilization: number
   resetsAt: string | null
+  scopeLabel?: string // 周额度按模型拆分时的模型名（如 'Fable'）；无 = 账号级总额度
 }
 export interface ClaudeUsage {
   ok: boolean

@@ -2,6 +2,7 @@
 interface UsageWindow {
   utilization: number
   resetsAt: string | null
+  scopeLabel?: string // 周额度按模型拆分时的模型名（如 'Fable'）；无 = 账号级总额度
 }
 interface ClaudeUsage {
   ok: boolean
@@ -156,9 +157,12 @@ export class UsageIndicator {
     const render = this.style === 'ring' ? ring : bar
     const items: string[] = []
     if (u.fiveHour) items.push(render('5h额度', pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt)))
+    // 周额度标签：账号级总额度 → 「本周额度」；只有某模型的专属周配额（如 Fable）→ 「Fable额度」；
+    // 彻底没拿到 → 仍用「本周额度」显示横杠占位。
+    const weeklyLabel = u.sevenDay?.scopeLabel ? `${u.sevenDay.scopeLabel}额度` : '本周额度'
     items.push(
       u.sevenDay
-        ? render('本周额度', pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt))
+        ? render(weeklyLabel, pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt))
         : render('本周额度', null, '')
     )
     this.el.title = ''
