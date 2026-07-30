@@ -107,32 +107,39 @@ body {
   user-select: none;
   gap: 12px;
 }
+/* Windows 原生 caption 按钮：方形、贴右上角、占满标题栏高度；关闭悬停变红。
+   macOS 用系统红绿灯（.platform-mac 下整组隐藏），故这套样式实际只在 Windows 生效。 */
 .win-ctrls {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  height: 100%;
   -webkit-app-region: no-drag;
   flex: 0 0 auto;
 }
 .win-btn {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  width: 46px;
+  height: 100%;
   border: none;
+  background: transparent;
   cursor: default;
   padding: 0;
   display: grid;
   place-items: center;
-  color: transparent;
-  transition: color 0.1s;
+  color: var(--ink);
+  transition: background-color 0.12s, color 0.12s;
 }
 .win-btn:focus { outline: none; }
 .win-btn svg { display: block; }
-.win-btn.c-close { background: #ff5f57; }
-.win-btn.c-min { background: #febc2e; }
-.win-btn.c-max { background: #28c840; }
-.win-ctrls:hover .win-btn { color: rgba(0, 0, 0, 0.55); }
-.win-btn:hover { filter: brightness(0.92); }
+.win-btn:hover { background: rgba(128, 128, 128, 0.18); }
+.win-btn:active { background: rgba(128, 128, 128, 0.28); }
+.win-btn.c-close:hover { background: #e81123; color: #fff; }
+.win-btn.c-close:active { background: #f1707a; color: #fff; }
+/* 最大化 / 还原图标切换：默认显示方框，最大化时显示双框 */
+.win-btn .ico-restore { display: none; }
+body.win-maximized .win-btn .ico-maximize { display: none; }
+body.win-maximized .win-btn .ico-restore { display: block; }
+/* Windows：caption 按钮贴到标题栏右上角（去掉右侧内边距，占满高度到顶边） */
+.platform-win .titlebar { padding-right: 0; }
 
 .brand {
   display: flex;

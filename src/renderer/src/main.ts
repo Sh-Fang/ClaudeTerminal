@@ -1922,6 +1922,15 @@ const winMax = document.getElementById('win-max') as HTMLButtonElement | null
 winClose?.addEventListener('click', () => window.term.winClose())
 winMin?.addEventListener('click', () => window.term.winMinimize())
 winMax?.addEventListener('click', () => window.term.winToggleMaximize())
+// Windows caption 语义：最大化时把「最大化」方框图标切成「还原」双框图标。
+// body.win-maximized 驱动 CSS 切换；订阅主进程的 maximize/unmaximize 状态 + 拉一次初始态。
+// （macOS 用系统红绿灯，自绘按钮已隐藏，这里空转无副作用。）
+if (window.term.platform !== 'darwin') {
+  const applyMax = (maximized: boolean): void =>
+    document.body.classList.toggle('win-maximized', maximized)
+  window.term.onWindowState((s) => applyMax(s.maximized))
+  void window.term.winIsMaximized().then(applyMax)
+}
 // 双击 titlebar 切最大化（macOS 同款行为）
 document.querySelector('.titlebar')?.addEventListener('dblclick', (e) => {
   if ((e.target as HTMLElement).closest('.win-ctrls')) return
