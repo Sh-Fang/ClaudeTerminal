@@ -440,6 +440,13 @@ function makeTab(group: Group, opts: {
         sidebar.render()
         toolbar.render()
       },
+      // cc 接口异常兜底：terminal-tab 扫到 API Error 时已把 status 置成 error，
+      // 这里补上 note 并刷新侧栏/顶栏（红点，需用户手动"标记为已查看"清除）。
+      onErrorDetected: (note) => {
+        tabRef.note = note
+        sidebar.render()
+        toolbar.render()
+      },
       onShellCommand: (kind, cmd) => {
         // pwsh shell integration OSC 序列触发 → pwsh 一定在前台（cc 全屏 TUI 会完全屏蔽这些序列）。
         // 顶栏"启动 CC"按钮据此显隐：cc 退出后 pwsh 打 prompt 触发一次 end → 按钮秒回。

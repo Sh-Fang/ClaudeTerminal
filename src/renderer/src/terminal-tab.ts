@@ -15,6 +15,9 @@ export interface TermTabHandlers {
   onPtyStarted?: () => void
   // 用户在 busy 中按 ESC 撤回提示词时，Claude 不会发 hook，由 renderer 兜底重置
   onUserAbort?: () => void
+  // cc 接口异常（API Error 等）时不发 Stop hook，busy 会一直卡蓝。由 renderer 扫 PTY
+  // 输出文本兜底：命中错误行 → 通知上层把该 tab 置成 error（红点）。note 为简短说明。
+  onErrorDetected?: (note?: string) => void
   // pwsh shell integration 上报：非 cc 命令的开始/结束（cmdLine 只在 start 时有值）。
   // 由 pwsh profile 通过 OSC 133;C/D + OSC 633;E 序列驱动，用于给纯 pwsh tab 标注运行态。
   onShellCommand?: (kind: 'start' | 'end', cmdLine?: string) => void
@@ -62,6 +65,20 @@ function decodeBase64Utf8(b64: string): string {
     return ''
   }
 }
+
+// cc 接口异常兜底：cc 报 API Error 时不发 Stop hook，busy 状态会永久卡蓝。
+// 这些错误行是 cc 打到 PTY 的可见文本（唯一痕迹），扫到就把 tab 复位成 error。
+// cc 几乎所有网络/服务端异常都以 "API Error:" 前缀打出（连接断开 / 超时 / 529 过载等），
+// 单独再列 "Connection closed mid-response" 兜住少数不带前缀的续行。keyword → 中文 note。
+const CC_ERROR_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/Connection closed mid-response/i, '连接中断，回复可能未完成'],
+  [/API Error:\s*(?:Connection error|fetch failed|network)/i, '接口连接异常'],
+  [/API Error:\s*(?:Request timed out|timeout)/i, '接口请求超时'],
+  [/API Error:\s*5\d\d\b|overloaded/i, '服务端过载/异常'],
+  [/API Error:/i, '接口异常'] // 兜底：其余 API Error 一律红点
+]
+// 匹配任意一条错误的合并正则（先快筛，命中再定位具体 note，避免逐条跑）。
+const CC_ERROR_RE = new RegExp(CC_ERROR_PATTERNS.map(([re]) => re.source).join('|'), 'i')
 
 /*
  * ───────────────────────────────────────────────────────────────────
@@ -153,6 +170,11 @@ export class TerminalTab {
 
   // ── shell integration：OSC 633;E 上报的下一条命令行，落到 133;C 时消费
   private pendingShellCmd: string | undefined
+
+  // ── cc 错误兜底：只在 busy 时扫 PTY 文本。errScanTail 存上一 chunk 末尾几十字符，
+  // 拼到下一 chunk 前面，避免错误行正好被 chunk 边界切开而漏匹配。
+  private errScanTail = ''
+  private static readonly ERR_SCAN_TAIL_LEN = 80
 
   constructor(
     opts: {
@@ -639,6 +661,28 @@ export class TerminalTab {
       dbg(this.id, `data ${data.length}B`, previewData(data))
     }
     this.term.write(data)
+    this.scanForError(data)
+  }
+
+  // cc 报 API Error 时不发 Stop hook → busy 卡蓝。只在 busy 时扫（省开销 + 天然去抖：
+  // 命中后 status 变 error，cc TUI 每帧重绘同一错误行也不会重复触发）。
+  private scanForError(data: string): void {
+    if (this.status !== 'busy') {
+      this.errScanTail = '' // 非 busy 无需保留跨 chunk 上下文
+      return
+    }
+    const hay = this.errScanTail + data
+    if (CC_ERROR_RE.test(hay)) {
+      const hit = CC_ERROR_PATTERNS.find(([re]) => re.test(hay))
+      this.errScanTail = ''
+      this.status = 'error'
+      this.handlers.onErrorDetected?.(hit?.[1] ?? '接口异常')
+      return
+    }
+    // 只保留末尾一小段做跨 chunk 拼接，避免无限增长
+    this.errScanTail = hay.length > TerminalTab.ERR_SCAN_TAIL_LEN
+      ? hay.slice(-TerminalTab.ERR_SCAN_TAIL_LEN)
+      : hay
   }
 
   handlePtyExit(exitCode: number): void {
