@@ -15,43 +15,47 @@ let mainWindow: BrowserWindow | null = null
 let allowClose = false
 let tray: Tray | null = null
 
-// ─── 关闭进托盘 ──────────────────────────────────────────────────
-// closeBehavior='tray' 时点关闭：不弹确认，窗口 hide + 挂托盘图标；会话进程全部保留。
-// 托盘图标只在「已收进托盘」期间存在，恢复窗口即销毁，平时不占托盘位。
+// ─── 常驻托盘 ────────────────────────────────────────────────────
+// 托盘图标在 app 运行期间一直可见（不论窗口是否显示），随时可点开 / 退出。
+// closeBehavior='tray' 时点关闭：不弹确认，窗口 hide，会话进程全部保留，从托盘唤回。
 function destroyTray(): void {
   try { tray?.destroy() } catch {}
   tray = null
 }
 
-function restoreFromTray(): void {
-  destroyTray()
+// 显示并聚焦主窗口（不销毁托盘 —— 托盘常驻）
+function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
 }
 
+// 幂等地创建常驻托盘；启动后即调用一次，之后一直存在到退出。
+function ensureTray(): void {
+  if (tray) return
+  // Windows 托盘用 ico（小尺寸清晰），其余平台用 png
+  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  tray = new Tray(join(__dirname, '../../resources', iconFile))
+  tray.setToolTip('Claude Terminal')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '打开 Claude Terminal', click: () => showMainWindow() },
+    { type: 'separator' },
+    {
+      label: '退出（终止所有会话）',
+      click: () => {
+        allowClose = true
+        fastQuit('tray-quit')
+      }
+    }
+  ]))
+  tray.on('click', () => showMainWindow())
+  tray.on('double-click', () => showMainWindow())
+}
+
 function hideToTray(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  if (!tray) {
-    // Windows 托盘用 ico（小尺寸清晰），其余平台用 png
-    const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
-    tray = new Tray(join(__dirname, '../../resources', iconFile))
-    tray.setToolTip('Claude Terminal（会话仍在运行）')
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: '打开 Claude Terminal', click: () => restoreFromTray() },
-      { type: 'separator' },
-      {
-        label: '退出（终止所有会话）',
-        click: () => {
-          allowClose = true
-          fastQuit('tray-quit')
-        }
-      }
-    ]))
-    tray.on('click', () => restoreFromTray())
-    tray.on('double-click', () => restoreFromTray())
-  }
+  ensureTray() // 常驻下通常已存在，双保险
   mainWindow.hide()
 }
 
@@ -170,10 +174,8 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_e, argv) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
-    // 收在托盘里时再次启动 app → 不开新实例，把托盘里的窗口拉回来
-    if (!mainWindow.isVisible()) restoreFromTray()
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
+    // 再次启动 app（含收在托盘时）→ 不开新实例，把窗口显示并拉到前台
+    showMainWindow()
     // 第二实例带 --open-here → push 到 pending 队列，并顺手 send 一次触发 renderer 消费
     const p = parseOpenHere(argv)
     if (p) {
@@ -378,6 +380,7 @@ app.whenReady().then(() => {
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()
+  ensureTray() // 常驻托盘：app 一启动就在托盘可见，随时点开 / 退出
   // 首次启动的路径已经在 pendingOpenHere 里；等 renderer 主动 invoke consumePendingOpenHere 消费。
   // 启动时按设置决定是否拉起悬浮窗
   try {
