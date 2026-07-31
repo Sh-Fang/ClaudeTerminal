@@ -4,10 +4,21 @@
 import { icon } from './svg-icons'
 import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, type CtxItem, type Range } from './ui-helpers'
 
+// 单条会话的展示视图：供"点会话数弹出的小列表"渲染 + 会话级搜索。
+// hasUserTitle 用来限定搜索范围 —— 只有手动重命名过的会话标题才进入搜索，默认「会话N」不参与。
+export interface ManageSessionView {
+  sessionId: string
+  title: string
+  hasUserTitle: boolean
+  source: string
+  ts?: string
+  isActive: boolean // 是否该标签的默认活跃会话（activeSessionId）
+}
+
 export interface ManageTabView {
   id: string
   name: string
-  sessions: number
+  sessions: ManageSessionView[]
   savedAt?: string
   lastTs?: string
 }
@@ -46,6 +57,8 @@ export interface SavedManagerHooks {
   onRestoreAll(savedId: string): void
   onRestoreSelect(savedId: string): void
   onRestoreOneTab(savedId: string, tabId: string): void
+  // 会话级恢复（入口②·管理页）：恢复该标签页，但把活跃会话指定为 sessionId（会话栈整份带过来）
+  onRestoreTabAtSession(savedId: string, tabId: string, sessionId: string): void
   onAddTabToSaved(savedId: string): void
   onRenameWorkspace(wsId: string, newName: string): void
   onDeleteWorkspace(wsId: string): void
@@ -305,7 +318,7 @@ export class SavedManager {
     return g.tabs.map((t, i) => `
       <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(t.id)}">
         <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${highlightRanges(t.name, hl[2 + i])}</span>
-        <span class="mg-tab-meta">${t.sessions} 会话${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
+        <span class="mg-tab-meta">${t.sessions.length} 会话${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
         <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="恢复该标签页到当前工作区">${icon('rotate-ccw', { size: 13 })}</button>
       </div>
     `).join('')

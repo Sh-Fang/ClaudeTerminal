@@ -15,6 +15,7 @@ import {
   openModal,
   openPickTabs,
   recencyDesc,
+  sessionTitle,
   shortPath,
   showCtxMenu,
   toast,
@@ -1090,7 +1091,10 @@ async function restoreSavedTabs(
   savedId: string,
   tabIds: string[],
   blankName?: string,
-  blankAutoLaunchCC?: boolean
+  blankAutoLaunchCC?: boolean,
+  // 会话级恢复(语义 B)：tabId → 指定的活跃会话 sessionId。恢复时覆盖该标签的默认 activeSessionId，
+  // 会话栈(sessions[])整份照带；没指定的标签按原 activeSessionId 恢复。
+  sessionOverride?: Map<string, string>
 ): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -1112,7 +1116,7 @@ async function restoreSavedTabs(
       id: t.id,
       name: t.name,
       sessions: t.sessions,
-      activeSessionId: t.activeSessionId,
+      activeSessionId: sessionOverride?.get(t.id) ?? t.activeSessionId,
       autoLaunchCC: t.autoLaunchCC,
       dirty: false
     })
@@ -2232,13 +2236,23 @@ const savedManager = new SavedManager({
         name: s.name,
         cwd: s.cwd,
         savedAt: s.savedAt,
-        tabs: s.snapshot.tabs.map((t) => ({
-          id: t.id,
-          name: t.name,
-          sessions: t.sessions.length,
-          savedAt: t.savedAt,
-          lastTs: lastTsOf(t)
-        }))
+        tabs: s.snapshot.tabs.map((t) => {
+          const activeId = t.activeSessionId ?? t.sessions[t.sessions.length - 1]?.sessionId
+          return {
+            id: t.id,
+            name: t.name,
+            sessions: t.sessions.map((se) => ({
+              sessionId: se.sessionId,
+              title: sessionTitle(se, t.sessions),
+              hasUserTitle: !!se.userTitle,
+              source: se.source,
+              ts: se.lastTs ?? se.createdAt,
+              isActive: se.sessionId === activeId
+            })),
+            savedAt: t.savedAt,
+            lastTs: lastTsOf(t)
+          }
+        })
       })),
   onRename: (id, name) => {
     const s = savedGroups.find((x) => x.id === id)
@@ -2295,6 +2309,8 @@ const savedManager = new SavedManager({
   onRestoreAll: (id) => restoreSavedAll(id),
   onRestoreSelect: (id) => openRestoreSelect(id),
   onRestoreOneTab: (savedId, tabId) => void restoreSavedTabs(savedId, [tabId]),
+  onRestoreTabAtSession: (savedId, tabId, sessionId) =>
+    void restoreSavedTabs(savedId, [tabId], undefined, undefined, new Map([[tabId, sessionId]])),
   onAddTabToSaved: addTabToSavedGroup,
   getSavedWorkspaces: (): ManageWorkspaceView[] =>
     [...savedWorkspaces]
