@@ -366,7 +366,7 @@ export class SavedManager {
         .map(
           (h) => `
         <div class="mg-sess-hit" data-sess-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}::${escapeHtml(h.sessionId)}" title="恢复该标签页并打开此会话">
-          <span class="mg-sess-hit-arrow">↳</span> 会话「${highlightRanges(h.title, h.hl)}」
+          <span class="mg-sess-hit-arrow">↳</span> ${highlightRanges(h.title, h.hl)}
         </div>`
         )
         .join('')
