@@ -707,3 +707,107 @@ export function defaultSessionTitle(sess: SessionRecord, sessions: SessionRecord
 export function sessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
   return sess.userTitle || defaultSessionTitle(sess, sessions)
 }
+
+// ─── 会话选择浮层 ────────────────────────────────────────────────
+// 点「N 会话」徽标弹出的小列表。两个恢复入口共用：
+//   · 管理页(入口②)：选一条 = 直接恢复标签页并以该会话为活跃会话；
+//   · 勾选弹窗(入口①)：选一条 = 指定该标签用此会话恢复，selectedId 高亮已选，onClear 提供"用默认"。
+// 锚定在被点击的徽标下方，越界自动上翻/内收；外部点击 / Esc / 滚动即关闭。
+export interface SessPickEntry {
+  sessionId: string
+  title: string
+  source: string
+  ts?: string
+  isDefault: boolean // 该标签默认活跃会话（不选就是它）
+}
+let sessPickHost: HTMLDivElement | null = null
+let sessPickDetach: (() => void) | null = null
+export function closeSessionPicker(): void {
+  sessPickDetach?.()
+  sessPickDetach = null
+  sessPickHost?.remove()
+  sessPickHost = null
+}
+export function openSessionPicker(opts: {
+  anchor: HTMLElement
+  entries: SessPickEntry[]
+  selectedId?: string
+  onPick: (sessionId: string) => void
+  onClear?: () => void
+  title?: string
+}): void {
+  closeSessionPicker()
+  const host = document.createElement('div')
+  host.className = 'sesspick'
+  const head = opts.title ? `<div class="sesspick-head">${escapeHtml(opts.title)}</div>` : ''
+  const clearRow = opts.onClear
+    ? `<div class="sesspick-item sesspick-clear" data-sp-clear="1"><div class="sess-body"><div class="sess-title">用默认会话恢复</div><div class="sess-meta">清除指定，按标签原活跃会话</div></div></div>`
+    : ''
+  const rows = opts.entries
+    .map((e) => {
+      const sel = !!opts.selectedId && e.sessionId === opts.selectedId
+      const meta = `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ' · <span class="cur">默认</span>' : ''}`
+      return `<div class="sesspick-item sess-item${e.isDefault ? ' current' : ''}${sel ? ' selected' : ''}" data-sp-sid="${escapeHtml(e.sessionId)}">
+      <span class="sdot"></span>
+      <div class="sess-body">
+        <div class="sess-title">${escapeHtml(e.title)}</div>
+        <div class="sess-meta">${meta}</div>
+      </div>
+    </div>`
+    })
+    .join('')
+  host.innerHTML = head + rows + clearRow
+  document.body.appendChild(host)
+  sessPickHost = host
+
+  // 定位：锚点下方左对齐；右/下越界则收敛进视口
+  const r = opts.anchor.getBoundingClientRect()
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const pw = host.offsetWidth
+  const ph = host.offsetHeight
+  let left = r.left
+  let top = r.bottom + 4
+  if (left + pw > vw - 8) left = Math.max(8, vw - 8 - pw)
+  if (top + ph > vh - 8) top = Math.max(8, r.top - 4 - ph)
+  host.style.left = `${Math.round(left)}px`
+  host.style.top = `${Math.round(top)}px`
+
+  host.addEventListener('click', (e) => {
+    const clr = (e.target as HTMLElement).closest('[data-sp-clear]')
+    if (clr) {
+      const cb = opts.onClear
+      closeSessionPicker()
+      cb?.()
+      return
+    }
+    const row = (e.target as HTMLElement).closest('[data-sp-sid]') as HTMLElement | null
+    if (!row) return
+    const sid = row.dataset.spSid!
+    closeSessionPicker()
+    opts.onPick(sid)
+  })
+
+  const onDocDown = (e: MouseEvent): void => {
+    if (host.contains(e.target as Node) || opts.anchor.contains(e.target as Node)) return
+    closeSessionPicker()
+  }
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      closeSessionPicker()
+    }
+  }
+  const onGone = (): void => closeSessionPicker()
+  // 延后挂 mousedown，避免"打开这一次点击"立即把它关掉
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0)
+  document.addEventListener('keydown', onKey, true)
+  window.addEventListener('resize', onGone, true)
+  window.addEventListener('scroll', onGone, true)
+  sessPickDetach = () => {
+    document.removeEventListener('mousedown', onDocDown, true)
+    document.removeEventListener('keydown', onKey, true)
+    window.removeEventListener('resize', onGone, true)
+    window.removeEventListener('scroll', onGone, true)
+  }
+}

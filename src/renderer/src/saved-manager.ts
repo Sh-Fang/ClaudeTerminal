@@ -2,7 +2,7 @@
 // 主程通过 hooks 暴露最小接口，本类只负责 UI 渲染与交互。
 
 import { icon } from './svg-icons'
-import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, type CtxItem, type Range } from './ui-helpers'
+import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, openSessionPicker, closeSessionPicker, type CtxItem, type Range, type SessPickEntry } from './ui-helpers'
 
 // 单条会话的展示视图：供"点会话数弹出的小列表"渲染 + 会话级搜索。
 // hasUserTitle 用来限定搜索范围 —— 只有手动重命名过的会话标题才进入搜索，默认「会话N」不参与。
@@ -143,6 +143,7 @@ export class SavedManager {
   }
 
   close(): void {
+    closeSessionPicker()
     this.scrim.hidden = true
   }
 
@@ -156,6 +157,7 @@ export class SavedManager {
 
   render(): void {
     if (this.scrim.hidden) return
+    closeSessionPicker() // 列表重建 → 关掉可能残留的会话浮层，避免锚点失效
     for (const btn of this.tabButtons) btn.classList.toggle('active', btn.dataset.mgTab === this.activeTab)
     if (this.activeTab === 'workspaces') {
       if (this.subEl) this.subEl.textContent = '整份工作区快照：点击展开分组，右键可重命名 / 恢复 / 删除。'
@@ -315,13 +317,42 @@ export class SavedManager {
       return '<div class="mg-tab-empty">这个保存的分组里已没有标签。</div>'
     }
     // 分组行 fields 顺序是 [name, cwd, tab0, tab1…]，所以标签 i 的高亮取 hl[2 + i]
-    return g.tabs.map((t, i) => `
+    return g.tabs.map((t, i) => {
+      const n = t.sessions.length
+      // 会话数 > 1 才可点：点开小列表挑一条会话恢复；否则纯文本（没有选择余地）
+      const countHtml = n > 1
+        ? `<button type="button" class="mg-sess-count" data-sess-picker="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="选择要恢复的会话">${n} 会话 ▾</button>`
+        : `${n} 会话`
+      return `
       <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(t.id)}">
         <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${highlightRanges(t.name, hl[2 + i])}</span>
-        <span class="mg-tab-meta">${t.sessions.length} 会话${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
+        <span class="mg-tab-meta">${countHtml}${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
         <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="恢复该标签页到当前工作区">${icon('rotate-ccw', { size: 13 })}</button>
       </div>
-    `).join('')
+    `
+    }).join('')
+  }
+
+  // 点某标签的"会话数"徽标 → 弹会话小列表；选一条即恢复该标签页并以该会话为活跃会话。
+  private openTabSessionPicker(anchor: HTMLElement): void {
+    const [savedId, tabId] = (anchor.dataset.sessPicker ?? '').split('::')
+    if (!savedId || !tabId) return
+    const g = this.hooks.getSaved().find((x) => x.id === savedId)
+    const t = g?.tabs.find((x) => x.id === tabId)
+    if (!t || t.sessions.length < 2) return
+    const entries: SessPickEntry[] = t.sessions.map((s) => ({
+      sessionId: s.sessionId,
+      title: s.title,
+      source: s.source,
+      ts: s.ts,
+      isDefault: s.isActive
+    }))
+    openSessionPicker({
+      anchor,
+      entries,
+      title: '选择要恢复的会话',
+      onPick: (sid) => this.hooks.onRestoreTabAtSession(savedId, tabId, sid)
+    })
   }
 
   private toggleExpand(id: string): void {
@@ -333,6 +364,13 @@ export class SavedManager {
   private onBodyClick(e: MouseEvent): void {
     const tgt = e.target as HTMLElement
     if (tgt.closest('[contenteditable="true"]')) return
+
+    // 会话数徽标：弹会话小列表，选一条 = 直接恢复该标签页并以该会话为活跃会话（入口②）
+    const sessPicker = tgt.closest('[data-sess-picker]') as HTMLElement | null
+    if (sessPicker) {
+      this.openTabSessionPicker(sessPicker)
+      return
+    }
 
     const tabRestore = tgt.closest('[data-tab-restore]') as HTMLElement | null
     if (tabRestore) {

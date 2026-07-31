@@ -725,6 +725,34 @@ button.saved-toggle:hover { color: var(--ink); }
 .sess-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 2px; }
 .sess-meta .src { color: var(--cyan-deep); }
 .sess-item.current .sess-meta .cur { color: var(--violet); font-weight: 500; }
+
+/* 会话选择浮层：点「N 会话」徽标弹出的小列表（两个恢复入口共用）。
+   内部行复用 .sess-item / .sdot / .sess-title / .sess-meta 的外观。 */
+.sesspick {
+  position: fixed;
+  z-index: 2000;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel, var(--card));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md, 10px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  animation: pop 0.12s ease;
+}
+.sesspick-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--mute);
+  text-transform: uppercase;
+  padding: 4px 8px 6px;
+}
+.sesspick-item.selected { background: var(--canvas-soft); outline: 1px solid var(--violet); }
+.sesspick-clear { border-top: 1px solid var(--hairline); margin-top: 4px; padding-top: 10px; }
+.sesspick-clear .sess-title { color: var(--mute); font-weight: 400; }
 .menu-foot {
   border-top: 1px solid var(--hairline);
   margin-top: 4px; padding: 8px 10px 6px;
@@ -1615,6 +1643,14 @@ mark.hl {
 .mg-tab:hover { background: var(--canvas-soft); }
 .mg-tab-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg-tab-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); flex: 0 0 auto; }
+/* 可点的"N 会话"徽标：点开弹会话小列表选一条恢复 */
+.mg-sess-count {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--cyan-deep); background: transparent;
+  border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  padding: 1px 6px; cursor: pointer; transition: background 0.1s, border-color 0.1s;
+}
+.mg-sess-count:hover { background: var(--canvas-soft-2); border-color: var(--hairline-strong); }
 .mg-tab .mg-btn { width: 24px; height: 24px; flex: 0 0 24px; }
 .mg-tab .mg-tab-restore { color: var(--body); }
 .mg-tab .mg-tab-restore:hover { color: var(--ink); background: var(--canvas-soft-2); }
