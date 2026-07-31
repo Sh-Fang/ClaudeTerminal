@@ -1282,6 +1282,14 @@ button.saved-toggle:hover { color: var(--ink); }
 .pk-row input[type='checkbox'] { width: 14px; height: 14px; accent-color: var(--link); flex: 0 0 14px; }
 .pk-row .pk-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-row .pk-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); flex: 0 0 auto; }
+/* 可点的"N 个会话"徽标：点开会话小列表指定要恢复的会话 */
+.pk-row .pk-sess-count {
+  color: var(--cyan-deep); background: transparent;
+  border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  padding: 1px 6px; cursor: pointer; transition: background 0.1s, border-color 0.1s;
+}
+.pk-row .pk-sess-count:hover { background: var(--canvas-soft-2); border-color: var(--hairline-strong); }
+.pk-row .pk-sess-count.chosen { color: var(--violet); border-color: var(--violet); }
 .pk-row[data-row-action='1'] {
   margin-top: 8px;
   padding-top: 12px;
@@ -1651,6 +1659,18 @@ mark.hl {
   padding: 1px 6px; cursor: pointer; transition: background 0.1s, border-color 0.1s;
 }
 .mg-sess-count:hover { background: var(--canvas-soft-2); border-color: var(--hairline-strong); }
+/* 搜索命中的会话提示行（挂在标签行下方，点它直接恢复到该会话） */
+.mg-sess-hit {
+  margin: 1px 0 2px 34px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--body);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.mg-sess-hit:hover { background: var(--canvas-soft); color: var(--ink); }
+.mg-sess-hit-arrow { color: var(--mute); }
 .mg-tab .mg-btn { width: 24px; height: 24px; flex: 0 0 24px; }
 .mg-tab .mg-tab-restore { color: var(--body); }
 .mg-tab .mg-tab-restore:hover { color: var(--ink); background: var(--canvas-soft-2); }

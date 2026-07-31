@@ -69,6 +69,15 @@ export interface SavedManagerHooks {
 
 type ManageTabName = 'groups' | 'workspaces'
 
+// 会话标题命中（仅搜重命名过的会话）：记录命中的会话 + 标题内高亮区间，
+// 用于在对应标签行下方显示「↳ 会话「…」」提示，点它可直接恢复到该会话。
+interface SessHit {
+  tabId: string
+  sessionId: string
+  title: string
+  hl?: Range[]
+}
+
 export class SavedManager {
   private scrim: HTMLDivElement
   private body: HTMLDivElement
@@ -166,22 +175,10 @@ export class SavedManager {
       return
     }
     if (this.subEl) this.subEl.textContent = '按名称自动排序。点击展开标签，右键可重命名 / 恢复 / 删除。'
-    this.searchInput.placeholder = '搜索：分组名 / 路径 / 标签名（支持模糊匹配）'
+    this.searchInput.placeholder = '搜索：分组名 / 路径 / 标签名 / 会话名（支持模糊匹配）'
     const all = this.hooks.getSaved()
     const q = this.searchQuery.trim()
-    // 命中规则：分组名 / 路径 / 任一标签名 任一命中 = 整组保留；有搜索时按匹配分倒序。
-    // 路径用完整串匹配（保留全路径可搜），但只高亮名字/标签 —— 短显示串下标对不上，路径不高亮。
-    const list: Array<{ g: ManageGroupView; hl: Range[][] }> = q
-      ? all
-          .map((g) => {
-            const fields = [g.name, g.cwd, ...g.tabs.map((t) => t.name)]
-            const weights = [3, 1, ...g.tabs.map(() => 2)]
-            const r = fuzzySearch(q, fields, weights)
-            return r ? { g, hl: r.highlights, score: r.score } : null
-          })
-          .filter((x): x is { g: ManageGroupView; hl: Range[][]; score: number } => !!x)
-          .sort((a, b) => b.score - a.score)
-      : all.map((g) => ({ g, hl: [] as Range[][] }))
+    const list = this.matchGroups(all, q)
     this.body.innerHTML = ''
     if (list.length === 0) {
       this.renderAz([])
@@ -192,12 +189,45 @@ export class SavedManager {
       return
     }
     this.empty.hidden = true
-    for (const { g, hl } of list) {
-      const el = this.row(g, hl, !!q)
+    for (const { g, hl, sess } of list) {
+      const el = this.row(g, hl, !!q, sess)
       el.dataset.initial = nameInitial(g.name)
       this.body.appendChild(el)
     }
     this.renderAz(list.map(({ g }) => nameInitial(g.name)))
+  }
+
+  // 命中规则：分组名(3) / 路径(1) / 任一标签名(2) 命中，或任一「重命名过的会话标题」命中
+  // = 整组保留；有搜索时按最高匹配分倒序。会话命中额外记录到 sess(tabId → hits)，
+  // 供标签行下方渲染 ↳ 会话提示。路径参与匹配但不高亮（短显示串下标对不上）。
+  private matchGroups(
+    all: ManageGroupView[],
+    q: string
+  ): Array<{ g: ManageGroupView; hl: Range[][]; sess: Map<string, SessHit[]> }> {
+    if (!q) return all.map((g) => ({ g, hl: [] as Range[][], sess: new Map<string, SessHit[]>() }))
+    const scored: Array<{ g: ManageGroupView; hl: Range[][]; sess: Map<string, SessHit[]>; score: number }> = []
+    for (const g of all) {
+      const fields = [g.name, g.cwd, ...g.tabs.map((t) => t.name)]
+      const weights = [3, 1, ...g.tabs.map(() => 2)]
+      const r = fuzzySearch(q, fields, weights)
+      const sess = new Map<string, SessHit[]>()
+      let bestSess = 0
+      for (const t of g.tabs) {
+        for (const s of t.sessions) {
+          if (!s.hasUserTitle) continue // 只搜重命名过的标题，默认「会话N」不参与
+          const sr = fuzzySearch(q, [s.title])
+          if (!sr) continue
+          const arr = sess.get(t.id) ?? []
+          arr.push({ tabId: t.id, sessionId: s.sessionId, title: s.title, hl: sr.highlights[0] })
+          sess.set(t.id, arr)
+          if (sr.score > bestSess) bestSess = sr.score
+        }
+      }
+      if (!r && sess.size === 0) continue
+      scored.push({ g, hl: r?.highlights ?? [], sess, score: Math.max(r?.score ?? 0, bestSess) })
+    }
+    scored.sort((a, b) => b.score - a.score)
+    return scored.map(({ g, hl, sess }) => ({ g, hl, sess }))
   }
 
   private renderWorkspaces(): void {
@@ -287,7 +317,12 @@ export class SavedManager {
     }).join('')
   }
 
-  private row(g: ManageGroupView, hl: Range[][] = [], forceExpand = false): HTMLDivElement {
+  private row(
+    g: ManageGroupView,
+    hl: Range[][] = [],
+    forceExpand = false,
+    sess?: Map<string, SessHit[]>
+  ): HTMLDivElement {
     // 搜索时强制展开，让用户一眼看到命中的是哪个标签
     const expanded = forceExpand || this.expanded.has(g.id)
     const wrap = document.createElement('div')
@@ -306,13 +341,13 @@ export class SavedManager {
         <button class="mg-btn mg-toggle" data-toggle="${escapeHtml(g.id)}" title="${expanded ? '收起标签' : '展开标签'}">${icon('chevron-down', { size: 14 })}</button>
       </div>
       <div class="mg-tabs" ${expanded ? '' : 'hidden'}>
-        ${this.tabsHtml(g, hl)}
+        ${this.tabsHtml(g, hl, sess)}
       </div>
     `
     return wrap
   }
 
-  private tabsHtml(g: ManageGroupView, hl: Range[][] = []): string {
+  private tabsHtml(g: ManageGroupView, hl: Range[][] = [], sess?: Map<string, SessHit[]>): string {
     if (g.tabs.length === 0) {
       return '<div class="mg-tab-empty">这个保存的分组里已没有标签。</div>'
     }
@@ -323,12 +358,22 @@ export class SavedManager {
       const countHtml = n > 1
         ? `<button type="button" class="mg-sess-count" data-sess-picker="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="选择要恢复的会话">${n} 会话 ▾</button>`
         : `${n} 会话`
+      // 搜索命中的会话：标签行下方显示「↳ 会话「…」」，点它直接恢复到该会话
+      const hits = sess?.get(t.id) ?? []
+      const hitsHtml = hits
+        .map(
+          (h) => `
+        <div class="mg-sess-hit" data-sess-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}::${escapeHtml(h.sessionId)}" title="恢复该标签页并打开此会话">
+          <span class="mg-sess-hit-arrow">↳</span> 会话「${highlightRanges(h.title, h.hl)}」
+        </div>`
+        )
+        .join('')
       return `
       <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(t.id)}">
         <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${highlightRanges(t.name, hl[2 + i])}</span>
         <span class="mg-tab-meta">${countHtml}${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
         <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="恢复该标签页到当前工作区">${icon('rotate-ccw', { size: 13 })}</button>
-      </div>
+      </div>${hitsHtml}
     `
     }).join('')
   }
@@ -369,6 +414,14 @@ export class SavedManager {
     const sessPicker = tgt.closest('[data-sess-picker]') as HTMLElement | null
     if (sessPicker) {
       this.openTabSessionPicker(sessPicker)
+      return
+    }
+
+    // 搜索命中的会话提示行：直接恢复该标签页并打开命中的会话
+    const sessRestore = tgt.closest('[data-sess-restore]') as HTMLElement | null
+    if (sessRestore) {
+      const [savedId, tabId, sessionId] = (sessRestore.dataset.sessRestore ?? '').split('::')
+      if (savedId && tabId && sessionId) this.hooks.onRestoreTabAtSession(savedId, tabId, sessionId)
       return
     }
 

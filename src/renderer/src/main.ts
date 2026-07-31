@@ -1178,8 +1178,12 @@ function openRestoreSelect(savedId: string): void {
   }
   const live = s.srcId ? findGroup(s.srcId) : undefined
   const liveIds = new Set(live?.tabs.map((t) => t.id) ?? [])
+  // 会话级恢复(入口①·语义 B)：tabId → 指定的活跃会话。点某标签的会话数选一条即写入这里，
+  // 取消勾选/选"用默认"则移除；点底部「恢复」时连同勾选一起传给 restoreSavedTabs。
+  const overrides = new Map<string, string>()
   const items: PickItem[] = s.snapshot.tabs.map((t) => {
     const inLive = liveIds.has(t.id)
+    const activeId = t.activeSessionId ?? t.sessions[t.sessions.length - 1]?.sessionId
     return {
       id: t.id,
       label: t.name,
@@ -1188,7 +1192,23 @@ function openRestoreSelect(savedId: string): void {
       // 默认不勾 —— 用户语义是"看一下要恢复哪些"，避免直接全恢复
       defaultChecked: false,
       deleteTitle: '从保存里删除此标签',
-      onDelete: () => deleteSavedTabFromPicker(savedId, t.id, t.name)
+      onDelete: () => deleteSavedTabFromPicker(savedId, t.id, t.name),
+      // 已在 live 里的标签不提供会话选择（会被跳过）
+      sessionPick: inLive
+        ? undefined
+        : {
+            entries: t.sessions.map((se) => ({
+              sessionId: se.sessionId,
+              title: sessionTitle(se, t.sessions),
+              source: se.source,
+              ts: se.lastTs ?? se.createdAt,
+              isDefault: se.sessionId === activeId
+            })),
+            onPick: (sid) => {
+              if (sid) overrides.set(t.id, sid)
+              else overrides.delete(t.id)
+            }
+          }
     }
   })
   // 末尾追加"新建空白标签"操作项：用户可能只想恢复分组同时顺手开一个空标签。
@@ -1215,7 +1235,8 @@ function openRestoreSelect(savedId: string): void {
         savedId,
         ids,
         inputs[PICK_ACTION_NEW_BLANK],
-        toggles[PICK_ACTION_NEW_BLANK]
+        toggles[PICK_ACTION_NEW_BLANK],
+        overrides
       )
   })
 }

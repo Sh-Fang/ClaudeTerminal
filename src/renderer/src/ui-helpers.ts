@@ -323,6 +323,14 @@ export interface PickItem {
   // 行内附加小复选框：例如"启动 CC"。位置在 meta 之后、del 之前。
   // onOk 的第三参 toggles[id] 拿到当前勾选态。
   sideToggle?: { defaultChecked: boolean; label: string; title?: string }
+  // 会话级恢复（入口①）：把 meta 渲染成可点的"会话数"徽标，点开会话小列表。
+  // 选一条 = 指定该行用此会话恢复（并自动勾选该行、徽标回显"从「标题」恢复"）；
+  // 选"用默认"或取消勾选 = 清除指定。选中/清除通过 onPick 回调告知调用方（sessionId 或 null）。
+  // 调用方据此维护 tabId→sessionId 的 override 映射，onOk 后传给恢复逻辑。entries≤1 时不可点。
+  sessionPick?: {
+    entries: SessPickEntry[]
+    onPick: (sessionId: string | null) => void
+  }
 }
 export interface PickTabsCfg {
   title: string
@@ -343,6 +351,8 @@ const pkCancel = document.getElementById('pk-cancel') as HTMLButtonElement
 let pkCb: PickTabsCfg['onOk'] | null = null
 let pkCancelCb: PickTabsCfg['onCancel'] | null = null
 let pkItems: PickItem[] = []
+// 入口①：每行已指定的会话（id → {sessionId, 展示标题}）。开弹窗时清空。
+const pkSessChosen = new Map<string, { sid: string; title: string }>()
 function pkSelected(): string[] {
   return pkItems
     .filter((it) => !it.disabled)
@@ -386,6 +396,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
   pkCb = cfg.onOk
   pkCancelCb = cfg.onCancel ?? null
   pkItems = cfg.items
+  pkSessChosen.clear()
   pkList.innerHTML = ''
   for (const it of cfg.items) {
     // 含 inputPlaceholder 的行不能用 <label>（点 input 会触发 label 的隐式 toggle，
@@ -404,10 +415,17 @@ export function openPickTabs(cfg: PickTabsCfg): void {
     const sideToggleHtml = it.sideToggle
       ? `<label class="pk-side-toggle" title="${escapeHtml(it.sideToggle.title ?? '')}"><input type="checkbox" data-pk-toggle-id="${escapeHtml(it.id)}" ${it.sideToggle.defaultChecked ? 'checked' : ''} /><span>${escapeHtml(it.sideToggle.label)}</span></label>`
       : ''
+    // meta：会话可点(sessionPick 且会话数>1)时渲染成徽标按钮，否则普通静态文本
+    const canPickSess = !!it.sessionPick && it.sessionPick.entries.length > 1
+    const metaHtml = canPickSess
+      ? `<button type="button" class="pk-meta pk-sess-count" data-pk-sess-id="${escapeHtml(it.id)}" title="选择要恢复的会话">${escapeHtml(it.meta ?? '')} ▾</button>`
+      : it.meta
+        ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>`
+        : ''
     row.innerHTML = `
       <input type="checkbox" data-pk-id="${escapeHtml(it.id)}" ${checked ? 'checked' : ''} ${it.disabled ? 'disabled' : ''} />
       ${labelHtml}
-      ${it.meta ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>` : ''}
+      ${metaHtml}
       ${sideToggleHtml}
       ${deleteHtml}
     `
@@ -438,16 +456,62 @@ export function openPickTabs(cfg: PickTabsCfg): void {
         pkUpdateCount()
       })
     }
+    // 会话数徽标：点开会话小列表，选一条 = 指定该行用此会话恢复 + 自动勾选 + 徽标回显
+    if (canPickSess) {
+      const badge = row.querySelector(`[data-pk-sess-id="${cssAttr(it.id)}"]`) as HTMLButtonElement | null
+      const checkbox = row.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
+      const defaultMeta = it.meta ?? ''
+      const resetBadge = (): void => {
+        if (badge) badge.textContent = `${defaultMeta} ▾`
+        badge?.classList.remove('chosen')
+      }
+      badge?.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        openSessionPicker({
+          anchor: badge,
+          entries: it.sessionPick!.entries,
+          selectedId: pkSessChosen.get(it.id)?.sid,
+          title: '选择要恢复的会话',
+          onPick: (sid) => {
+            const ent = it.sessionPick!.entries.find((x) => x.sessionId === sid)
+            pkSessChosen.set(it.id, { sid, title: ent?.title ?? sid.slice(0, 8) })
+            if (checkbox) checkbox.checked = true
+            if (badge) {
+              badge.textContent = `从「${ent?.title ?? ''}」恢复 ▾`
+              badge.classList.add('chosen')
+            }
+            it.sessionPick!.onPick(sid)
+            pkUpdateCount()
+          },
+          onClear: () => {
+            pkSessChosen.delete(it.id)
+            resetBadge()
+            it.sessionPick!.onPick(null) // 清除指定，仍按默认会话恢复该标签（不改勾选态）
+          }
+        })
+      })
+      // 手动取消勾选该行 → 一并清除已指定的会话
+      checkbox?.addEventListener('change', () => {
+        if (!checkbox.checked && pkSessChosen.has(it.id)) {
+          pkSessChosen.delete(it.id)
+          resetBadge()
+          it.sessionPick!.onPick(null)
+        }
+      })
+    }
     pkList.appendChild(row)
   }
   pkUpdateCount()
   pickScrim.hidden = false
 }
 function pkClose(): void {
+  closeSessionPicker()
   pickScrim.hidden = true
   pkCb = null
   pkCancelCb = null
   pkItems = []
+  pkSessChosen.clear()
 }
 export function closePickTabs(): void {
   pkClose()
