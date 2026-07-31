@@ -415,8 +415,9 @@ export function openPickTabs(cfg: PickTabsCfg): void {
     const sideToggleHtml = it.sideToggle
       ? `<label class="pk-side-toggle" title="${escapeHtml(it.sideToggle.title ?? '')}"><input type="checkbox" data-pk-toggle-id="${escapeHtml(it.id)}" ${it.sideToggle.defaultChecked ? 'checked' : ''} /><span>${escapeHtml(it.sideToggle.label)}</span></label>`
       : ''
-    // meta：会话可点(sessionPick 且会话数>1)时渲染成徽标按钮，否则普通静态文本
-    const canPickSess = !!it.sessionPick && it.sessionPick.entries.length > 1
+    // meta：会话可点(sessionPick 且有≥1条重命名会话)时渲染成徽标按钮，否则普通静态文本。
+    // entries 已在上游过滤为"重命名过的会话"，配合选择器里的"用默认会话恢复"即可选择。
+    const canPickSess = !!it.sessionPick && it.sessionPick.entries.length >= 1
     const metaHtml = canPickSess
       ? `<button type="button" class="pk-meta pk-sess-count" data-pk-sess-id="${escapeHtml(it.id)}" title="选择要恢复的会话">${escapeHtml(it.meta ?? '')} ▾</button>`
       : it.meta

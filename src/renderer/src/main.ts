@@ -1197,13 +1197,16 @@ function openRestoreSelect(savedId: string): void {
       sessionPick: inLive
         ? undefined
         : {
-            entries: t.sessions.map((se) => ({
-              sessionId: se.sessionId,
-              title: sessionTitle(se, t.sessions),
-              source: se.source,
-              ts: se.lastTs ?? se.createdAt,
-              isDefault: se.sessionId === activeId
-            })),
+            // 只列重命名过的会话，默认名「会话 N」不参与选择；仍可用"用默认会话恢复"回退
+            entries: t.sessions
+              .filter((se) => se.userTitle)
+              .map((se) => ({
+                sessionId: se.sessionId,
+                title: sessionTitle(se, t.sessions),
+                source: se.source,
+                ts: se.lastTs ?? se.createdAt,
+                isDefault: se.sessionId === activeId
+              })),
             onPick: (sid) => {
               if (sid) overrides.set(t.id, sid)
               else overrides.delete(t.id)

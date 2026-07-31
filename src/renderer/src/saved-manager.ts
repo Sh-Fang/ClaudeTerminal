@@ -354,8 +354,10 @@ export class SavedManager {
     // 分组行 fields 顺序是 [name, cwd, tab0, tab1…]，所以标签 i 的高亮取 hl[2 + i]
     return g.tabs.map((t, i) => {
       const n = t.sessions.length
-      // 会话数 > 1 才可点：点开小列表挑一条会话恢复；否则纯文本（没有选择余地）
-      const countHtml = n > 1
+      // 可点条件：会话数 > 1 且至少有一条"重命名过的会话"——选择器只列重命名过的，
+      // 默认名「会话 N」不作为可选项；一条重命名的都没有就退化为纯文本。
+      const named = t.sessions.filter((s) => s.hasUserTitle).length
+      const countHtml = n > 1 && named >= 1
         ? `<button type="button" class="mg-sess-count" data-sess-picker="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="选择要恢复的会话">${n} 会话 ▾</button>`
         : `${n} 会话`
       // 搜索命中的会话：标签行下方显示「↳ 会话「…」」，点它直接恢复到该会话
@@ -385,7 +387,10 @@ export class SavedManager {
     const g = this.hooks.getSaved().find((x) => x.id === savedId)
     const t = g?.tabs.find((x) => x.id === tabId)
     if (!t || t.sessions.length < 2) return
-    const entries: SessPickEntry[] = t.sessions.map((s) => ({
+    // 只列重命名过的会话，默认名「会话 N」不参与选择
+    const named = t.sessions.filter((s) => s.hasUserTitle)
+    if (named.length === 0) return
+    const entries: SessPickEntry[] = named.map((s) => ({
       sessionId: s.sessionId,
       title: s.title,
       source: s.source,
