@@ -735,13 +735,15 @@ button.saved-toggle:hover { color: var(--ink); }
   max-width: 360px;
   max-height: 60vh;
   overflow-y: auto;
+  scrollbar-width: none;
   padding: 6px;
-  background: var(--panel, var(--card));
+  background: var(--canvas);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-md, 10px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   animation: pop 0.12s ease;
 }
+.sesspick::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .sesspick-head {
   font-family: var(--mono);
   font-size: 10px;
@@ -1266,9 +1268,9 @@ button.saved-toggle:hover { color: var(--ink); }
   border-radius: var(--r-sm);
   padding: 4px;
   background: var(--canvas);
+  scrollbar-width: none;
 }
-.pk-list::-webkit-scrollbar { width: 6px; }
-.pk-list::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+.pk-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .pk-row {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px;

@@ -824,16 +824,26 @@ export function openSessionPicker(opts: {
   document.body.appendChild(host)
   sessPickHost = host
 
-  // 定位：锚点下方左对齐；右/下越界则收敛进视口
+  // 定位：锚点下方左对齐。上下空间都放不下时，选空间更大的一侧并把高度收进该侧可用高度，
+  // 避免被顶到标题栏（top=8）盖住窗口控制按钮，变成贴顶的一整列。
   const r = opts.anchor.getBoundingClientRect()
   const vw = window.innerWidth
   const vh = window.innerHeight
+  const MARGIN = 8
+  const GAP = 4
+  const SAFE_TOP = 40 // 标题栏 32px + 余量：浮层不越过此线
+  const spaceBelow = vh - r.bottom - GAP - MARGIN
+  const spaceAbove = r.top - GAP - MARGIN - SAFE_TOP
+  const placeBelow = spaceBelow >= spaceAbove
+  // 把浮层最大高度限制在所选一侧的可用高度内（内部已有 overflow-y 滚动）
+  const avail = Math.max(Math.floor(placeBelow ? spaceBelow : spaceAbove), 120)
+  host.style.maxHeight = `${avail}px`
   const pw = host.offsetWidth
   const ph = host.offsetHeight
   let left = r.left
-  let top = r.bottom + 4
-  if (left + pw > vw - 8) left = Math.max(8, vw - 8 - pw)
-  if (top + ph > vh - 8) top = Math.max(8, r.top - 4 - ph)
+  if (left + pw > vw - MARGIN) left = Math.max(MARGIN, vw - MARGIN - pw)
+  let top = placeBelow ? r.bottom + GAP : r.top - GAP - ph
+  top = Math.max(SAFE_TOP, top)
   host.style.left = `${Math.round(left)}px`
   host.style.top = `${Math.round(top)}px`
 
@@ -863,15 +873,21 @@ export function openSessionPicker(opts: {
     }
   }
   const onGone = (): void => closeSessionPicker()
+  // 滚动关闭仅针对浮层"外部"的滚动（底层列表滚动会让锚点移位）；
+  // 在浮层自身内部滚动不该把它关掉。
+  const onScroll = (e: Event): void => {
+    if (host.contains(e.target as Node)) return
+    closeSessionPicker()
+  }
   // 延后挂 mousedown，避免"打开这一次点击"立即把它关掉
   setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0)
   document.addEventListener('keydown', onKey, true)
   window.addEventListener('resize', onGone, true)
-  window.addEventListener('scroll', onGone, true)
+  window.addEventListener('scroll', onScroll, true)
   sessPickDetach = () => {
     document.removeEventListener('mousedown', onDocDown, true)
     document.removeEventListener('keydown', onKey, true)
     window.removeEventListener('resize', onGone, true)
-    window.removeEventListener('scroll', onGone, true)
+    window.removeEventListener('scroll', onScroll, true)
   }
 }
