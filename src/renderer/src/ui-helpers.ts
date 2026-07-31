@@ -463,7 +463,10 @@ export function openPickTabs(cfg: PickTabsCfg): void {
       const checkbox = row.querySelector(`input[data-pk-id="${cssAttr(it.id)}"]`) as HTMLInputElement | null
       const defaultMeta = it.meta ?? ''
       const resetBadge = (): void => {
-        if (badge) badge.textContent = `${defaultMeta} ▾`
+        if (badge) {
+          badge.textContent = `${defaultMeta} ▾`
+          badge.title = '选择要恢复的会话'
+        }
         badge?.classList.remove('chosen')
       }
       badge?.addEventListener('click', (e) => {
@@ -479,7 +482,11 @@ export function openPickTabs(cfg: PickTabsCfg): void {
             pkSessChosen.set(it.id, { sid, title: ent?.title ?? sid.slice(0, 8) })
             if (checkbox) checkbox.checked = true
             if (badge) {
-              badge.textContent = `从「${ent?.title ?? ''}」恢复 ▾`
+              // 标题可能很长会撑爆整行：截断显示 + 完整放 title，末尾保留 ▾ 标记
+              const full = ent?.title ?? ''
+              const short = full.length > 14 ? full.slice(0, 14) + '…' : full
+              badge.textContent = `从「${short}」恢复 ▾`
+              badge.title = `从「${full}」恢复`
               badge.classList.add('chosen')
             }
             it.sessionPick!.onPick(sid)

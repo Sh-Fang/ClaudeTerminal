@@ -1364,7 +1364,11 @@ button.saved-toggle:hover { color: var(--ink); }
   padding: 1px 6px; cursor: pointer; transition: background 0.1s, border-color 0.1s;
 }
 .pk-row .pk-sess-count:hover { background: var(--canvas-soft-2); border-color: var(--hairline-strong); }
-.pk-row .pk-sess-count.chosen { color: var(--violet); border-color: var(--violet); }
+.pk-row .pk-sess-count.chosen {
+  color: var(--violet); border-color: var(--violet);
+  /* 指定会话后回显完整标题可能很长：兜底限宽，超出省略（完整标题在 title 悬浮可见） */
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .pk-row[data-row-action='1'] {
   margin-top: 8px;
   padding-top: 12px;
