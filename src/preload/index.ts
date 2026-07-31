@@ -94,6 +94,7 @@ export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
 export type CloseBehavior = 'quit' | 'tray'
+export type TabBarMode = 'vertical' | 'horizontal'
 
 export interface Settings {
   version: 1
@@ -117,6 +118,7 @@ export interface Settings {
   showFloater: boolean
   floaterX: number | null
   floaterY: number | null
+  tabBarMode: TabBarMode
 }
 
 export interface FloaterCounts {

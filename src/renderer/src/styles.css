@@ -181,6 +181,10 @@ body.win-maximized .win-btn .ico-restore { display: block; }
 .app.sidebar-collapsed {
   grid-template-columns: 1fr;
 }
+/* 水平标签栏布局：隐藏左栏，只留主区一列；标签改由顶部标签条平铺展示 */
+.app.tabbar-horizontal { grid-template-columns: 1fr; }
+.app.tabbar-horizontal .sidebar { display: none; }
+.app.tabbar-horizontal .sidebar-handle { display: none; }
 
 /* ─── Sidebar ─────────────────────────────────────────────────────── */
 .sidebar {
@@ -605,6 +609,75 @@ button.saved-toggle:hover { color: var(--ink); }
 .crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; }
 #cbStatus { flex: 0 0 auto; display: inline-flex; }
 #cbStatus:empty { display: none; }
+
+/* ─── 水平标签栏：顶部平铺标签条 ───────────────────────────────────── */
+.tabstrip { display: none; }
+.tabbar-horizontal .tabstrip {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 5px 10px;
+  background: var(--canvas-soft);
+  border-bottom: 1px solid var(--hairline);
+}
+.tabstrip-list {
+  display: flex; align-items: center; gap: 4px;
+  flex: 1 1 auto; min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabstrip-list::-webkit-scrollbar { height: 0; width: 0; display: none; }
+.tabstrip-empty { color: var(--mute); font-size: 12px; padding: 4px 6px; }
+.tabchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--body);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.tabchip:hover { background: var(--canvas-soft-2); }
+.tabchip.active {
+  background: var(--canvas);
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+.tabchip .st-dot { flex: 0 0 auto; }
+.tabchip-name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 160px;
+}
+.tabchip .trow-dirty { flex: 0 0 auto; }
+.tabchip-close {
+  display: inline-grid; place-items: center;
+  width: 16px; height: 16px;
+  border-radius: var(--r-xs);
+  color: var(--mute);
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.tabchip:hover .tabchip-close,
+.tabchip.active .tabchip-close { opacity: 1; }
+.tabchip-close:hover { background: var(--hairline); color: var(--ink); }
+.tabstrip-add {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  border: none; background: transparent;
+  color: var(--mute);
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.tabstrip-add:hover { background: var(--hairline); color: var(--ink); }
+
+/* 顶栏「分组/工作区管理」按钮：仅水平标签栏下露出（垂直模式走左栏入口） */
+#manageTopBtn { display: none; }
+.tabbar-horizontal #manageTopBtn { display: grid; }
 
 /* 顶栏"启动 CC"按钮：仅纯 pwsh 标签显示（toolbar.render 加 .show）。
    借用 sp-busy 的 cc 蓝色系，暗示"在这里点一下就能开 Claude Code"。 */

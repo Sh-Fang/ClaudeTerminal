@@ -114,6 +114,13 @@
       </div>
 
       <div class="main">
+        <!-- 水平标签栏：仅 tabBarMode=horizontal 时显示，平铺当前工作区里所有分组的标签（无分组层级） -->
+        <div class="tabstrip" id="tabstrip">
+          <div class="tabstrip-list" id="tabstripList"></div>
+          <button class="tabstrip-add" id="tabstripAdd" type="button" title="在当前分组新建标签" aria-label="新建标签">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
         <div class="toolbar">
           <div class="crumb">
             <span class="g" id="cbGroup"></span>
@@ -132,6 +139,7 @@
             <span class="title" id="sessTitle"></span>
             <span class="caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
           </div>
+          <button class="tool-icon-btn" id="manageTopBtn" title="分组 / 工作区管理" aria-label="分组 / 工作区管理"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg></button>
           <button class="tool-icon-btn" id="settingsBtn" title="设置" aria-label="设置"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
           <div class="session-menu" id="sessionMenu">
             <div class="menu-eyebrow">本标签的会话（栈顶 = 当前）</div>
@@ -325,6 +333,13 @@
 
           <div class="settings-pane">
             <div class="set-section" data-section="appearance">
+              <div class="set-row">
+                <label>标签栏</label>
+                <div class="seg-group" id="set-tabbar-mode" role="radiogroup" aria-label="标签栏布局">
+                  <button class="seg-item" data-val="vertical" type="button" role="radio">垂直标签栏</button>
+                  <button class="seg-item" data-val="horizontal" type="button" role="radio">水平标签栏</button>
+                </div>
+              </div>
               <div class="set-row">
                 <label>终端主题</label>
                 <div class="seg-group" id="set-theme" role="radiogroup" aria-label="终端主题">

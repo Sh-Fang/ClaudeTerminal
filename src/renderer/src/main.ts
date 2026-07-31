@@ -171,6 +171,12 @@ function applyAppTheme(theme: Settings['appTheme']): void {
   else delete document.documentElement.dataset.appTheme
 }
 
+// 标签栏布局：horizontal 时 .app 挂 .tabbar-horizontal → CSS 隐藏左栏、露出顶部标签条与顶栏管理按钮。
+// 数据模型不变，仅显示层切换；切回 vertical 分组层级自动恢复。
+function applyTabBarMode(): void {
+  appEl.classList.toggle('tabbar-horizontal', settings.tabBarMode === 'horizontal')
+}
+
 // 终端区背板跟随终端主题背景：term-host 左侧 4px 缓冲带 / 空态露出的就是它
 function syncHostsBackdrop(): void {
   hostsEl.style.background = backgroundFor(settings.terminal.theme)
@@ -178,8 +184,10 @@ function syncHostsBackdrop(): void {
 
 function updateSettings(s: Settings): void {
   const prevFloater = settings.showFloater
+  const prevTabBar = settings.tabBarMode
   settings = s
   applyAppTheme(settings.appTheme)
+  applyTabBarMode()
   syncHostsBackdrop()
   applySettingsToAll()
   usageIndicator.applySettings(settings.showClaudeUsage, settings.usageStyle)
@@ -187,6 +195,10 @@ function updateSettings(s: Settings): void {
   // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
   sidebar.render()
   savedManager.render()
+  // 布局在垂直/水平之间切换会改变终端可用宽度 —— 布局稳定后重排一次，避免尺寸错位
+  if (prevTabBar !== settings.tabBarMode) {
+    setTimeout(() => activeContext()?.tab.refit(), 60)
+  }
   if (prevFloater !== settings.showFloater) {
     window.term.floaterSetEnabled(settings.showFloater)
   }
@@ -2239,6 +2251,10 @@ const settingsPanel = new SettingsPanel({
 })
 void settingsPanel
 
+// 顶栏「分组/工作区管理」按钮（水平标签栏下左栏隐藏，靠它进管理弹窗）
+const manageTopBtn = document.getElementById('manageTopBtn') as HTMLButtonElement | null
+manageTopBtn?.addEventListener('click', () => savedManager.open(undefined, 'groups'))
+
 // ─── SavedManager（展开管理弹窗） ─────────────────────────────────
 function lastTsOf(t: SavedTab): string | undefined {
   let best: string | undefined
@@ -2409,6 +2425,7 @@ locateActiveBtn?.addEventListener('click', () => locateActiveTab())
 ;(async () => {
   settings = await window.term.loadSettings()
   applyAppTheme(settings.appTheme)
+  applyTabBarMode()
   syncHostsBackdrop()
   applySidebarLayout()
   usageIndicator.applySettings(settings.showClaudeUsage, settings.usageStyle)

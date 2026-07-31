@@ -5,6 +5,8 @@ export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
 export type CloseBehavior = 'quit' | 'tray'
+// 标签栏布局：vertical = 左侧栏分组层级（默认）；horizontal = 隐藏左栏，顶部平铺标签（无分组）
+export type TabBarMode = 'vertical' | 'horizontal'
 
 export interface Settings {
   version: 1
@@ -31,6 +33,7 @@ export interface Settings {
   showFloater: boolean         // 开启常驻悬浮窗
   floaterX: number | null
   floaterY: number | null
+  tabBarMode: TabBarMode       // 标签栏布局：垂直（左栏分组）/ 水平（顶部平铺）
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -58,7 +61,8 @@ export const DEFAULT_SETTINGS: Settings = {
   closeBehavior: 'quit',
   showFloater: false,
   floaterX: null,
-  floaterY: null
+  floaterY: null,
+  tabBarMode: 'vertical'
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

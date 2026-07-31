@@ -71,6 +71,9 @@ export class Sidebar {
   private toggleAllBtn: HTMLButtonElement | null
   private manageBtn: HTMLDivElement
   private viewButtons: HTMLButtonElement[]
+  // 水平标签栏（顶部平铺）相关元素；vertical 模式下隐藏、不影响
+  private stripListEl: HTMLDivElement
+  private stripAddBtn: HTMLButtonElement
   // 底部区当前展示：已保存分组 / 已保存工作区（分开展示，头部小切换）
   private savedView: 'groups' | 'workspaces' = 'groups'
   private dragGroupId: string | null = null
@@ -113,11 +116,20 @@ export class Sidebar {
       this.hooks.setAllGroupsCollapsed(!allCollapsed)
     })
     this.manageBtn?.addEventListener('click', () => this.hooks.openManageSaved(this.savedView))
+
+    // 水平标签栏：顶部平铺标签条的交互（与侧栏分组共用同一批 hooks）
+    this.stripListEl = document.getElementById('tabstripList') as HTMLDivElement
+    this.stripAddBtn = document.getElementById('tabstripAdd') as HTMLButtonElement
+    this.stripListEl.addEventListener('click', (e) => this.onStripClick(e))
+    this.stripListEl.addEventListener('contextmenu', (e) => this.onStripCtx(e))
+    this.stripListEl.addEventListener('dblclick', (e) => this.onStripDblClick(e))
+    this.stripAddBtn.addEventListener('click', () => this.addTabInActiveGroup())
   }
 
   render(): void {
     this.renderGroups()
     this.renderSaved()
+    this.renderTabStrip()
   }
 
   // 展开/收起全部是同一个按钮：全收起时变「展开全部」，否则是「收起全部」
@@ -199,6 +211,76 @@ export class Sidebar {
         <span class="trow-badge${badgeCls}">${escapeHtml(badgeText)}</span>
         <span class="trow-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 12, stroke: 2 })}</span>
       </div>`
+  }
+
+  // ─── 水平标签栏：把当前工作区所有分组的标签平铺成一条（无分组层级） ───────
+  // 数据模型不变，仅显示层扁平化；切回 vertical 时分组层级由 renderGroups 恢复。
+  private renderTabStrip(): void {
+    const groups = this.hooks.getGroups()
+    const activeTabId = this.hooks.getActiveTabId()
+    this.stripListEl.innerHTML = ''
+    if (groups.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'tabstrip-empty'
+      empty.textContent = '没有打开的标签'
+      this.stripListEl.appendChild(empty)
+      return
+    }
+    const frag = document.createDocumentFragment()
+    for (const g of groups) {
+      for (const t of g.tabs) {
+        const chip = document.createElement('div')
+        const st = (t.status ?? 'idle') as TabStatus
+        chip.className = 'tabchip' + (activeTabId === t.id ? ' active' : '')
+        chip.dataset.t = t.id
+        // hover 显示所属分组 / 路径（扁平后仍能知道来源）
+        chip.title = g.cwd ? `${g.name} · ${g.cwd}` : g.name
+        const showDirty = t.dirty && (t.autoLaunchCC || t.sessions.length > 0)
+        const dotTitle = `${statusLabel(st)}${t.note ? '：' + t.note : ''}`
+        chip.innerHTML = `
+          <span class="st-dot st-${st}" title="${escapeHtml(dotTitle)}"></span>
+          <span class="tabchip-name">${escapeHtml(t.name)}</span>
+          ${showDirty ? '<span class="trow-dirty" title="有未保存改动"></span>' : ''}
+          <span class="tabchip-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 11, stroke: 2 })}</span>`
+        frag.appendChild(chip)
+      }
+    }
+    this.stripListEl.appendChild(frag)
+  }
+
+  // 「+」：在当前活动标签所属分组内新建标签；没有活动标签时退回新建分组
+  private addTabInActiveGroup(): void {
+    const activeTabId = this.hooks.getActiveTabId()
+    const groups = this.hooks.getGroups()
+    const g = activeTabId ? groups.find((x) => x.tabs.some((t) => t.id === activeTabId)) : null
+    if (g) this.hooks.addTabInGroup(g.id)
+    else this.hooks.newGroup()
+  }
+
+  private onStripClick(e: MouseEvent): void {
+    const tgt = e.target as HTMLElement
+    const close = tgt.closest('[data-close]') as HTMLElement | null
+    if (close) {
+      e.stopPropagation()
+      this.hooks.closeTab(close.dataset.close!)
+      return
+    }
+    const chip = tgt.closest('[data-t]') as HTMLElement | null
+    if (chip) this.hooks.activateTab(chip.dataset.t!)
+  }
+
+  private onStripCtx(e: MouseEvent): void {
+    const chip = (e.target as HTMLElement).closest('[data-t]') as HTMLElement | null
+    if (!chip) return
+    e.preventDefault()
+    this.hooks.onTabCtx(chip.dataset.t!, e.clientX, e.clientY)
+  }
+
+  private onStripDblClick(e: MouseEvent): void {
+    const chip = (e.target as HTMLElement).closest('[data-t]') as HTMLElement | null
+    if (!chip) return
+    const nameEl = chip.querySelector('.tabchip-name') as HTMLSpanElement | null
+    if (nameEl) this.startInlineRename(chip.dataset.t!, nameEl)
   }
 
   private renderSaved(): void {
