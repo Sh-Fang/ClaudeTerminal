@@ -4,6 +4,7 @@ import {
   getToolbarCtx,
   getGroupViews,
   getActiveTabId,
+  getSettings,
   isCcTab,
   activateTab,
   closeTab,
@@ -115,6 +116,70 @@ export function Toolbar() {
   // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
   // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。
   const pureNonCc = tab != null && !tab.autoLaunchCC && !tab.ccActive
+  // 水平标签栏：整条 .toolbar 隐藏（CSS），会话/管理/设置入口以图标并入标签条右侧，
+  // 会话下拉菜单也要跟着挂到 .tabstrip 下（.toolbar display:none 后其内部 absolute 弹层弹不出来）
+  const horizontal = getSettings().tabBarMode === 'horizontal'
+
+  // 会话栈下拉菜单：垂直模式挂 .toolbar、水平模式挂 .tabstrip，同一份 JSX 两处按需渲染
+  const sessionMenu = (
+    <div className={'session-menu' + (menuOpen ? ' open' : '')} id="sessionMenu">
+      <div className="menu-eyebrow">{t('本标签的会话（栈顶 = 当前）')}</div>
+      <div id="sessList">
+        {tab &&
+          (tab.sessions.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--mute)' }}>
+              {t('没有会话记录。激活标签后 cc 会自动创建首个会话。')}
+            </div>
+          ) : (
+            // 倒序展示：栈顶在最上面
+            [...tab.sessions].reverse().map((s) => {
+              const isCurrent = s.sessionId === tab.activeSessionId
+              return (
+                <div
+                  key={s.sessionId}
+                  className={'sess-item' + (isCurrent ? ' current' : '')}
+                  data-session-id={s.sessionId}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    if (!isCurrent) switchSession(s.sessionId)
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    openSessionCtx(s.sessionId, e.clientX, e.clientY)
+                  }}
+                >
+                  <span className="sdot"></span>
+                  <div className="sess-body">
+                    <div className="sess-title">{sessionTitle(s, tab.sessions)}</div>
+                    <div className="sess-meta">
+                      {formatTs(s.lastTs || s.createdAt)} · <span className="src">{srcLabel(s.source)}</span> ·{' '}
+                      {s.sessionId.slice(0, 8)}
+                      {isCurrent && (
+                        <>
+                          {' '}
+                          · <span className="cur">{t('当前')}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          ))}
+      </div>
+      <div className="menu-foot">
+        <span className="dot">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </span>
+        <span>
+          {t('终端里')} <code>/clear</code> {t('会自动在此新增一条会话')}
+        </span>
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -179,6 +244,54 @@ export function Toolbar() {
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
+        {/* 水平模式下整条 .toolbar 隐藏，会话/管理/设置以图标并入标签条右侧 */}
+        {horizontal && (
+          <>
+            <button
+              className="tool-icon-btn"
+              type="button"
+              title={t('切换会话')}
+              aria-label={t('切换会话')}
+              disabled={!cur}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!cur) return
+                setMenuOpen((v) => !v)
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            </button>
+            <button
+              className="tool-icon-btn"
+              type="button"
+              title={t('分组 / 工作区管理')}
+              aria-label={t('分组 / 工作区管理')}
+              onClick={() => openSavedManager('groups')}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m12 2 10 5-10 5L2 7z" />
+                <path d="m2 12 10 5 10-5" />
+                <path d="m2 17 10 5 10-5" />
+              </svg>
+            </button>
+            <button
+              className="tool-icon-btn"
+              type="button"
+              title={t('设置')}
+              aria-label={t('设置')}
+              onClick={() => openSettings()}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+            {sessionMenu}
+          </>
+        )}
       </div>
 
       <div className="toolbar">
@@ -265,63 +378,7 @@ export function Toolbar() {
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
-        <div className={'session-menu' + (menuOpen ? ' open' : '')} id="sessionMenu">
-          <div className="menu-eyebrow">{t('本标签的会话（栈顶 = 当前）')}</div>
-          <div id="sessList">
-            {tab &&
-              (tab.sessions.length === 0 ? (
-                <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--mute)' }}>
-                  {t('没有会话记录。激活标签后 cc 会自动创建首个会话。')}
-                </div>
-              ) : (
-                // 倒序展示：栈顶在最上面
-                [...tab.sessions].reverse().map((s) => {
-                  const isCurrent = s.sessionId === tab.activeSessionId
-                  return (
-                    <div
-                      key={s.sessionId}
-                      className={'sess-item' + (isCurrent ? ' current' : '')}
-                      data-session-id={s.sessionId}
-                      onClick={() => {
-                        setMenuOpen(false)
-                        if (!isCurrent) switchSession(s.sessionId)
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        openSessionCtx(s.sessionId, e.clientX, e.clientY)
-                      }}
-                    >
-                      <span className="sdot"></span>
-                      <div className="sess-body">
-                        <div className="sess-title">{sessionTitle(s, tab.sessions)}</div>
-                        <div className="sess-meta">
-                          {formatTs(s.lastTs || s.createdAt)} · <span className="src">{srcLabel(s.source)}</span> ·{' '}
-                          {s.sessionId.slice(0, 8)}
-                          {isCurrent && (
-                            <>
-                              {' '}
-                              · <span className="cur">{t('当前')}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              ))}
-          </div>
-          <div className="menu-foot">
-            <span className="dot">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </span>
-            <span>
-              {t('终端里')} <code>/clear</code> {t('会自动在此新增一条会话')}
-            </span>
-          </div>
-        </div>
+        {!horizontal && sessionMenu}
       </div>
     </>
   )

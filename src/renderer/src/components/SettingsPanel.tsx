@@ -59,11 +59,18 @@ function clamp(n: number, min: number, max: number, fb: number): number {
 // 国内常用镜像 + npm 官方（配合「使用 npm 镜像」开关：关 = 主进程直接走官方源）。
 // name 是词典 key；测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
 const NPM_MIRRORS: { name: string; url: string }[] = [
-  // npmmirror（前身淘宝镜像）由阿里云提供，就是「阿里云的 npm 镜像」
-  { name: '阿里云 npmmirror', url: 'https://registry.npmmirror.com' },
   { name: '腾讯云', url: 'https://mirrors.cloud.tencent.com/npm/' },
-  { name: 'npm 官方', url: 'https://registry.npmjs.org' }
+  { name: '清华大学开源镜像', url: 'https://mirrors.tuna.tsinghua.edu.cn/' },
+  { name: '中国科学技术大学开源镜像', url: 'https://mirrors.ustc.edu.cn/' },
+  // npmmirror（前身淘宝镜像）由阿里云提供；不带尾斜杠，与 DEFAULT_SETTINGS.npmRegistry 一致
+  { name: '阿里云', url: 'https://registry.npmmirror.com' },
+  { name: '官方镜像', url: 'https://registry.npmjs.org' }
 ]
+
+// URL 归一化比较：尾斜杠不参与判等（老配置/默认值可能带或不带）
+function normUrl(u: string): string {
+  return u.trim().replace(/\/+$/, '')
+}
 
 function hostOf(u: string): string {
   try { return new URL(u).host } catch { return u }
@@ -71,8 +78,8 @@ function hostOf(u: string): string {
 
 // picker 按钮上显示的当前镜像：预置项显示名称·host，老配置的自定义地址兜底「自定义」
 function npmRegLabel(reg: string): string {
-  const cur = reg.trim()
-  const m = NPM_MIRRORS.find((x) => x.url === cur)
+  const cur = normUrl(reg)
+  const m = NPM_MIRRORS.find((x) => normUrl(x.url) === cur)
   if (m) return `${t(m.name)} · ${hostOf(m.url)}`
   return `${t('自定义')} · ${hostOf(cur)}`
 }
@@ -316,7 +323,8 @@ export function SettingsPanel() {
     if (!open) return
     setNpmLat({})
     const urls = new Set(NPM_MIRRORS.map((m) => m.url))
-    const cur = getSettings().npmRegistry.trim()
+    // normUrl 与菜单里 custom entry 的记账 key 对齐（尾斜杠差异不至于查不到时延）
+    const cur = normUrl(getSettings().npmRegistry)
     if (cur) urls.add(cur)
     for (const url of urls) {
       void window.term.npmPing(url).then((ms) => {
@@ -600,15 +608,15 @@ export function SettingsPanel() {
 
   // ─── npm 镜像 picker ────────────────────────────────────────
   function npmMenuItems(): CtxItem[] {
-    const cur = formRef.current.npmReg.trim()
+    const cur = normUrl(formRef.current.npmReg)
     const setVal = (v: string): void => {
-      if (formRef.current.npmReg.trim() === v) return
+      if (normUrl(formRef.current.npmReg) === normUrl(v)) return
       commit({ npmReg: v })
     }
     const lat = npmLatRef.current
     const entries: { name: string; url: string }[] = [...NPM_MIRRORS]
     // 老配置的自定义地址不在预置列表 → 追加一项，保证已有配置可见可选不丢失
-    if (cur && !NPM_MIRRORS.some((m) => m.url === cur)) {
+    if (cur && !NPM_MIRRORS.some((m) => normUrl(m.url) === cur)) {
       entries.push({ name: '自定义', url: cur })
     }
     // 每次展示按测速快慢升序：已出结果的按 ms 排，测速中排其后，超时/不通垫底
@@ -617,7 +625,7 @@ export function SettingsPanel() {
     entries.sort((a, b) => latRank(lat[a.url]) - latRank(lat[b.url]))
     return entries.map((m) => ({
       label: `${t(m.name)} · ${hostOf(m.url)}`,
-      icon: cur === m.url ? '✓' : '',
+      icon: cur === normUrl(m.url) ? '✓' : '',
       metaHtml: latBadge(lat[m.url]),
       act: () => setVal(m.url)
     }))

@@ -622,7 +622,20 @@ button.saved-toggle:hover { color: var(--ink); }
   padding: 5px 10px;
   background: var(--canvas-soft);
   border-bottom: 1px solid var(--hairline);
+  position: relative; /* 会话下拉菜单在水平模式挂到这层下方 */
 }
+/* 水平标签栏：整条工具栏不再显示，会话/管理/设置入口以图标并入标签条右侧 */
+.tabbar-horizontal .toolbar { display: none; }
+.tabbar-horizontal .session-menu { top: 42px; right: 10px; }
+/* 标签条内的图标按钮：外观对齐 tabstrip-add（无边框小方块） */
+.tabstrip .tool-icon-btn {
+  width: 26px; height: 26px;
+  border: none; background: transparent;
+  color: var(--mute);
+}
+.tabstrip .tool-icon-btn:hover { background: var(--hairline); color: var(--ink); }
+.tabstrip .tool-icon-btn:disabled { opacity: 0.45; cursor: default; }
+.tabstrip .tool-icon-btn:disabled:hover { background: transparent; color: var(--mute); }
 .tabstrip-list {
   display: flex; align-items: center; gap: 4px;
   flex: 1 1 auto; min-width: 0;
