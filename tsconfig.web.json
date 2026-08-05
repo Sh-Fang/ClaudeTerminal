@@ -7,7 +7,13 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/shared/**/*.ts", "src/renderer/**/*.ts", "src/preload/index.d.ts"]
+  "include": [
+    "src/shared/**/*.ts",
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.tsx",
+    "src/preload/index.d.ts"
+  ]
 }

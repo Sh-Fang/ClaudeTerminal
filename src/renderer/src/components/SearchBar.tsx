@@ -1,0 +1,126 @@
+import { useEffect, useRef, useState } from 'react'
+import { useOverlays, closeSearchOverlay } from '../state/overlays'
+import { activeContext } from '../controller'
+import { t } from '../i18n'
+import type { TerminalTab } from '../terminal-tab'
+
+const SEARCH_DECOR = {
+  // 普通匹配：暗黄背景 + 亮黄描边
+  matchBackground: '#3a3a00',
+  matchBorder: '#e5e510',
+  matchOverviewRuler: '#e5e510',
+  // 当前匹配：换成高饱和亮橙 + 白色描边，跟普通匹配的黄色系拉开对比度，
+  // 上下切匹配时一眼能看到"我现在停在哪里"。原方案两者同为黄色系深浅差，肉眼几乎分不出。
+  activeMatchBackground: '#ff8800',
+  activeMatchBorder: '#ffffff',
+  activeMatchColorOverviewRuler: '#ff8800'
+}
+
+// 终端内搜索浮层（原 main.ts 的 Search popover 段原样移植）。
+// 开合状态在 overlays store（searchOpen），Ctrl+F 等入口由 controller 调 openSearchOverlay()。
+export function SearchBar() {
+  const open = useOverlays((s) => s.searchOpen)
+  // 计数显示 n/m（原 searchCount.textContent）
+  const [count, setCount] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  // 结果计数回调绑定的目标 tab：切 tab 后旧回调据此自行失效
+  const boundRef = useRef<TerminalTab | null>(null)
+  const lastQueryRef = useRef('')
+  // 每个 tab 只订阅一次 onDidChangeResults（SearchAddon 不提供解绑句柄，用 WeakSet 防重复）
+  const subsRef = useRef(new WeakSet<TerminalTab>())
+
+  const rebindSearch = (tab: TerminalTab): void => {
+    boundRef.current = tab
+    if (subsRef.current.has(tab)) return
+    subsRef.current.add(tab)
+    tab.search.onDidChangeResults?.((e) => {
+      if (boundRef.current !== tab) return
+      if (!e || e.resultCount === 0) {
+        setCount(lastQueryRef.current ? '0' : '')
+        return
+      }
+      setCount(`${e.resultIndex + 1}/${e.resultCount}`)
+    })
+  }
+
+  const runSearch = (direction: 'next' | 'prev'): void => {
+    const ctx = activeContext()
+    if (!ctx) return
+    rebindSearch(ctx.tab)
+    const q = inputRef.current?.value ?? ''
+    lastQueryRef.current = q
+    if (!q) {
+      ctx.tab.term.clearSelection()
+      setCount('')
+      return
+    }
+    const opts = { decorations: SEARCH_DECOR }
+    if (direction === 'next') ctx.tab.search.findNext(q, opts)
+    else ctx.tab.search.findPrevious(q, opts)
+  }
+
+  // 显式关闭（Esc / 关闭按钮）：清高亮 + 清选区 + 焦点还给终端（原 closeSearch）
+  const doClose = (): void => {
+    closeSearchOverlay()
+    const ctx = activeContext()
+    ctx?.tab.search.clearDecorations()
+    ctx?.tab.term.clearSelection()
+    ctx?.tab.term.focus()
+  }
+
+  // 打开时：绑定当前 tab 的结果回调，聚焦并全选输入框（原 openSearch）
+  useEffect(() => {
+    if (!open) return
+    const ctx = activeContext()
+    if (!ctx) {
+      // 原 openSearch 在没有活动标签时不弹——这里同语义，直接回退关闭
+      closeSearchOverlay()
+      return
+    }
+    rebindSearch(ctx.tab)
+    inputRef.current?.focus()
+    inputRef.current?.select()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // 全局 Esc 兜底（原 main.ts window keydown："ESC 关闭可能打开的浮层"）：
+  // 焦点不在输入框（如终端里按 Esc 冒泡上来）时也能收起浮层；
+  // 与原实现一致，这条路径只收起、不清高亮。
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') closeSearchOverlay()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  return (
+    <div id="search" className={open ? 'open' : ''} role="search" aria-label={t('终端内搜索')}>
+      <input
+        id="search-input"
+        ref={inputRef}
+        type="text"
+        placeholder={t('搜索（Enter 下一个，Shift+Enter 上一个）')}
+        autoComplete="off"
+        spellCheck={false}
+        onInput={() => runSearch('next')}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            runSearch(e.shiftKey ? 'prev' : 'next')
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            doClose()
+          }
+        }}
+      />
+      <span id="search-count" aria-live="polite">{count}</span>
+      <button id="search-close" title={t('关闭 (Esc)')} aria-label={t('关闭搜索')} onClick={() => doClose()}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  )
+}

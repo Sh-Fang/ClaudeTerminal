@@ -35,7 +35,7 @@ export const I18N_EN: Record<string, string> = {
   '分组 / 工作区管理': 'Group / workspace manager',
   '设置': 'Settings',
   '本标签的会话（栈顶 = 当前）': 'Sessions of this tab (top = current)',
-  // 下面两条是被 <code>/clear</code> 拆开的前后半句（translateDom 按 trim 后的文本节点匹配）
+  // 下面两条是被 <code>/clear</code> 拆开的前后半句（JSX 里两个文本节点分别包 t()）
   '终端里': 'In the terminal,',
   '会自动在此新增一条会话': 'automatically adds a session here',
 

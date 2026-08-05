@@ -1,0 +1,328 @@
+import { useEffect, useState } from 'react'
+import { useAppStore } from '../state/store'
+import {
+  getToolbarCtx,
+  getGroupViews,
+  getActiveTabId,
+  isCcTab,
+  activateTab,
+  closeTab,
+  renameTab,
+  promptNewTabInGroup,
+  newGroup,
+  openTabCtx,
+  openSessionCtx,
+  startCcInActiveTab,
+  switchSession
+} from '../controller'
+import { openSettings, openSavedManager } from '../state/overlays'
+import { formatTs, sessionTitle, srcLabel, statusLabel } from '../lib/format'
+import { icon } from '../svg-icons'
+import { t } from '../i18n'
+import type { TerminalTab, SessionRecord, TabStatus } from '../terminal-tab'
+
+// 当前会话：优先按 activeSessionId 找，找不到（或没设）退回栈顶（数组末尾）
+function currentSession(tab: TerminalTab): SessionRecord | undefined {
+  if (!tab.activeSessionId) return tab.sessions[tab.sessions.length - 1]
+  return (
+    tab.sessions.find((s) => s.sessionId === tab.activeSessionId) ??
+    tab.sessions[tab.sessions.length - 1]
+  )
+}
+
+// 行内改名：把名字 span 临时置为 contentEditable，直接在原文字上继续改（原 Sidebar 同款）。
+// commit 后 renameTab 触发 rev bump → React 重渲染回正常文本；取消/空值则手动还原旧文案。
+function startInlineRename(tabId: string, el: HTMLSpanElement): void {
+  const old = el.textContent ?? ''
+  el.contentEditable = 'true'
+  el.focus()
+  // 不全选：光标 collapse 到末尾，视觉上就是在原始文字上继续改
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  range.collapse(false)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+  const commit = (cancel: boolean): void => {
+    el.contentEditable = 'false'
+    el.removeEventListener('blur', onBlur)
+    el.removeEventListener('keydown', onKey)
+    const v = (el.textContent || '').trim()
+    if (cancel || !v) {
+      el.textContent = old
+      return
+    }
+    if (v !== old) {
+      renameTab(tabId, v)
+    } else {
+      el.textContent = old
+    }
+  }
+  const onBlur = (): void => commit(false)
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commit(false)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      commit(true)
+    }
+  }
+  el.addEventListener('blur', onBlur)
+  el.addEventListener('keydown', onKey)
+}
+
+// 「+」：在当前活动标签所属分组内新建标签；没有活动标签时退回新建分组
+function addTabInActiveGroup(): void {
+  const activeTabId = getActiveTabId()
+  const groups = getGroupViews()
+  const g = activeTabId ? groups.find((x) => x.tabs.some((tb) => tb.id === activeTabId)) : null
+  if (g) promptNewTabInGroup(g.id)
+  else newGroup()
+}
+
+export function Toolbar() {
+  const rev = useAppStore((s) => s.rev)
+  void rev
+  // 会话栈下拉的开合（原 Toolbar 的 sessMenu/sessSelect .open 类）
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const cur = getToolbarCtx()
+  const groups = getGroupViews()
+  const activeTabId = getActiveTabId()
+
+  // 无活动标签 → 强制收起会话菜单（对齐原 render() 空态里的 closeMenu()）
+  const hasCtx = cur != null
+  useEffect(() => {
+    if (!hasCtx) setMenuOpen(false)
+  }, [hasCtx])
+
+  // 全局点击关闭下拉：点在 .session-menu / .session-select 之外才关。
+  // session-select 自身的 onClick 有 stopPropagation，不会被这里误关。
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDocClick = (e: MouseEvent): void => {
+      const el = e.target as HTMLElement
+      if (!el.closest('.session-menu') && !el.closest('.session-select')) setMenuOpen(false)
+    }
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [menuOpen])
+
+  const tab = cur?.tab
+  const st = (tab?.status ?? 'idle') as TabStatus
+  const curSess = tab ? currentSession(tab) : undefined
+  // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
+  // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。
+  const pureNonCc = tab != null && !tab.autoLaunchCC && !tab.ccActive
+
+  return (
+    <>
+      {/* 水平标签栏：仅 tabBarMode=horizontal 时显示（.app.tabbar-horizontal 由 CSS 控制），
+          平铺当前工作区里所有分组的标签（无分组层级）。数据模型不变，仅显示层扁平化。 */}
+      <div className="tabstrip" id="tabstrip">
+        <div className="tabstrip-list" id="tabstripList">
+          {groups.length === 0 ? (
+            <div className="tabstrip-empty">{t('没有打开的标签')}</div>
+          ) : (
+            groups.flatMap((g) =>
+              g.tabs.map((tb) => {
+                const cst = (tb.status ?? 'idle') as TabStatus
+                // dirty 点：跟 isGroupDirty 的过滤条件对齐——纯 pwsh tab 即便 dirty=true 也不显示
+                const showDirty = tb.dirty && isCcTab(tb)
+                const dotTitle = tb.note ? t('{0}：{1}', statusLabel(cst), tb.note) : statusLabel(cst)
+                return (
+                  <div
+                    key={tb.id}
+                    className={'tabchip' + (activeTabId === tb.id ? ' active' : '')}
+                    data-t={tb.id}
+                    // hover 显示所属分组 / 路径（扁平后仍能知道来源）
+                    title={g.cwd ? `${g.name} · ${g.cwd}` : g.name}
+                    onClick={() => activateTab(tb.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      openTabCtx(tb.id, e.clientX, e.clientY)
+                    }}
+                    onDoubleClick={(e) => {
+                      const nameEl = e.currentTarget.querySelector('.tabchip-name') as HTMLSpanElement | null
+                      if (nameEl) startInlineRename(tb.id, nameEl)
+                    }}
+                  >
+                    <span className={`st-dot st-${cst}`} title={dotTitle}></span>
+                    <span className="tabchip-name">{tb.name}</span>
+                    {showDirty && <span className="trow-dirty" title={t('有未保存改动')}></span>}
+                    <span
+                      className="tabchip-close"
+                      data-close={tb.id}
+                      title={t('关闭标签')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        closeTab(tb.id)
+                      }}
+                      dangerouslySetInnerHTML={{ __html: icon('close', { size: 11, stroke: 2 }) }}
+                    />
+                  </div>
+                )
+              })
+            )
+          )}
+        </div>
+        <button
+          className="tabstrip-add"
+          id="tabstripAdd"
+          type="button"
+          title={t('在当前分组新建标签')}
+          aria-label={t('新建标签')}
+          onClick={addTabInActiveGroup}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="toolbar">
+        <div className={'crumb' + (cur ? '' : ' is-empty')}>
+          <span className="g" id="cbGroup">{cur ? cur.groupName : ''}</span>
+          <span className="sep">›</span>
+          <span className="t" id="cbTab">{tab ? tab.name : ''}</span>
+          <span id="cbStatus">
+            {tab && st !== 'idle' && (
+              <span
+                className={`status-pill sp-${st}`}
+                title={tab.note ? t('{0}：{1}', statusLabel(st), tab.note) : statusLabel(st)}
+              >
+                <span className={`st-dot st-${st}`}></span>
+                {statusLabel(st)}
+              </span>
+            )}
+          </span>
+          <button
+            className={'start-cc-btn' + (pureNonCc ? ' show' : '')}
+            id="startCcBtn"
+            type="button"
+            title={t('在当前 pwsh 会话中启动 Claude Code（等效命令 cct）')}
+            onClick={() => startCcInActiveTab()}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <span>{t('启动 CC')}</span>
+          </button>
+        </div>
+        <div className="spacer"></div>
+        <div
+          className={'session-select' + (cur ? '' : ' empty') + (menuOpen ? ' open' : '')}
+          id="sessionSelect"
+          title={t('切换会话')}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!cur) return
+            setMenuOpen((v) => !v)
+          }}
+        >
+          <span className="clock">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+          </span>
+          <span className="time" id="sessTime">
+            {curSess ? formatTs(curSess.lastTs || curSess.createdAt) : ''}
+          </span>
+          <span className="title" id="sessTitle">
+            {!cur ? t('（无活动标签）') : curSess ? sessionTitle(curSess, cur.tab.sessions) : t('（未创建会话）')}
+          </span>
+          <span className="caret">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
+        </div>
+        {/* 顶栏「分组/工作区管理」按钮（水平标签栏下左栏隐藏，靠它进管理弹窗；显隐由 CSS 控制） */}
+        <button
+          className="tool-icon-btn"
+          id="manageTopBtn"
+          title={t('分组 / 工作区管理')}
+          aria-label={t('分组 / 工作区管理')}
+          onClick={() => openSavedManager('groups')}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 2 10 5-10 5L2 7z" />
+            <path d="m2 12 10 5 10-5" />
+            <path d="m2 17 10 5 10-5" />
+          </svg>
+        </button>
+        <button
+          className="tool-icon-btn"
+          id="settingsBtn"
+          title={t('设置')}
+          aria-label={t('设置')}
+          onClick={() => openSettings()}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+        <div className={'session-menu' + (menuOpen ? ' open' : '')} id="sessionMenu">
+          <div className="menu-eyebrow">{t('本标签的会话（栈顶 = 当前）')}</div>
+          <div id="sessList">
+            {tab &&
+              (tab.sessions.length === 0 ? (
+                <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--mute)' }}>
+                  {t('没有会话记录。激活标签后 cc 会自动创建首个会话。')}
+                </div>
+              ) : (
+                // 倒序展示：栈顶在最上面
+                [...tab.sessions].reverse().map((s) => {
+                  const isCurrent = s.sessionId === tab.activeSessionId
+                  return (
+                    <div
+                      key={s.sessionId}
+                      className={'sess-item' + (isCurrent ? ' current' : '')}
+                      data-session-id={s.sessionId}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        if (!isCurrent) switchSession(s.sessionId)
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openSessionCtx(s.sessionId, e.clientX, e.clientY)
+                      }}
+                    >
+                      <span className="sdot"></span>
+                      <div className="sess-body">
+                        <div className="sess-title">{sessionTitle(s, tab.sessions)}</div>
+                        <div className="sess-meta">
+                          {formatTs(s.lastTs || s.createdAt)} · <span className="src">{srcLabel(s.source)}</span> ·{' '}
+                          {s.sessionId.slice(0, 8)}
+                          {isCurrent && (
+                            <>
+                              {' '}
+                              · <span className="cur">{t('当前')}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              ))}
+          </div>
+          <div className="menu-foot">
+            <span className="dot">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </span>
+            <span>
+              {t('终端里')} <code>/clear</code> {t('会自动在此新增一条会话')}
+            </span>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
