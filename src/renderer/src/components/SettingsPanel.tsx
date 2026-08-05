@@ -58,10 +58,9 @@ function clamp(n: number, min: number, max: number, fb: number): number {
 // ─── npm 镜像候选 ────────────────────────────────────────────────
 // 国内常用镜像 + npm 官方（配合「使用 npm 镜像」开关：关 = 主进程直接走官方源）。
 // name 是词典 key；测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
+// 只收真正实现 npm registry 协议的源（清华/中科大镜像站不反代 registry，装包会 404）
 const NPM_MIRRORS: { name: string; url: string }[] = [
   { name: '腾讯云', url: 'https://mirrors.cloud.tencent.com/npm/' },
-  { name: '清华大学开源镜像', url: 'https://mirrors.tuna.tsinghua.edu.cn/' },
-  { name: '中国科学技术大学开源镜像', url: 'https://mirrors.ustc.edu.cn/' },
   // npmmirror（前身淘宝镜像）由阿里云提供；不带尾斜杠，与 DEFAULT_SETTINGS.npmRegistry 一致
   { name: '阿里云', url: 'https://registry.npmmirror.com' },
   { name: '官方镜像', url: 'https://registry.npmjs.org' }

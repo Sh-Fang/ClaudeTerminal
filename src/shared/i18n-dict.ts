@@ -124,8 +124,6 @@ export const I18N_EN: Record<string, string> = {
   'npm 镜像': 'npm registry',
   '使用 npm 镜像': 'Use npm registry mirror',
   '腾讯云': 'Tencent Cloud',
-  '清华大学开源镜像': 'Tsinghua Open Source Mirror',
-  '中国科学技术大学开源镜像': 'USTC Open Source Mirror',
   '阿里云': 'Aliyun',
   '官方镜像': 'Official registry',
   '自定义': 'Custom',
