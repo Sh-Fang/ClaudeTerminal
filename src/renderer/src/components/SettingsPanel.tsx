@@ -14,7 +14,7 @@ import {
   type TabBarMode,
   type AppLanguage
 } from '../themes'
-import { useOverlays, closeSettings, confirmDialog, showCtxMenu, type CtxItem } from '../state/overlays'
+import { useOverlays, closeSettings, confirmDialog, showCtxMenu, closeCtxMenu, type CtxItem } from '../state/overlays'
 import { icon } from '../svg-icons'
 import { MODEL_GROUPS } from './SessionInfoBar'
 import { t } from '../i18n'
@@ -484,6 +484,11 @@ export function SettingsPanel() {
 
   // ─── 模型 / 语言 picker（showCtxMenu 浮层复用）─────────────
   function openModelPicker(): void {
+    // 已展开 → 再点收起（closeCtxMenu 触发 onClose 把 open 态翻回 false）
+    if (modelOpen) {
+      closeCtxMenu()
+      return
+    }
     const cur = formRef.current.model
     // arg = '' 视为"跟随 cc 默认"。用共享 MODEL_GROUPS 保证与左下芯片候选一致。
     const setVal = (v: string): void => {
@@ -515,6 +520,11 @@ export function SettingsPanel() {
 
   // 下拉选项固定用各自语言显示（简体中文 / English），不随界面语言翻译
   function openLanguagePicker(): void {
+    // 已展开 → 再点收起（closeCtxMenu 触发 onClose 把 open 态翻回 false）
+    if (langOpen) {
+      closeCtxMenu()
+      return
+    }
     const cur = formRef.current.language || 'zh'
     const setVal = (v: AppLanguage): void => {
       if ((formRef.current.language || 'zh') === v) return
