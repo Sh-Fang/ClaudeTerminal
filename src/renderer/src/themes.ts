@@ -21,6 +21,7 @@ export interface Settings {
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   npmRegistry: string
+  npmMirrorEnabled: boolean    // false = 不用镜像，cc 版本管理走 npm 官方源
   disableAutoupdater: boolean
   lastUsedCwd: string
   sidebarWidth: number
@@ -51,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
+  npmMirrorEnabled: true,
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,

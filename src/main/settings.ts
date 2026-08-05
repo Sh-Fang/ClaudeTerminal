@@ -35,6 +35,7 @@ export interface Settings {
   }
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径（多版本切换写这里）
   npmRegistry: string  // 安装 cc 版本用的 npm 镜像，空 = 走默认国内镜像
+  npmMirrorEnabled: boolean  // false = 不用镜像，cc 版本管理走 npm 官方源
   disableAutoupdater: boolean  // true = spawn pwsh 时注入 DISABLE_AUTOUPDATER=1
   lastUsedCwd: string  // 最近一次新建分组选择的 cwd，下次预填用
   sidebarWidth: number
@@ -65,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
+  npmMirrorEnabled: true,
   disableAutoupdater: true,
   lastUsedCwd: '',
   sidebarWidth: 268,
@@ -148,6 +150,10 @@ function normalize(raw: unknown): Settings {
       typeof r.npmRegistry === 'string' && r.npmRegistry.trim()
         ? r.npmRegistry.trim()
         : DEFAULT_SETTINGS.npmRegistry,
+    npmMirrorEnabled:
+      typeof r.npmMirrorEnabled === 'boolean'
+        ? r.npmMirrorEnabled
+        : DEFAULT_SETTINGS.npmMirrorEnabled,
     disableAutoupdater:
       typeof r.disableAutoupdater === 'boolean'
         ? r.disableAutoupdater

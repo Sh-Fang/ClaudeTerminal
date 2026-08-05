@@ -1,5 +1,7 @@
 import { app, BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { existsSync, statSync } from 'node:fs'
+import { request as httpsRequest } from 'node:https'
+import { request as httpRequest } from 'node:http'
 import { createPty, killPty, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
@@ -32,6 +34,35 @@ import { moveFloaterTo, pushCountsToFloater, setFloaterDragging, setFloaterEnabl
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
+}
+
+// npm 镜像开关关闭时 cc 版本管理走官方源（渲染层下拉里它也是候选之一）
+const NPM_OFFICIAL_REGISTRY = 'https://registry.npmjs.org'
+function effectiveNpmRegistry(): string {
+  const s = loadSettings()
+  return s.npmMirrorEnabled ? s.npmRegistry : NPM_OFFICIAL_REGISTRY
+}
+
+// npm 镜像测速：HEAD 请求，测到「响应头到达」的耗时。任何状态码（301/404 都行）
+// 都算通——只关心网络时延，不关心业务；超时/连不上返回 -1。
+function pingRegistry(rawUrl: string): Promise<number> {
+  return new Promise((resolve) => {
+    let u: URL
+    try { u = new URL(rawUrl) } catch { resolve(-1); return }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') { resolve(-1); return }
+    const t0 = Date.now()
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(
+      u,
+      { method: 'HEAD', timeout: 5000 },
+      (res) => {
+        res.destroy()
+        resolve(Date.now() - t0)
+      }
+    )
+    req.on('timeout', () => { req.destroy(); resolve(-1) })
+    req.on('error', () => resolve(-1))
+    req.end()
+  })
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
@@ -104,7 +135,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     try { return ccListInstalled(loadSettings().claudePath) } catch { return [] }
   })
   ipcMain.handle('cc:listRemote', async () => {
-    try { return { ok: true, versions: await ccListRemote(loadSettings().npmRegistry) } }
+    try { return { ok: true, versions: await ccListRemote(effectiveNpmRegistry()) } }
     catch (e) { return { ok: false, error: (e as Error).message, versions: [] as string[] } }
   })
   ipcMain.handle('cc:install', async (e, version: string) => {
@@ -117,8 +148,9 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       if (!wc || wc.isDestroyed()) return
       try { wc.send('cc:install:phase', { version: ver, phase }) } catch {}
     }
-    return ccInstall(ver, loadSettings().npmRegistry, onPhase)
+    return ccInstall(ver, effectiveNpmRegistry(), onPhase)
   })
+  ipcMain.handle('npm:ping', (_e, url: string) => pingRegistry(String(url ?? '')))
   ipcMain.handle('cc:uninstall', (_e, version: string) =>
     typeof version === 'string' ? ccUninstall(version) : { ok: false, error: '版本号非法' }
   )

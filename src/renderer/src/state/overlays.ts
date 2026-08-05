@@ -14,6 +14,8 @@ export interface CtxItem {
   sep?: boolean
   eyebrow?: string // 分组小标题：mono-uppercase 一行，不可点击
   act?: () => void
+  // 行尾右对齐的附加信息（HTML，如 npm 镜像下拉的时延徽标）
+  metaHtml?: string
 }
 
 export type ModalKind = 'new-group' | 'new-tab' | 'rename'

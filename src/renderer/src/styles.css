@@ -1169,6 +1169,19 @@ button.saved-toggle:hover { color: var(--ink); }
 .ctx-item.danger { color: var(--error); }
 .ctx-item.danger .ic { color: var(--error); }
 .ctx-sep { height: 1px; background: var(--hairline); margin: 4px 6px; }
+/* 行尾右对齐的附加信息（npm 镜像下拉的时延徽标等） */
+.ctx-item .ctx-meta {
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+}
+/* 时延分级：<100ms 绿 / 100~200 蓝 / 200~500 黄 / >500 或超时 红 */
+.ctx-meta .lat-fast { color: #22c55e; }
+.ctx-meta .lat-ok   { color: #3b82f6; }
+.ctx-meta .lat-slow { color: #ca8a04; }
+.ctx-meta .lat-bad  { color: #ef4444; }
 
 /* Modal */
 .scrim {

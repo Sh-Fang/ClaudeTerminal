@@ -106,6 +106,7 @@ export interface Settings {
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   npmRegistry: string
+  npmMirrorEnabled: boolean
   disableAutoupdater: boolean
   lastUsedCwd: string
   sidebarWidth: number
@@ -214,6 +215,8 @@ export interface TermBridge {
   claudeSessionUsage(sessionId: string): Promise<SessionUsage>
   claudeDetect(): Promise<string | null>
   appVersion(): Promise<string>
+  // npm 镜像测速：返回响应头到达耗时 ms；超时/连不上返回 -1
+  npmPing(url: string): Promise<number>
   ccListInstalled(): Promise<InstalledCcVersion[]>
   ccListRemote(): Promise<CcRemoteResult>
   ccInstall(version: string): Promise<CcInstallResult>
@@ -285,6 +288,7 @@ const api: TermBridge = {
   claudeSessionUsage: (sessionId) => ipcRenderer.invoke('claude:sessionUsage', sessionId),
   claudeDetect: () => ipcRenderer.invoke('claude:detect'),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  npmPing: (url) => ipcRenderer.invoke('npm:ping', url),
   ccListInstalled: () => ipcRenderer.invoke('cc:listInstalled'),
   ccListRemote: () => ipcRenderer.invoke('cc:listRemote'),
   ccInstall: (version) => ipcRenderer.invoke('cc:install', version),

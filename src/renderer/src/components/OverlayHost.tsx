@@ -94,6 +94,9 @@ function CtxMenu() {
             {/* icon 是 svg-icons.icon() 返回的 SVG 字符串 */}
             <span className="ic" dangerouslySetInnerHTML={{ __html: it.icon ?? '' }} />
             <span>{it.label ?? ''}</span>
+            {it.metaHtml != null && (
+              <span className="ctx-meta" dangerouslySetInnerHTML={{ __html: it.metaHtml }} />
+            )}
           </div>
         )
       })}

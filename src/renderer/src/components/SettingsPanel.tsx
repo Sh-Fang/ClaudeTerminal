@@ -55,6 +55,37 @@ function clamp(n: number, min: number, max: number, fb: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
+// ─── npm 镜像候选 ────────────────────────────────────────────────
+// 国内常用镜像 + npm 官方（配合「使用 npm 镜像」开关：关 = 主进程直接走官方源）。
+// name 是词典 key；测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
+const NPM_MIRRORS: { name: string; url: string }[] = [
+  { name: '淘宝 npmmirror', url: 'https://registry.npmmirror.com' },
+  { name: '腾讯云', url: 'https://mirrors.cloud.tencent.com/npm/' },
+  { name: '华为云', url: 'https://repo.huaweicloud.com/repository/npm/' },
+  { name: 'npm 官方', url: 'https://registry.npmjs.org' }
+]
+
+function hostOf(u: string): string {
+  try { return new URL(u).host } catch { return u }
+}
+
+// picker 按钮上显示的当前镜像：预置项显示名称·host，老配置的自定义地址兜底「自定义」
+function npmRegLabel(reg: string): string {
+  const cur = reg.trim()
+  const m = NPM_MIRRORS.find((x) => x.url === cur)
+  if (m) return `${t(m.name)} · ${hostOf(m.url)}`
+  return `${t('自定义')} · ${hostOf(cur)}`
+}
+
+// 时延徽标 HTML（CtxItem.metaHtml）：undefined = 未返回（测速中），-1 = 超时/不通。
+// 分级：<100ms 绿 / 100~200 蓝 / 200~500 黄 / >500 红。
+function latBadge(ms: number | undefined): string {
+  if (ms === undefined) return '<span>…</span>'
+  if (ms < 0) return `<span class="lat-bad">${t('超时')}</span>`
+  const cls = ms < 100 ? 'lat-fast' : ms < 200 ? 'lat-ok' : ms <= 500 ? 'lat-slow' : 'lat-bad'
+  return `<span class="${cls}">${ms}ms</span>`
+}
+
 // 面板表单快照：对应原实现里各控件的即时值。文本/数字输入存原始串，
 // 提交时才 clamp（与原 commitChange 读 .value 再 clamp 的行为一致，输入框不被改写）。
 interface Form {
@@ -63,6 +94,7 @@ interface Form {
   line: string
   scrollback: string
   npmReg: string
+  npmMirror: boolean
   theme: string
   appTheme: string
   tabBarMode: string
@@ -89,6 +121,8 @@ function formFromSettings(s: Settings): Form {
     line: String(s.font.lineHeight),
     scrollback: String(s.terminal.scrollback),
     npmReg: s.npmRegistry,
+    // 老配置没有该字段时兜底开启（现状行为：默认走 npmmirror）
+    npmMirror: s.npmMirrorEnabled !== false,
     theme: s.terminal.theme,
     appTheme: s.appTheme,
     // 老配置没有该字段时兜底垂直
@@ -150,6 +184,12 @@ export function SettingsPanel() {
   const scrimDownRef = useRef(false)
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const langBtnRef = useRef<HTMLButtonElement>(null)
+  // npm 镜像下拉：时延按 url 记账（undefined = 测速中 / 未测；-1 = 超时）
+  const [npmOpen, setNpmOpen] = useState(false)
+  const [npmLat, setNpmLat] = useState<Record<string, number | undefined>>({})
+  const npmLatRef = useRef(npmLat)
+  npmLatRef.current = npmLat
+  const npmBtnRef = useRef<HTMLButtonElement>(null)
 
   // 关于区
   const [aboutVer, setAboutVer] = useState('—')
@@ -214,6 +254,7 @@ export function SettingsPanel() {
       },
       // claudePath 由 CC 版本管理 / 首启自动检测维护，面板不直接编辑（...cur 已带上）
       npmRegistry: f.npmReg.trim() || DEFAULT_SETTINGS.npmRegistry,
+      npmMirrorEnabled: f.npmMirror,
       disableAutoupdater: f.disableUpd,
       statusDowngradeSec: clamp(Number(f.downgradeSec), 1, 10, cur.statusDowngradeSec),
       showClaudeUsage: f.showUsage,
@@ -267,6 +308,21 @@ export function SettingsPanel() {
       void ensureUpdConsistency()
     }
     prevOpenRef.current = open
+  }, [open])
+
+  // 打开面板即并发测速全部镜像（含老配置的自定义地址），结果陆续填进 npmLat。
+  // 每次打开清空重测——网络环境可能变了，别拿上次的旧数字骗人。
+  useEffect(() => {
+    if (!open) return
+    setNpmLat({})
+    const urls = new Set(NPM_MIRRORS.map((m) => m.url))
+    const cur = getSettings().npmRegistry.trim()
+    if (cur) urls.add(cur)
+    for (const url of urls) {
+      void window.term.npmPing(url).then((ms) => {
+        setNpmLat((prev) => ({ ...prev, [url]: ms }))
+      })
+    }
   }, [open])
 
   useEffect(() => {
@@ -541,6 +597,55 @@ export function SettingsPanel() {
     setLangOpen(true)
     showCtxMenu(items, r.left, r.bottom + 4, () => setLangOpen(false), { minWidth: r.width })
   }
+
+  // ─── npm 镜像 picker ────────────────────────────────────────
+  function npmMenuItems(): CtxItem[] {
+    const cur = formRef.current.npmReg.trim()
+    const setVal = (v: string): void => {
+      if (formRef.current.npmReg.trim() === v) return
+      commit({ npmReg: v })
+    }
+    const lat = npmLatRef.current
+    const items: CtxItem[] = NPM_MIRRORS.map((m) => ({
+      label: `${t(m.name)} · ${hostOf(m.url)}`,
+      icon: cur === m.url ? '✓' : '',
+      metaHtml: latBadge(lat[m.url]),
+      act: () => setVal(m.url)
+    }))
+    // 老配置的自定义地址不在预置列表 → 追加一项，保证已有配置可见可选不丢失
+    if (cur && !NPM_MIRRORS.some((m) => m.url === cur)) {
+      items.push({
+        label: `${t('自定义')} · ${hostOf(cur)}`,
+        icon: '✓',
+        metaHtml: latBadge(lat[cur]),
+        act: () => {}
+      })
+    }
+    return items
+  }
+
+  function showNpmMenu(): void {
+    const btn = npmBtnRef.current
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    showCtxMenu(npmMenuItems(), r.left, r.bottom + 4, () => setNpmOpen(false), { minWidth: r.width })
+  }
+
+  function openNpmPicker(): void {
+    // 已展开 → 再点收起（与语言/模型 picker 同款切换语义）
+    if (npmOpen) {
+      closeCtxMenu()
+      return
+    }
+    setNpmOpen(true)
+    showNpmMenu()
+  }
+
+  // 测速结果陆续返回时，若下拉正开着就原位刷新徽标（showCtxMenu 覆盖式打开，不闪不动位）
+  useEffect(() => {
+    if (npmOpen) showNpmMenu()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [npmLat])
 
   // 语言重启才生效：行内常驻提示（带「立即重启」），再弹一次确认支持立即重启。
   // 提示文案用当前运行语言 —— 那是用户此刻一定看得懂的语言。
@@ -1117,19 +1222,34 @@ export function SettingsPanel() {
               </div>
 
               <div className="set-subhead">{t('版本管理')}</div>
-              <div className="set-row">
-                <label>{t('npm 镜像')}</label>
+              <div className="set-row set-row-toggle">
+                <label>{t('使用 npm 镜像')}</label>
                 <input
-                  id="set-npm-registry"
-                  className="mono"
-                  type="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="https://registry.npmmirror.com"
-                  value={form.npmReg}
-                  onChange={(e) => commit({ npmReg: e.target.value })}
+                  id="set-npm-mirror"
+                  type="checkbox"
+                  checked={form.npmMirror}
+                  onChange={(e) => commit({ npmMirror: e.target.checked })}
                 />
               </div>
+              {/* 开关开启才露出镜像选择；关闭 = 版本管理走 npm 官方源 */}
+              {form.npmMirror && (
+                <div className="set-row">
+                  <label>{t('npm 镜像')}</label>
+                  <button
+                    type="button"
+                    className={'picker-select' + (npmOpen ? ' open' : '')}
+                    id="set-npm-registry"
+                    ref={npmBtnRef}
+                    onClick={(e) => {
+                      e.stopPropagation() // 挡掉 document.click 关 ctx 的兜底
+                      openNpmPicker()
+                    }}
+                  >
+                    <span className="picker-label">{npmRegLabel(form.npmReg)}</span>
+                    <span className="picker-chev" dangerouslySetInnerHTML={{ __html: icon('chevron-down', { size: 14 }) }} />
+                  </button>
+                </div>
+              )}
 
               <div className="cvcard">
                 <div className="cvcard-l">
