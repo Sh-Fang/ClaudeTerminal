@@ -433,14 +433,15 @@ button.saved-toggle:hover { color: var(--ink); }
   background: var(--canvas); border: 1px solid var(--hairline);
   border-radius: var(--r-full); padding: 1px 6px; flex: 0 0 auto;
 }
+/* 平时不占位（display:none），行 hover 才出现——把宽度留给分组名/路径 */
 .group-more, .group-add {
   width: 22px; height: 22px; border-radius: var(--r-sm);
-  display: grid; place-items: center; color: var(--mute);
-  opacity: 0; flex: 0 0 auto; transition: opacity 0.12s, background 0.12s, color 0.12s;
+  display: none; place-items: center; color: var(--mute);
+  flex: 0 0 auto; transition: background 0.12s, color 0.12s;
   cursor: pointer; line-height: 1;
 }
 .group-head:hover .group-more,
-.group-head:hover .group-add { opacity: 1; }
+.group-head:hover .group-add { display: grid; }
 .group-more:hover { background: var(--hairline); color: var(--ink); }
 .group-add:hover { background: var(--canvas); color: var(--link); box-shadow: 0 0 0 1px var(--hairline); }
 
@@ -520,14 +521,15 @@ button.saved-toggle:hover { color: var(--ink); }
   flex: 0 0 6px;
   background: #f5a623;
 }
+/* 平时不占位（display:none），行 hover 才出现——把宽度留给标签名/徽标 */
 .trow-close {
   width: 18px; height: 18px;
   border-radius: var(--r-full);
-  display: grid; place-items: center;
-  color: var(--mute); opacity: 0;
+  display: none; place-items: center;
+  color: var(--mute);
   line-height: 1; flex: 0 0 18px; cursor: pointer;
 }
-.tab-row:hover .trow-close { opacity: 1; }
+.tab-row:hover .trow-close { display: grid; }
 .trow-close:hover { background: var(--hairline); color: var(--ink); }
 
 /* Saved groups */

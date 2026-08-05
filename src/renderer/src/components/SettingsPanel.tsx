@@ -59,9 +59,9 @@ function clamp(n: number, min: number, max: number, fb: number): number {
 // 国内常用镜像 + npm 官方（配合「使用 npm 镜像」开关：关 = 主进程直接走官方源）。
 // name 是词典 key；测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
 const NPM_MIRRORS: { name: string; url: string }[] = [
-  { name: '淘宝 npmmirror', url: 'https://registry.npmmirror.com' },
+  // npmmirror（前身淘宝镜像）由阿里云提供，就是「阿里云的 npm 镜像」
+  { name: '阿里云 npmmirror', url: 'https://registry.npmmirror.com' },
   { name: '腾讯云', url: 'https://mirrors.cloud.tencent.com/npm/' },
-  { name: '华为云', url: 'https://repo.huaweicloud.com/repository/npm/' },
   { name: 'npm 官方', url: 'https://registry.npmjs.org' }
 ]
 
