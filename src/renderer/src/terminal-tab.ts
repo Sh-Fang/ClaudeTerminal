@@ -4,6 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
+import { t } from './i18n'
 
 export interface TermTabHandlers {
   copySelectionAsAnswer: () => boolean
@@ -643,12 +644,13 @@ export class TerminalTab {
       }
       this.handlers.onPtyStarted?.()
     } catch (e) {
-      const msg = (e as Error)?.message || String(e)
+      // IPC 报错原文兜底翻译一层（词典缺词条时原样显示）
+      const msg = t((e as Error)?.message || String(e))
       this.status = 'error'
       this.note = msg
       this.term.writeln('')
-      this.term.writeln(`\x1b[31m[启动 shell 失败] ${msg}\x1b[0m`)
-      this.term.writeln('\x1b[90m请检查分组的路径是否仍存在，按任意键重试。\x1b[0m')
+      this.term.writeln('\x1b[31m' + t('[启动 shell 失败] {0}', msg) + '\x1b[0m')
+      this.term.writeln('\x1b[90m' + t('请检查分组的路径是否仍存在，按任意键重试。') + '\x1b[0m')
       this.waitingForRestart = true
     }
   }
@@ -676,7 +678,7 @@ export class TerminalTab {
       const hit = CC_ERROR_PATTERNS.find(([re]) => re.test(hay))
       this.errScanTail = ''
       this.status = 'error'
-      this.handlers.onErrorDetected?.(hit?.[1] ?? '接口异常')
+      this.handlers.onErrorDetected?.(t(hit?.[1] ?? '接口异常'))
       return
     }
     // 只保留末尾一小段做跨 chunk 拼接，避免无限增长
@@ -688,8 +690,8 @@ export class TerminalTab {
   handlePtyExit(exitCode: number): void {
     this.ptyId = null
     this.term.writeln('')
-    this.term.writeln(`\x1b[90m[pwsh 已退出 · 退出码 ${exitCode}]\x1b[0m`)
-    this.term.writeln('\x1b[90m按任意键重启 shell…\x1b[0m')
+    this.term.writeln('\x1b[90m' + t('[pwsh 已退出 · 退出码 {0}]', exitCode) + '\x1b[0m')
+    this.term.writeln('\x1b[90m' + t('按任意键重启 shell…') + '\x1b[0m')
     this.waitingForRestart = true
   }
 

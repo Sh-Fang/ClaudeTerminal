@@ -8,6 +8,7 @@
 //  · sensitivity:base 大小写不敏感，与系统直觉一致。
 import { pinyin } from 'pinyin-pro'
 import { icon } from './svg-icons'
+import { t } from './i18n'
 import type { SessionRecord } from './terminal-tab'
 const NAME_COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 function nameSortKey(s: string): string {
@@ -140,7 +141,7 @@ export function confirmDialog(opts: {
 }): void {
   cfTitle.textContent = opts.title
   cfMsg.innerHTML = opts.message
-  cfOk.textContent = opts.okLabel ?? '确认'
+  cfOk.textContent = opts.okLabel ?? t('确认')
   cfOk.className = `btn ${opts.danger === false ? 'btn-primary' : 'btn-danger'}`
   cfCb = opts.onOk
   cfCancelCb = opts.onCancel ?? null
@@ -206,7 +207,7 @@ let modalNameUserEdited = false
 // 兼容正反斜杠和末尾斜杠；磁盘根（D:\ 等）没有最后一段，美化成「D 盘」；取不到时回退空串
 function basenameOfPath(p: string): string {
   const drive = /^([a-zA-Z]):[\\/]?$/.exec(p.trim())
-  if (drive) return `${drive[1].toUpperCase()} 盘`
+  if (drive) return t('{0} 盘', drive[1].toUpperCase())
   const segs = p.split(/[\\/]+/).filter(Boolean)
   return segs[segs.length - 1] ?? ''
 }
@@ -234,7 +235,7 @@ export function openModal(cfg: ModalInput): void {
   modalTabName.value = cfg.tabName ?? 'A'
   modalShowTabName = !!cfg.showTabName
   syncTabNameVisibility()
-  modalOk.textContent = cfg.okLabel ?? '创建'
+  modalOk.textContent = cfg.okLabel ?? t('创建')
   modalPickCb = cfg.onPickCwd ?? null
   modalCwdPick.style.display = modalPickCb ? '' : 'none'
   modalCb = cfg.onOk
@@ -371,10 +372,10 @@ function pkUpdateCount(): void {
   const totalReal = pkItems.filter((it) => !it.disabled && !pkIsAction(it)).length
   const curReal = pkSelected().filter((id) => !id.startsWith('__')).length
   const curAll = pkSelected().length   // ok 启用看的是总选中数（含 action 行）
-  pkCount.textContent = totalReal === 0 ? '' : `已选 ${curReal} / ${totalReal}`
+  pkCount.textContent = totalReal === 0 ? '' : t('已选 {0} / {1}', curReal, totalReal)
   pkOk.disabled = curAll === 0
   // 合并按钮：实条目全选 → "取消全选"；否则 → "全选"。无可选实条目时禁用。
-  pkToggleAllBtn.textContent = totalReal > 0 && curReal === totalReal ? '取消全选' : '全选'
+  pkToggleAllBtn.textContent = totalReal > 0 && curReal === totalReal ? t('取消全选') : t('全选')
   pkToggleAllBtn.disabled = totalReal === 0
 }
 function pkSetAll(checked: boolean): void {
@@ -392,7 +393,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
   pkTitle.textContent = cfg.title
   pkSub.textContent = cfg.sub ?? ''
   pkSub.style.display = cfg.sub ? '' : 'none'
-  pkOk.textContent = cfg.okLabel ?? '确认'
+  pkOk.textContent = cfg.okLabel ?? t('确认')
   pkCb = cfg.onOk
   pkCancelCb = cfg.onCancel ?? null
   pkItems = cfg.items
@@ -410,7 +411,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
       ? `<input type="text" class="pk-input" data-pk-input-id="${escapeHtml(it.id)}" placeholder="${escapeHtml(it.inputPlaceholder)}" autocomplete="off" spellcheck="false" />`
       : `<span class="pk-label">${escapeHtml(it.label)}</span>`
     const deleteHtml = it.onDelete
-      ? `<button type="button" class="pk-del" data-pk-del-id="${escapeHtml(it.id)}" title="${escapeHtml(it.deleteTitle ?? '从保存里删除')}" aria-label="删除">${icon('trash', { size: 13 })}</button>`
+      ? `<button type="button" class="pk-del" data-pk-del-id="${escapeHtml(it.id)}" title="${escapeHtml(it.deleteTitle ?? t('从保存里删除'))}" aria-label="${t('删除')}">${icon('trash', { size: 13 })}</button>`
       : ''
     const sideToggleHtml = it.sideToggle
       ? `<label class="pk-side-toggle" title="${escapeHtml(it.sideToggle.title ?? '')}"><input type="checkbox" data-pk-toggle-id="${escapeHtml(it.id)}" ${it.sideToggle.defaultChecked ? 'checked' : ''} /><span>${escapeHtml(it.sideToggle.label)}</span></label>`
@@ -419,7 +420,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
     // entries 已在上游过滤为"重命名过的会话"，配合选择器里的"用默认会话恢复"即可选择。
     const canPickSess = !!it.sessionPick && it.sessionPick.entries.length >= 1
     const metaHtml = canPickSess
-      ? `<button type="button" class="pk-meta pk-sess-count" data-pk-sess-id="${escapeHtml(it.id)}" title="选择要恢复的会话">${escapeHtml(it.meta ?? '')} ▾</button>`
+      ? `<button type="button" class="pk-meta pk-sess-count" data-pk-sess-id="${escapeHtml(it.id)}" title="${t('选择要恢复的会话')}">${escapeHtml(it.meta ?? '')} ▾</button>`
       : it.meta
         ? `<span class="pk-meta">${escapeHtml(it.meta)}</span>`
         : ''
@@ -465,7 +466,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
       const resetBadge = (): void => {
         if (badge) {
           badge.textContent = `${defaultMeta} ▾`
-          badge.title = '选择要恢复的会话'
+          badge.title = t('选择要恢复的会话')
         }
         badge?.classList.remove('chosen')
       }
@@ -476,7 +477,7 @@ export function openPickTabs(cfg: PickTabsCfg): void {
           anchor: badge,
           entries: it.sessionPick!.entries,
           selectedId: pkSessChosen.get(it.id)?.sid,
-          title: '选择要恢复的会话',
+          title: t('选择要恢复的会话'),
           onPick: (sid) => {
             const ent = it.sessionPick!.entries.find((x) => x.sessionId === sid)
             pkSessChosen.set(it.id, { sid, title: ent?.title ?? sid.slice(0, 8) })
@@ -485,8 +486,8 @@ export function openPickTabs(cfg: PickTabsCfg): void {
               // 标题可能很长会撑爆整行：截断显示 + 完整放 title，末尾保留 ▾ 标记
               const full = ent?.title ?? ''
               const short = full.length > 14 ? full.slice(0, 14) + '…' : full
-              badge.textContent = `从「${short}」恢复 ▾`
-              badge.title = `从「${full}」恢复`
+              badge.textContent = `${t('从「{0}」恢复', short)} ▾`
+              badge.title = t('从「{0}」恢复', full)
               badge.classList.add('chosen')
             }
             it.sessionPick!.onPick(sid)
@@ -746,26 +747,26 @@ export function formatTs(iso?: string): string {
   const isYest = d.toDateString() === yest.toDateString()
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  if (sameDay) return `今天 ${hh}:${mm}`
-  if (isYest) return `昨天 ${hh}:${mm}`
+  if (sameDay) return t('今天 {0}:{1}', hh, mm)
+  if (isYest) return t('昨天 {0}:{1}', hh, mm)
   return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
 }
 
 export function srcLabel(s: string): string {
-  return ({ clear: '/clear 后', startup: '初始', compact: 'compact', resume: '恢复' } as Record<string, string>)[s] || s
+  // resume 用 '恢复||来源' 消歧：'恢复' 这个 key 已被按钮（Restore）占用，此处应译 Resumed
+  const v = ({ clear: '/clear 后', startup: '初始', compact: 'compact', resume: '恢复||来源' } as Record<string, string>)[s]
+  return v ? t(v) : s
 }
 
 export function statusLabel(s?: string): string {
-  return (
-    ({ busy: '运行中', attention: '需要你决策', done: '完成，待查看', idle: '空闲', error: '出错' } as Record<string, string>)[
-      s || 'idle'
-    ] || '空闲'
-  )
+  const v = ({ busy: '运行中', attention: '需要你决策', done: '完成，待查看', idle: '空闲', error: '出错' } as Record<string, string>)[
+    s || 'idle'
+  ]
+  return t(v || '空闲')
 }
 export function statusShort(s?: string): string {
-  return (
-    ({ busy: '运行中', attention: '待决策', done: '待查看', error: '错误' } as Record<string, string>)[s || 'idle'] || ''
-  )
+  const v = ({ busy: '运行中', attention: '待决策', done: '待查看', error: '错误' } as Record<string, string>)[s || 'idle']
+  return v ? t(v) : ''
 }
 
 // 会话默认名「会话 N」：N 按 createdAt 排序位置算，不用栈位置。
@@ -773,7 +774,7 @@ export function statusShort(s?: string): string {
 export function defaultSessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
   const sorted = [...sessions].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
   const idx = sorted.findIndex((s) => s.sessionId === sess.sessionId)
-  return `会话 ${idx >= 0 ? idx + 1 : sessions.length}`
+  return t('会话 {0}', idx >= 0 ? idx + 1 : sessions.length)
 }
 
 export function sessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
@@ -813,12 +814,12 @@ export function openSessionPicker(opts: {
   host.className = 'sesspick'
   const head = opts.title ? `<div class="sesspick-head">${escapeHtml(opts.title)}</div>` : ''
   const clearRow = opts.onClear
-    ? `<div class="sesspick-item sesspick-clear" data-sp-clear="1"><div class="sess-body"><div class="sess-title">用默认会话恢复</div><div class="sess-meta">清除指定，按标签原活跃会话</div></div></div>`
+    ? `<div class="sesspick-item sesspick-clear" data-sp-clear="1"><div class="sess-body"><div class="sess-title">${t('用默认会话恢复')}</div><div class="sess-meta">${t('清除指定，按标签原活跃会话')}</div></div></div>`
     : ''
   const rows = opts.entries
     .map((e) => {
       const sel = !!opts.selectedId && e.sessionId === opts.selectedId
-      const meta = `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ' · <span class="cur">默认</span>' : ''}`
+      const meta = `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
       return `<div class="sesspick-item sess-item${e.isDefault ? ' current' : ''}${sel ? ' selected' : ''}" data-sp-sid="${escapeHtml(e.sessionId)}">
       <span class="sdot"></span>
       <div class="sess-body">

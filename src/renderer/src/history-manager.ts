@@ -5,6 +5,7 @@
 import type { SessionRecord } from './terminal-tab'
 import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, type Range } from './ui-helpers'
 import { icon } from './svg-icons'
+import { t } from './i18n'
 
 export interface HistoryEntry {
   tabId: string
@@ -161,14 +162,14 @@ export class HistoryManager {
   }
 
   private renderClearBtn(): void {
-    const bucketLabel = BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? ''
+    const bucketLabel = t(BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? '')
     // 搜索时禁用"清空" —— 避免误把整个桶里没显示的条目也清掉
     const q = this.searchQuery.trim()
     const n = this.grouped[this.activeBucket].length
     this.clearBtn.hidden = false
-    this.clearBtn.textContent = n > 0 ? `清空${bucketLabel}的历史 (${n})` : `清空${bucketLabel}的历史`
+    this.clearBtn.textContent = n > 0 ? t('清空{0}的历史 ({1})', bucketLabel, n) : t('清空{0}的历史', bucketLabel)
     this.clearBtn.disabled = n === 0 || !!q
-    this.clearBtn.title = q ? '清空时请先清除搜索词' : ''
+    this.clearBtn.title = q ? t('清空时请先清除搜索词') : ''
   }
 
   private renderNav(): void {
@@ -177,7 +178,7 @@ export class HistoryManager {
       const n = this.filtered(b.key).length
       return `
       <button type="button" class="hist-nav-item${b.key === this.activeBucket ? ' active' : ''}" data-bucket="${b.key}">
-        <span>${b.label}</span>
+        <span>${t(b.label)}</span>
         <span class="count">${n}</span>
       </button>
     `
@@ -194,14 +195,14 @@ export class HistoryManager {
       const sub = this.empty.querySelector('.sub') as HTMLElement | null
       const q = this.searchQuery.trim()
       if (q) {
-        if (e1) e1.textContent = '没有匹配的历史记录。'
-        if (sub) sub.textContent = '换个关键词，或按 Esc 清空搜索。'
+        if (e1) e1.textContent = t('没有匹配的历史记录。')
+        if (sub) sub.textContent = t('换个关键词，或按 Esc 清空搜索。')
       } else if (this.entries.length === 0) {
-        if (e1) e1.textContent = '7 天内没有打开过标签的记录。'
-        if (sub) sub.textContent = '每次新建标签都会自动留底。'
+        if (e1) e1.textContent = t('7 天内没有打开过标签的记录。')
+        if (sub) sub.textContent = t('每次新建标签都会自动留底。')
       } else {
-        if (e1) e1.textContent = '这个时间段没有标签记录。'
-        if (sub) sub.textContent = '每次新建标签都会自动留底。'
+        if (e1) e1.textContent = t('这个时间段没有标签记录。')
+        if (sub) sub.textContent = t('每次新建标签都会自动留底。')
       }
       return
     }
@@ -212,9 +213,9 @@ export class HistoryManager {
     const wrap = document.createElement('div')
     wrap.className = 'mg-row is-visible'
     wrap.dataset.tabId = e.tabId
-    const cwd = e.cwd ? escapeHtml(shortPath(e.cwd)) : '<span class="path-placeholder">(默认目录)</span>'
+    const cwd = e.cwd ? escapeHtml(shortPath(e.cwd)) : `<span class="path-placeholder">${t('(默认目录)')}</span>`
     const sessionCount = e.sessions?.length ?? 0
-    const sessionMeta = sessionCount > 0 ? `${sessionCount} 个会话` : '空会话'
+    const sessionMeta = sessionCount > 0 ? t('{0} 个会话', sessionCount) : t('空会话')
     wrap.innerHTML = `
       <div class="mg-head-row">
         <span class="mg-folder">${icon('folder')}</span>
@@ -222,8 +223,8 @@ export class HistoryManager {
           <div class="mg-name">${highlightRanges(e.groupName, hl[0])} <span class="mg-group-name">· ${highlightRanges(e.tabName, hl[1])}</span></div>
           <div class="mg-meta">${cwd} · ${sessionMeta} · ${escapeHtml(formatTs(e.lastSeenAt))}</div>
         </div>
-        <button class="mg-btn" data-restore="${escapeHtml(e.tabId)}" title="恢复成新标签">${icon('rotate-ccw', { size: 14 })}</button>
-        <button class="mg-btn mg-danger" data-delete="${escapeHtml(e.tabId)}" title="从历史里删除此条">${icon('trash', { size: 14 })}</button>
+        <button class="mg-btn" data-restore="${escapeHtml(e.tabId)}" title="${t('恢复成新标签')}">${icon('rotate-ccw', { size: 14 })}</button>
+        <button class="mg-btn mg-danger" data-delete="${escapeHtml(e.tabId)}" title="${t('从历史里删除此条')}">${icon('trash', { size: 14 })}</button>
       </div>
     `
     return wrap
@@ -256,9 +257,9 @@ export class HistoryManager {
       const entry = this.entries.find((x) => x.tabId === id)
       if (!entry) return
       confirmDialog({
-        title: `删除这条历史？`,
-        message: `将从历史里删除「<b>${escapeHtml(entry.groupName)} · ${escapeHtml(entry.tabName)}</b>」，已打开的标签不受影响。`,
-        okLabel: '删除',
+        title: t('删除这条历史？'),
+        message: t('将从历史里删除「<b>{0}</b>」，已打开的标签不受影响。', `${escapeHtml(entry.groupName)} · ${escapeHtml(entry.tabName)}`),
+        okLabel: t('删除'),
         onOk: async () => {
           await window.term.tabHistoryDelete(id)
           await this.refresh()
@@ -280,12 +281,12 @@ export class HistoryManager {
   private onClear(): void {
     const list = this.grouped[this.activeBucket]
     if (list.length === 0) return
-    const bucketLabel = BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? ''
+    const bucketLabel = t(BUCKETS.find((b) => b.key === this.activeBucket)?.label ?? '')
     const ids = list.map((e) => e.tabId)
     confirmDialog({
-      title: `清空${bucketLabel}的历史？`,
-      message: `将清空<b>${bucketLabel}</b>的 <b>${ids.length}</b> 条历史记录，已打开的标签不受影响。`,
-      okLabel: '清空',
+      title: t('清空{0}的历史？', bucketLabel),
+      message: t('将清空<b>{0}</b>的 <b>{1}</b> 条历史记录，已打开的标签不受影响。', bucketLabel, ids.length),
+      okLabel: t('清空'),
       onOk: async () => {
         await window.term.tabHistoryDeleteMany(ids)
         await this.refresh()

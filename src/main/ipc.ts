@@ -19,6 +19,7 @@ import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
 import { isSafeExternalUrl } from './url-safety'
+import { t } from './i18n'
 import {
   clearTabHistory,
   deleteManyTabHistory,
@@ -192,7 +193,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('dialog:pickDirectory', async (_e, defaultPath?: string) => {
     const w = getWindow()
     const res = await dialog.showOpenDialog(w ?? undefined as unknown as BrowserWindow, {
-      title: '选择路径',
+      title: t('选择路径'),
       properties: ['openDirectory', 'createDirectory'],
       defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined
     })

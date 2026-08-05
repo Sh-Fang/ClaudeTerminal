@@ -2,6 +2,7 @@
 // 主程通过 hooks 暴露最小接口，本类只负责 UI 渲染与交互。
 
 import { icon } from './svg-icons'
+import { t } from './i18n'
 import { escapeHtml, formatTs, fuzzySearch, highlightRanges, shortPath, bindScrimDismiss, confirmDialog, showCtxMenu, nameInitial, openSessionPicker, closeSessionPicker, type CtxItem, type Range, type SessPickEntry } from './ui-helpers'
 
 // 单条会话的展示视图：供"点会话数弹出的小列表"渲染 + 会话级搜索。
@@ -169,13 +170,13 @@ export class SavedManager {
     closeSessionPicker() // 列表重建 → 关掉可能残留的会话浮层，避免锚点失效
     for (const btn of this.tabButtons) btn.classList.toggle('active', btn.dataset.mgTab === this.activeTab)
     if (this.activeTab === 'workspaces') {
-      if (this.subEl) this.subEl.textContent = '整份工作区快照：点击展开分组，右键可重命名 / 恢复 / 删除。'
-      this.searchInput.placeholder = '搜索：工作区名（支持模糊匹配）'
+      if (this.subEl) this.subEl.textContent = t('整份工作区快照：点击展开分组，右键可重命名 / 恢复 / 删除。')
+      this.searchInput.placeholder = t('搜索：工作区名（支持模糊匹配）')
       this.renderWorkspaces()
       return
     }
-    if (this.subEl) this.subEl.textContent = '按名称自动排序。点击展开标签，右键可重命名 / 恢复 / 删除。'
-    this.searchInput.placeholder = '搜索：分组名 / 路径 / 标签名 / 会话名（支持模糊匹配）'
+    if (this.subEl) this.subEl.textContent = t('按名称自动排序。点击展开标签，右键可重命名 / 恢复 / 删除。')
+    this.searchInput.placeholder = t('搜索：分组名 / 路径 / 标签名 / 会话名（支持模糊匹配）')
     const all = this.hooks.getSaved()
     const q = this.searchQuery.trim()
     const list = this.matchGroups(all, q)
@@ -183,8 +184,8 @@ export class SavedManager {
     if (list.length === 0) {
       this.renderAz([])
       this.showEmpty(
-        q ? '没有匹配的分组。' : '还没有已保存的分组。',
-        q ? '换个关键词试试，或清空搜索。' : '右键打开的分组「保存分组」就会出现在这里。'
+        q ? t('没有匹配的分组。') : t('还没有已保存的分组。'),
+        q ? t('换个关键词试试，或清空搜索。') : t('右键打开的分组「保存分组」就会出现在这里。')
       )
       return
     }
@@ -246,8 +247,8 @@ export class SavedManager {
     if (list.length === 0) {
       this.renderAz([])
       this.showEmpty(
-        q ? '没有匹配的工作区。' : '还没有已保存的工作区。',
-        q ? '换个关键词试试，或清空搜索。' : '在左侧「工作区」区空白处右键「保存该工作区」。'
+        q ? t('没有匹配的工作区。') : t('还没有已保存的工作区。'),
+        q ? t('换个关键词试试，或清空搜索。') : t('在左侧「工作区」区空白处右键「保存该工作区」。')
       )
       return
     }
@@ -289,10 +290,10 @@ export class SavedManager {
       <div class="mg-head-row" data-ws-row="${escapeHtml(w.id)}">
         <span class="mg-folder">${icon('layers')}</span>
         <div class="mg-info">
-          <div class="mg-name" title="右键有更多操作，点击展开">${highlightRanges(w.name, hl[0])}</div>
-          <div class="mg-meta">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(formatTs(w.savedAt))}</div>
+          <div class="mg-name" title="${t('右键有更多操作，点击展开')}">${highlightRanges(w.name, hl[0])}</div>
+          <div class="mg-meta">${t('{0} 个分组', w.groupCount)} · ${t('{0} 个标签', w.tabCount)} · ${escapeHtml(formatTs(w.savedAt))}</div>
         </div>
-        <button class="mg-btn mg-toggle" data-ws-toggle="${escapeHtml(w.id)}" title="${expanded ? '收起分组' : '展开分组'}">${icon('chevron-down', { size: 14 })}</button>
+        <button class="mg-btn mg-toggle" data-ws-toggle="${escapeHtml(w.id)}" title="${expanded ? t('收起分组') : t('展开分组')}">${icon('chevron-down', { size: 14 })}</button>
       </div>
       <div class="mg-tabs" ${expanded ? '' : 'hidden'}>
         ${this.wsGroupsHtml(w)}
@@ -303,15 +304,15 @@ export class SavedManager {
 
   private wsGroupsHtml(w: ManageWorkspaceView): string {
     if (w.groups.length === 0) {
-      return '<div class="mg-tab-empty">这个工作区快照里没有分组。</div>'
+      return `<div class="mg-tab-empty">${t('这个工作区快照里没有分组。')}</div>`
     }
     return w.groups.map((g) => {
-      const cwd = g.cwd ? escapeHtml(shortPath(g.cwd)) : '<span class="path-placeholder">(默认目录)</span>'
+      const cwd = g.cwd ? escapeHtml(shortPath(g.cwd)) : `<span class="path-placeholder">${t('(默认目录)')}</span>`
       return `
       <div class="mg-tab mg-ws-grp" data-ws-grp="${escapeHtml(w.id)}::${escapeHtml(g.id)}">
         <span class="mg-ws-grp-ic">${icon('folder', { size: 13 })}</span>
         <span class="mg-tab-name">${escapeHtml(g.name)}</span>
-        <span class="mg-tab-meta">${cwd} · ${g.tabCount} 个标签</span>
+        <span class="mg-tab-meta">${cwd} · ${t('{0} 个标签', g.tabCount)}</span>
       </div>
     `
     }).join('')
@@ -329,16 +330,16 @@ export class SavedManager {
     // 侧边栏已经容器内滚动渲染全部，没有"可见 / 不可见"之分；统一一种外观即可。
     wrap.className = 'mg-row is-visible' + (expanded ? ' is-expanded' : '')
     wrap.dataset.savedId = g.id
-    const cwd = g.cwd ? escapeHtml(shortPath(g.cwd)) : '<span class="path-placeholder">(默认目录)</span>'
+    const cwd = g.cwd ? escapeHtml(shortPath(g.cwd)) : `<span class="path-placeholder">${t('(默认目录)')}</span>`
     // 行上只留展开按钮；重命名/恢复/删除都收进右键菜单
     wrap.innerHTML = `
       <div class="mg-head-row" data-group-row="${escapeHtml(g.id)}">
         <span class="mg-folder">${icon('folder')}</span>
         <div class="mg-info">
-          <div class="mg-name" data-rename-group="${escapeHtml(g.id)}" title="右键有更多操作，点击展开">${highlightRanges(g.name, hl[0])}</div>
-          <div class="mg-meta">${cwd} · ${g.tabs.length} 个标签 · ${escapeHtml(formatTs(g.savedAt))}</div>
+          <div class="mg-name" data-rename-group="${escapeHtml(g.id)}" title="${t('右键有更多操作，点击展开')}">${highlightRanges(g.name, hl[0])}</div>
+          <div class="mg-meta">${cwd} · ${t('{0} 个标签', g.tabs.length)} · ${escapeHtml(formatTs(g.savedAt))}</div>
         </div>
-        <button class="mg-btn mg-toggle" data-toggle="${escapeHtml(g.id)}" title="${expanded ? '收起标签' : '展开标签'}">${icon('chevron-down', { size: 14 })}</button>
+        <button class="mg-btn mg-toggle" data-toggle="${escapeHtml(g.id)}" title="${expanded ? t('收起标签') : t('展开标签')}">${icon('chevron-down', { size: 14 })}</button>
       </div>
       <div class="mg-tabs" ${expanded ? '' : 'hidden'}>
         ${this.tabsHtml(g, hl, sess)}
@@ -349,32 +350,32 @@ export class SavedManager {
 
   private tabsHtml(g: ManageGroupView, hl: Range[][] = [], sess?: Map<string, SessHit[]>): string {
     if (g.tabs.length === 0) {
-      return '<div class="mg-tab-empty">这个保存的分组里已没有标签。</div>'
+      return `<div class="mg-tab-empty">${t('这个保存的分组里已没有标签。')}</div>`
     }
     // 分组行 fields 顺序是 [name, cwd, tab0, tab1…]，所以标签 i 的高亮取 hl[2 + i]
-    return g.tabs.map((t, i) => {
-      const n = t.sessions.length
+    return g.tabs.map((tab, i) => {
+      const n = tab.sessions.length
       // 可点条件：会话数 > 1 且至少有一条"重命名过的会话"——选择器只列重命名过的，
       // 默认名「会话 N」不作为可选项；一条重命名的都没有就退化为纯文本。
-      const named = t.sessions.filter((s) => s.hasUserTitle).length
+      const named = tab.sessions.filter((s) => s.hasUserTitle).length
       const countHtml = n > 1 && named >= 1
-        ? `<button type="button" class="mg-sess-count" data-sess-picker="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="选择要恢复的会话">${n} 会话 ▾</button>`
-        : `${n} 会话`
+        ? `<button type="button" class="mg-sess-count" data-sess-picker="${escapeHtml(g.id)}::${escapeHtml(tab.id)}" title="${t('选择要恢复的会话')}">${t('{0} 会话', n)} ▾</button>`
+        : t('{0} 会话', n)
       // 搜索命中的会话：标签行下方显示「↳ 会话「…」」，点它直接恢复到该会话
-      const hits = sess?.get(t.id) ?? []
+      const hits = sess?.get(tab.id) ?? []
       const hitsHtml = hits
         .map(
           (h) => `
-        <div class="mg-sess-hit" data-sess-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}::${escapeHtml(h.sessionId)}" title="恢复该标签页并打开此会话">
+        <div class="mg-sess-hit" data-sess-restore="${escapeHtml(g.id)}::${escapeHtml(tab.id)}::${escapeHtml(h.sessionId)}" title="${t('恢复该标签页并打开此会话')}">
           <span class="mg-sess-hit-arrow">↳</span> ${highlightRanges(h.title, h.hl)}
         </div>`
         )
         .join('')
       return `
-      <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(t.id)}">
-        <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="右键有更多操作">${highlightRanges(t.name, hl[2 + i])}</span>
-        <span class="mg-tab-meta">${countHtml}${t.lastTs ? ' · ' + escapeHtml(formatTs(t.lastTs)) : ''}</span>
-        <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(t.id)}" title="恢复该标签页到当前工作区">${icon('rotate-ccw', { size: 13 })}</button>
+      <div class="mg-tab" data-saved="${escapeHtml(g.id)}" data-tab="${escapeHtml(tab.id)}">
+        <span class="mg-tab-name" data-rename-tab="${escapeHtml(g.id)}::${escapeHtml(tab.id)}" title="${t('右键有更多操作')}">${highlightRanges(tab.name, hl[2 + i])}</span>
+        <span class="mg-tab-meta">${countHtml}${tab.lastTs ? ' · ' + escapeHtml(formatTs(tab.lastTs)) : ''}</span>
+        <button class="mg-btn mg-tab-restore" data-tab-restore="${escapeHtml(g.id)}::${escapeHtml(tab.id)}" title="${t('恢复该标签页到当前工作区')}">${icon('rotate-ccw', { size: 13 })}</button>
       </div>${hitsHtml}
     `
     }).join('')
@@ -385,10 +386,10 @@ export class SavedManager {
     const [savedId, tabId] = (anchor.dataset.sessPicker ?? '').split('::')
     if (!savedId || !tabId) return
     const g = this.hooks.getSaved().find((x) => x.id === savedId)
-    const t = g?.tabs.find((x) => x.id === tabId)
-    if (!t || t.sessions.length < 2) return
+    const tab = g?.tabs.find((x) => x.id === tabId)
+    if (!tab || tab.sessions.length < 2) return
     // 只列重命名过的会话，默认名「会话 N」不参与选择
-    const named = t.sessions.filter((s) => s.hasUserTitle)
+    const named = tab.sessions.filter((s) => s.hasUserTitle)
     if (named.length === 0) return
     const entries: SessPickEntry[] = named.map((s) => ({
       sessionId: s.sessionId,
@@ -400,7 +401,7 @@ export class SavedManager {
     openSessionPicker({
       anchor,
       entries,
-      title: '选择要恢复的会话',
+      title: t('选择要恢复的会话'),
       onPick: (sid) => this.hooks.onRestoreTabAtSession(savedId, tabId, sid)
     })
   }
@@ -460,9 +461,9 @@ export class SavedManager {
 
   private confirmDeleteTab(savedId: string, tabId: string, tabName: string): void {
     confirmDialog({
-      title: `从保存里移除「${escapeHtml(tabName)}」？`,
-      message: '只把该标签从保存记录里删除，已打开的实例不受影响。',
-      okLabel: '删除',
+      title: t('从保存里移除「{0}」？', escapeHtml(tabName)),
+      message: t('只把该标签从保存记录里删除，已打开的实例不受影响。'),
+      okLabel: t('删除'),
       onOk: () => {
         this.hooks.onDeleteTab(savedId, tabId)
         this.render()
@@ -484,12 +485,12 @@ export class SavedManager {
       const savedId = tabRow.dataset.saved!
       const tabId = tabRow.dataset.tab!
       const nameEl = tabRow.querySelector('.mg-tab-name[data-rename-tab]') as HTMLElement | null
-      const tabName = nameEl?.textContent?.trim() || '该标签'
+      const tabName = nameEl?.textContent?.trim() || t('该标签')
       const items: CtxItem[] = [
-        { label: '重命名', icon: icon('edit'), act: () => { if (nameEl) this.beginRenameTab(nameEl) } },
-        { label: '恢复该标签页', icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreOneTab(savedId, tabId) },
+        { label: t('重命名'), icon: icon('edit'), act: () => { if (nameEl) this.beginRenameTab(nameEl) } },
+        { label: t('恢复该标签页'), icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreOneTab(savedId, tabId) },
         { sep: true },
-        { label: '删除标签页', icon: icon('trash'), danger: true, act: () => this.confirmDeleteTab(savedId, tabId, tabName) }
+        { label: t('删除标签页'), icon: icon('trash'), danger: true, act: () => this.confirmDeleteTab(savedId, tabId, tabName) }
       ]
       showCtxMenu(items, e.clientX, e.clientY)
       return
@@ -500,16 +501,16 @@ export class SavedManager {
     if (wsGrp) {
       const [wsId, groupId] = (wsGrp.dataset.wsGrp ?? '').split('::')
       if (!wsId || !groupId) return
-      const grpName = wsGrp.querySelector('.mg-tab-name')?.textContent?.trim() || '该分组'
+      const grpName = wsGrp.querySelector('.mg-tab-name')?.textContent?.trim() || t('该分组')
       const items: CtxItem[] = [
-        { label: '恢复该分组', icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreWorkspaceGroup(wsId, groupId) },
+        { label: t('恢复该分组'), icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreWorkspaceGroup(wsId, groupId) },
         { sep: true },
         {
-          label: '删除分组', icon: icon('trash'), danger: true,
+          label: t('删除分组'), icon: icon('trash'), danger: true,
           act: () => confirmDialog({
-            title: `从工作区里删除「${escapeHtml(grpName)}」？`,
-            message: '会删除该分组下的所有标签页。只动这份工作区留档，已保存分组和已打开的分组不受影响。',
-            okLabel: '删除',
+            title: t('从工作区里删除「{0}」？', escapeHtml(grpName)),
+            message: t('会删除该分组下的所有标签页。只动这份工作区留档，已保存分组和已打开的分组不受影响。'),
+            okLabel: t('删除'),
             onOk: () => this.hooks.onDeleteWorkspaceGroup(wsId, groupId)
           })
         }
@@ -524,10 +525,10 @@ export class SavedManager {
       const wsId = wsRow.dataset.wsId!
       const nameEl = wsRow.querySelector('.mg-head-row .mg-name') as HTMLElement | null
       const items: CtxItem[] = [
-        { label: '重命名', icon: icon('edit'), act: () => { if (nameEl) this.beginRenameWs(nameEl, wsId) } },
-        { label: '恢复工作区', icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreWorkspace(wsId) },
+        { label: t('重命名'), icon: icon('edit'), act: () => { if (nameEl) this.beginRenameWs(nameEl, wsId) } },
+        { label: t('恢复工作区'), icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreWorkspace(wsId) },
         { sep: true },
-        { label: '删除工作区', icon: icon('trash'), danger: true, act: () => this.hooks.onDeleteWorkspace(wsId) }
+        { label: t('删除工作区'), icon: icon('trash'), danger: true, act: () => this.hooks.onDeleteWorkspace(wsId) }
       ]
       showCtxMenu(items, e.clientX, e.clientY)
       return
@@ -539,11 +540,11 @@ export class SavedManager {
       const savedId = grpRow.dataset.savedId!
       const nameEl = grpRow.querySelector('[data-rename-group]') as HTMLElement | null
       const items: CtxItem[] = [
-        { label: '重命名', icon: icon('edit'), act: () => { if (nameEl) this.beginRenameGroup(nameEl) } },
-        { label: '恢复所有标签页', icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreAll(savedId) },
-        { label: '新增标签页', icon: icon('plus'), act: () => this.hooks.onAddTabToSaved(savedId) },
+        { label: t('重命名'), icon: icon('edit'), act: () => { if (nameEl) this.beginRenameGroup(nameEl) } },
+        { label: t('恢复所有标签页'), icon: icon('rotate-ccw'), act: () => this.hooks.onRestoreAll(savedId) },
+        { label: t('新增标签页'), icon: icon('plus'), act: () => this.hooks.onAddTabToSaved(savedId) },
         { sep: true },
-        { label: '删除分组', icon: icon('trash'), danger: true, act: () => this.hooks.onDelete(savedId) }
+        { label: t('删除分组'), icon: icon('trash'), danger: true, act: () => this.hooks.onDelete(savedId) }
       ]
       showCtxMenu(items, e.clientX, e.clientY)
     }

@@ -1,5 +1,6 @@
 import { escapeHtml, statusLabel, statusShort } from './ui-helpers'
 import { icon } from './svg-icons'
+import { t } from './i18n'
 import type { TerminalTab } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -57,8 +58,8 @@ const ORDER: Record<TabStatus, number> = { error: 4, attention: 3, done: 2, busy
 
 function groupStatus(g: GroupView): TabStatus {
   let best: TabStatus = 'idle'
-  for (const t of g.tabs) {
-    const s = (t.status ?? 'idle') as TabStatus
+  for (const tab of g.tabs) {
+    const s = (tab.status ?? 'idle') as TabStatus
     if (ORDER[s] > ORDER[best]) best = s
   }
   return best
@@ -136,7 +137,7 @@ export class Sidebar {
   private updateToggleAllBtn(groups: GroupView[]): void {
     if (!this.toggleAllBtn) return
     const allCollapsed = groups.length > 0 && groups.every((g) => g.collapsed)
-    const label = allCollapsed ? '展开全部分组' : '收起全部分组'
+    const label = allCollapsed ? t('展开全部分组') : t('收起全部分组')
     this.toggleAllBtn.innerHTML = icon(allCollapsed ? 'expand-all' : 'collapse-all', { size: 13 })
     this.toggleAllBtn.title = label
     this.toggleAllBtn.setAttribute('aria-label', label)
@@ -151,7 +152,7 @@ export class Sidebar {
     if (groups.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
-      empty.textContent = '工作区为空'
+      empty.textContent = t('工作区为空')
       this.listEl.appendChild(empty)
       return
     }
@@ -163,14 +164,14 @@ export class Sidebar {
       const gs = groupStatus(g)
       const headStatusDot =
         gs !== 'idle'
-          ? `<span class="st-dot st-${gs} grp-st" title="组内有「${statusLabel(gs)}」的会话"></span>`
+          ? `<span class="st-dot st-${gs} grp-st" title="${t('组内有「{0}」的会话', statusLabel(gs))}"></span>`
           : ''
       const cwdLabel = g.cwd
         ? escapeHtml(g.cwd)
-        : '<span class="path-placeholder">(默认目录)</span>'
-      const cwdTitle = g.cwd ? escapeHtml(g.cwd) : '使用用户主目录'
+        : `<span class="path-placeholder">${t('(默认目录)')}</span>`
+      const cwdTitle = g.cwd ? escapeHtml(g.cwd) : t('使用用户主目录')
       const folderIcon = g.dirty ? icon('folder-filled') : icon('folder')
-      const folderTitle = g.dirty ? '有未保存的改动，右键「保存分组」' : ''
+      const folderTitle = g.dirty ? t('有未保存的改动，右键「保存分组」') : ''
       el.innerHTML = `
         <div class="group-head" data-g="${escapeHtml(g.id)}">
           <span class="group-caret">${icon('chevron-down', { size: 12, stroke: 2.4 })}</span>
@@ -181,35 +182,35 @@ export class Sidebar {
           </div>
           ${headStatusDot}
           <span class="group-count">${g.tabs.length}</span>
-          <span class="group-add" data-addtab="${escapeHtml(g.id)}" title="新建会话标签">${icon('plus', { size: 13, stroke: 2.2 })}</span>
-          <span class="group-more" data-more="${escapeHtml(g.id)}" title="更多">${icon('more-horizontal')}</span>
+          <span class="group-add" data-addtab="${escapeHtml(g.id)}" title="${t('新建会话标签')}">${icon('plus', { size: 13, stroke: 2.2 })}</span>
+          <span class="group-more" data-more="${escapeHtml(g.id)}" title="${t('更多')}">${icon('more-horizontal')}</span>
         </div>
         <div class="group-tabs">
-          ${g.tabs.map((t) => this.tabRow(t, activeTabId === t.id)).join('')}
+          ${g.tabs.map((tab) => this.tabRow(tab, activeTabId === tab.id)).join('')}
         </div>
       `
       this.listEl.appendChild(el)
     }
   }
 
-  private tabRow(t: TerminalTab, active: boolean): string {
-    const st = (t.status ?? 'idle') as TabStatus
+  private tabRow(tab: TerminalTab, active: boolean): string {
+    const st = (tab.status ?? 'idle') as TabStatus
     const isIdle = st === 'idle'
-    const badgeText = isIdle ? `${t.sessions.length}会话` : statusShort(st)
+    const badgeText = isIdle ? t('{0}会话', tab.sessions.length) : statusShort(st)
     const badgeCls = isIdle ? '' : ` bs-${st}`
-    const dotTitle = `${statusLabel(st)}${t.note ? '：' + t.note : ''}`
+    const dotTitle = tab.note ? t('{0}：{1}', statusLabel(st), tab.note) : statusLabel(st)
     // dirty 点：跟 isGroupDirty 的过滤条件对齐——纯 pwsh tab 即便 dirty=true 也不显示
     // （纯 pwsh 没数据可保存，显示无意义）。承载 cc 的 tab 有未保存改动时在名字末尾贴一个
     // 黄点，跟分组头 folder-filled 用同一色系表达"dirty"语义。
-    const showDirty = t.dirty && (t.autoLaunchCC || t.sessions.length > 0)
-    const dirtyDot = showDirty ? `<span class="trow-dirty" title="有未保存改动"></span>` : ''
+    const showDirty = tab.dirty && (tab.autoLaunchCC || tab.sessions.length > 0)
+    const dirtyDot = showDirty ? `<span class="trow-dirty" title="${t('有未保存改动')}"></span>` : ''
     return `
-      <div class="tab-row${active ? ' active' : ''}" data-t="${escapeHtml(t.id)}">
+      <div class="tab-row${active ? ' active' : ''}" data-t="${escapeHtml(tab.id)}">
         <span class="st-dot st-${st}" title="${escapeHtml(dotTitle)}"></span>
-        <span class="trow-name">${escapeHtml(t.name)}</span>
+        <span class="trow-name">${escapeHtml(tab.name)}</span>
         ${dirtyDot}
         <span class="trow-badge${badgeCls}">${escapeHtml(badgeText)}</span>
-        <span class="trow-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 12, stroke: 2 })}</span>
+        <span class="trow-close" data-close="${escapeHtml(tab.id)}" title="${t('关闭标签')}">${icon('close', { size: 12, stroke: 2 })}</span>
       </div>`
   }
 
@@ -222,26 +223,26 @@ export class Sidebar {
     if (groups.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'tabstrip-empty'
-      empty.textContent = '没有打开的标签'
+      empty.textContent = t('没有打开的标签')
       this.stripListEl.appendChild(empty)
       return
     }
     const frag = document.createDocumentFragment()
     for (const g of groups) {
-      for (const t of g.tabs) {
+      for (const tab of g.tabs) {
         const chip = document.createElement('div')
-        const st = (t.status ?? 'idle') as TabStatus
-        chip.className = 'tabchip' + (activeTabId === t.id ? ' active' : '')
-        chip.dataset.t = t.id
+        const st = (tab.status ?? 'idle') as TabStatus
+        chip.className = 'tabchip' + (activeTabId === tab.id ? ' active' : '')
+        chip.dataset.t = tab.id
         // hover 显示所属分组 / 路径（扁平后仍能知道来源）
         chip.title = g.cwd ? `${g.name} · ${g.cwd}` : g.name
-        const showDirty = t.dirty && (t.autoLaunchCC || t.sessions.length > 0)
-        const dotTitle = `${statusLabel(st)}${t.note ? '：' + t.note : ''}`
+        const showDirty = tab.dirty && (tab.autoLaunchCC || tab.sessions.length > 0)
+        const dotTitle = tab.note ? t('{0}：{1}', statusLabel(st), tab.note) : statusLabel(st)
         chip.innerHTML = `
           <span class="st-dot st-${st}" title="${escapeHtml(dotTitle)}"></span>
-          <span class="tabchip-name">${escapeHtml(t.name)}</span>
-          ${showDirty ? '<span class="trow-dirty" title="有未保存改动"></span>' : ''}
-          <span class="tabchip-close" data-close="${escapeHtml(t.id)}" title="关闭标签">${icon('close', { size: 11, stroke: 2 })}</span>`
+          <span class="tabchip-name">${escapeHtml(tab.name)}</span>
+          ${showDirty ? `<span class="trow-dirty" title="${t('有未保存改动')}"></span>` : ''}
+          <span class="tabchip-close" data-close="${escapeHtml(tab.id)}" title="${t('关闭标签')}">${icon('close', { size: 11, stroke: 2 })}</span>`
         frag.appendChild(chip)
       }
     }
@@ -291,7 +292,7 @@ export class Sidebar {
       if (workspaces.length === 0) {
         const empty = document.createElement('div')
         empty.className = 'side-empty'
-        empty.textContent = '上方「工作区」区空白处右键「保存该工作区」。'
+        empty.textContent = t('上方「工作区」区空白处右键「保存该工作区」。')
         this.savedEl.appendChild(empty)
         return
       }
@@ -303,7 +304,7 @@ export class Sidebar {
           <div class="saved-ic saved-ic-ws">${icon('layers')}</div>
           <div class="saved-meta">
             <div class="saved-name">${escapeHtml(w.name)}</div>
-            <div class="saved-sub">${w.groupCount} 个分组 · ${w.tabCount} 个标签 · ${escapeHtml(w.savedAt)}</div>
+            <div class="saved-sub">${t('{0} 个分组', w.groupCount)} · ${t('{0} 个标签', w.tabCount)} · ${escapeHtml(w.savedAt)}</div>
           </div>
         `
         this.savedEl.appendChild(el)
@@ -314,7 +315,7 @@ export class Sidebar {
     if (saved.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'side-empty'
-      empty.textContent = '右键分组「保存分组」可在此一键恢复。'
+      empty.textContent = t('右键分组「保存分组」可在此一键恢复。')
       this.savedEl.appendChild(empty)
       return
     }
@@ -324,12 +325,12 @@ export class Sidebar {
       el.dataset.saved = s.id
       const savedCwd = s.cwd
         ? escapeHtml(s.cwd)
-        : '<span class="path-placeholder">(默认目录)</span>'
+        : `<span class="path-placeholder">${t('(默认目录)')}</span>`
       el.innerHTML = `
         <div class="saved-ic">${icon('rotate-ccw')}</div>
         <div class="saved-meta">
           <div class="saved-name">${escapeHtml(s.name)}</div>
-          <div class="saved-sub">${s.tabCount} 个标签 · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
+          <div class="saved-sub">${t('{0} 个标签', s.tabCount)} · ${savedCwd} · ${escapeHtml(s.savedAt)}</div>
         </div>
       `
       this.savedEl.appendChild(el)

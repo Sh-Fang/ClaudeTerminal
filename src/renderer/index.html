@@ -86,7 +86,7 @@
             <span class="saved-view-switch" id="savedViewSwitch" role="tablist">
               <button class="sv-item active" data-view="groups" type="button" role="tab">分组</button>
               <span class="sv-sep">/</span>
-              <button class="sv-item" data-view="workspaces" type="button" role="tab">工作区</button>
+              <button class="sv-item" data-view="workspaces" type="button" role="tab" data-i18n="工作区(列表)">工作区</button>
             </span>
             <span class="line"></span>
             <button id="manageSavedBtn" class="side-head-btn" type="button" title="管理已保存的分组/工作区" aria-label="展开管理">
@@ -371,6 +371,11 @@
             </div>
 
             <div class="set-section" data-section="general" hidden>
+              <div class="set-row">
+                <label>语言 / Language</label>
+                <button type="button" class="picker-select" id="set-language" data-val="zh"></button>
+                <div class="set-row-hint" id="set-language-hint" hidden></div>
+              </div>
               <div class="set-row set-row-toggle">
                 <label>新建标签默认自动启动 Claude Code</label>
                 <input id="set-default-cc" type="checkbox" />

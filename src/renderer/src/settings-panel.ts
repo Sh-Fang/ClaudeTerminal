@@ -1,7 +1,8 @@
-import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle, type UsageStyle, type CloseBehavior, type TabBarMode } from './themes'
+import { DEFAULT_SETTINGS, type Settings, type ThemePreset, type AppTheme, type CursorStyle, type UsageStyle, type CloseBehavior, type TabBarMode, type AppLanguage } from './themes'
 import { bindScrimDismiss, confirmDialog, showCtxMenu } from './ui-helpers'
 import { icon } from './svg-icons'
 import { MODEL_GROUPS } from './session-info'
+import { t } from './i18n'
 
 const FOLLOW_CC_LABEL = '跟随 cc 默认'
 
@@ -55,6 +56,8 @@ export class SettingsPanel {
   private fDisableUpd = document.getElementById('set-disable-update') as HTMLInputElement
   private fDowngradeSec = document.getElementById('set-downgrade-sec') as HTMLDivElement
   private fShowUsage = document.getElementById('set-show-usage') as HTMLInputElement
+  private fLanguage = document.getElementById('set-language') as HTMLButtonElement
+  private fLanguageHint = document.getElementById('set-language-hint') as HTMLDivElement
   private fShowFloater = document.getElementById('set-show-floater') as HTMLInputElement
   private fCloseBehavior = document.getElementById('set-close-behavior') as HTMLDivElement
   private fNpmReg = document.getElementById('set-npm-registry') as HTMLInputElement
@@ -100,12 +103,13 @@ export class SettingsPanel {
     this.closeBtn.addEventListener('click', () => this.close())
     this.resetBtn.addEventListener('click', () => {
       confirmDialog({
-        title: '恢复默认设置',
-        message: '确定把所有设置恢复到默认？<br>字体 / 光标 / 主题 / 镜像 等都会被重置。<br>此操作不可撤销。',
-        okLabel: '恢复',
+        title: t('恢复默认设置'),
+        message: t('确定把所有设置恢复到默认？<br>字体 / 光标 / 主题 / 镜像 等都会被重置。<br>此操作不可撤销。'),
+        okLabel: t('恢复'),
         danger: true,
         onOk: () => {
-          this.bindFromSettings(DEFAULT_SETTINGS)
+          // 语言不跟随「恢复默认」重置 —— 否则英文用户一键重置后界面变回中文
+          this.bindFromSettings({ ...DEFAULT_SETTINGS, language: this.hooks.getSettings().language })
           this.commitChange()
         }
       })
@@ -139,6 +143,10 @@ export class SettingsPanel {
       e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
       this.openModelPicker()
     })
+    this.fLanguage.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.openLanguagePicker()
+    })
 
     const live = [this.fFamily, this.fSize, this.fLine, this.fScrollback, this.fNpmReg]
     const changeOnly = [this.fCursorBlink, this.fDefaultCC, this.fDisableUpd, this.fShowUsage, this.fShowFloater]
@@ -159,12 +167,12 @@ export class SettingsPanel {
     // 检查更新：目前是壳子，更新服务接入后替换这里的实现
     this.aboutCheckBtn.addEventListener('click', () => {
       this.aboutCheckBtn.disabled = true
-      this.aboutCheckBtn.textContent = '检查中…'
+      this.aboutCheckBtn.textContent = t('检查中…')
       this.aboutHint.textContent = ''
       window.setTimeout(() => {
         this.aboutCheckBtn.disabled = false
-        this.aboutCheckBtn.textContent = '检查更新'
-        this.aboutHint.textContent = '更新服务尚未接入，敬请期待。'
+        this.aboutCheckBtn.textContent = t('检查更新')
+        this.aboutHint.textContent = t('更新服务尚未接入，敬请期待。')
       }, 900)
     })
   }
@@ -220,7 +228,7 @@ export class SettingsPanel {
           this.ccLoaded = true
           this.setCcHint('', '')
         } else {
-          this.setCcHint(`远端版本拉取失败：${remoteRes.error ?? '未知'}`, 'err')
+          this.setCcHint(t('远端版本拉取失败：{0}', t(remoteRes.error ?? '未知')), 'err')
         }
       } finally {
         this.ccRefreshBtn.disabled = false
@@ -250,13 +258,13 @@ export class SettingsPanel {
     this.ccDetectedVersion = curVer ?? ''
     const cur = this.hooks.getSettings().claudePath?.trim() || ''
     if (active) {
-      this.ccCurLabel.innerHTML = `<span class="v">v${active.version}</span><span class="src">托管路径</span>`
+      this.ccCurLabel.innerHTML = `<span class="v">v${active.version}</span><span class="src">${t('托管路径')}</span>`
     } else if (cur) {
       this.ccCurLabel.innerHTML = curVer
-        ? `<span class="v">v${curVer}</span><span class="src">自定义路径</span>`
-        : `<span class="v">${cur}</span><span class="src">未识别版本</span>`
+        ? `<span class="v">v${curVer}</span><span class="src">${t('自定义路径')}</span>`
+        : `<span class="v">${cur}</span><span class="src">${t('未识别版本')}</span>`
     } else {
-      this.ccCurLabel.innerHTML = `<span class="v">claude</span><span class="src">走系统 PATH</span>`
+      this.ccCurLabel.innerHTML = `<span class="v">claude</span><span class="src">${t('走系统 PATH')}</span>`
     }
   }
 
@@ -299,7 +307,7 @@ export class SettingsPanel {
     if (total === 0) {
       const empty = document.createElement('div')
       empty.className = 'cvempty'
-      empty.textContent = this.ccLoaded ? '没有匹配的版本' : '点击右上「刷新」从 npm 拉取版本列表'
+      empty.textContent = this.ccLoaded ? t('没有匹配的版本') : t('点击右上「刷新」从 npm 拉取版本列表')
       this.ccList.append(empty)
       this.ccPager.hidden = true
       return
@@ -342,12 +350,12 @@ export class SettingsPanel {
     if (isInstalling) {
       meta.textContent = this.formatInstallingMeta()
     } else if (isManagedActive) {
-      meta.textContent = '使用中'
+      meta.textContent = t('使用中')
     } else if (isExternalActive) {
       // external active + 已托管 → 仍是"使用中·自定义路径"，尾巴加个小提示
-      meta.textContent = isInstalled ? '使用中 · 自定义路径 · 已备份到托管' : '使用中 · 自定义路径'
+      meta.textContent = isInstalled ? t('使用中 · 自定义路径 · 已备份到托管') : t('使用中 · 自定义路径')
     } else if (isInstalled) {
-      meta.textContent = '已安装'; meta.title = installedInfo!.path
+      meta.textContent = t('已安装'); meta.title = installedInfo!.path
     }
     if (meta.textContent) main.append(meta)
     row.append(main)
@@ -355,36 +363,36 @@ export class SettingsPanel {
     const act = document.createElement('span'); act.className = 'cvrow-act'
     if (isInstalling) {
       // 安装中 → 取消
-      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = '取消'; cancel.className = 'cvrow-btn danger'
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = t('取消'); cancel.className = 'cvrow-btn danger'
       cancel.addEventListener('click', () => void this.cancelInstall(version))
       act.append(cancel)
     } else if (isManagedActive) {
       // 托管使用中：禁止自删自切 —— 无按钮
     } else if (isExternalActive && !isInstalled) {
       // 使用中但没在托管：给「安装」，把当前版本备份到托管，方便以后切回
-      const install = document.createElement('button'); install.type = 'button'; install.textContent = '安装'; install.className = 'cvrow-btn primary'
-      install.title = '把当前版本装到托管目录一份，方便以后随时切回'
+      const install = document.createElement('button'); install.type = 'button'; install.textContent = t('安装'); install.className = 'cvrow-btn primary'
+      install.title = t('把当前版本装到托管目录一份，方便以后随时切回')
       install.disabled = !!this.ccInstallingVer
       install.addEventListener('click', () => this.confirmInstall(version))
       act.append(install)
     } else if (isExternalActive && isInstalled) {
       // 使用中且已在托管：启用 = 把 claudePath 切到托管副本；卸载 = 只删托管副本、不影响外部
-      const use = document.createElement('button'); use.type = 'button'; use.textContent = '启用'; use.className = 'cvrow-btn primary'
-      use.title = '把 claude 路径切换到托管副本'
+      const use = document.createElement('button'); use.type = 'button'; use.textContent = t('启用'); use.className = 'cvrow-btn primary'
+      use.title = t('把 claude 路径切换到托管副本')
       use.addEventListener('click', () => this.activateVersion(installedInfo!.path))
-      const del = document.createElement('button'); del.type = 'button'; del.textContent = '卸载'; del.className = 'cvrow-btn danger'
-      del.title = '仅删除托管副本，不影响当前正在使用的自定义路径'
+      const del = document.createElement('button'); del.type = 'button'; del.textContent = t('卸载'); del.className = 'cvrow-btn danger'
+      del.title = t('仅删除托管副本，不影响当前正在使用的自定义路径')
       del.addEventListener('click', () => this.deleteVersion(version))
       act.append(use, del)
     } else if (isInstalled) {
       // 普通托管备用版本
-      const use = document.createElement('button'); use.type = 'button'; use.textContent = '启用'; use.className = 'cvrow-btn primary'
+      const use = document.createElement('button'); use.type = 'button'; use.textContent = t('启用'); use.className = 'cvrow-btn primary'
       use.addEventListener('click', () => this.activateVersion(installedInfo!.path))
-      const del = document.createElement('button'); del.type = 'button'; del.textContent = '卸载'; del.className = 'cvrow-btn danger'
+      const del = document.createElement('button'); del.type = 'button'; del.textContent = t('卸载'); del.className = 'cvrow-btn danger'
       del.addEventListener('click', () => this.deleteVersion(version))
       act.append(use, del)
     } else {
-      const install = document.createElement('button'); install.type = 'button'; install.textContent = '安装'; install.className = 'cvrow-btn primary'
+      const install = document.createElement('button'); install.type = 'button'; install.textContent = t('安装'); install.className = 'cvrow-btn primary'
       install.disabled = !!this.ccInstallingVer
       install.addEventListener('click', () => this.confirmInstall(version))
       act.append(install)
@@ -398,7 +406,7 @@ export class SettingsPanel {
     const short = this.ccInstallPhase && this.ccInstallPhase.length > 60
       ? this.ccInstallPhase.slice(0, 60) + '…'
       : this.ccInstallPhase
-    return `安装中 · ${secs}s${short ? ' · ' + short : ''}`
+    return t('安装中 · {0}s', secs) + (short ? ' · ' + short : '')
   }
 
   // 局部刷新：只重绘 installing 行的 meta，避免每 tick 整表重排
@@ -415,16 +423,16 @@ export class SettingsPanel {
     this.ccPager.innerHTML = ''
 
     const prev = document.createElement('button')
-    prev.type = 'button'; prev.className = 'cvpager-arrow'; prev.title = '上一页'
+    prev.type = 'button'; prev.className = 'cvpager-arrow'; prev.title = t('上一页')
     prev.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>'
     prev.disabled = this.ccPage <= 1
     prev.addEventListener('click', () => { this.ccPage--; this.renderList() })
 
     const status = document.createElement('span'); status.className = 'cvpager-status'
-    status.innerHTML = `第 <span class="cur">${this.ccPage}</span> / ${totalPages} 页`
+    status.innerHTML = t('第 <span class="cur">{0}</span> / {1} 页', this.ccPage, totalPages)
 
     const next = document.createElement('button')
-    next.type = 'button'; next.className = 'cvpager-arrow'; next.title = '下一页'
+    next.type = 'button'; next.className = 'cvpager-arrow'; next.title = t('下一页')
     next.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
     next.disabled = this.ccPage >= totalPages
     next.addEventListener('click', () => { this.ccPage++; this.renderList() })
@@ -437,8 +445,8 @@ export class SettingsPanel {
       const jump = document.createElement('button')
       jump.type = 'button'
       jump.className = 'cvpager-jump'
-      jump.title = `跳到第 ${curPage} 页`
-      jump.textContent = '当前使用版本'
+      jump.title = t('跳到第 {0} 页', curPage)
+      jump.textContent = t('当前使用版本')
       jump.addEventListener('click', () => { this.ccPage = curPage; this.renderList() })
       this.ccPager.append(prev, status, spacer, jump, next)
     } else {
@@ -460,14 +468,14 @@ export class SettingsPanel {
 
   private deleteVersion(version: string): void {
     confirmDialog({
-      title: '卸载 CC 版本',
-      message: `确定卸载 <b>v${version}</b>？此操作不可恢复。`,
-      okLabel: '卸载',
+      title: t('卸载 CC 版本'),
+      message: t('确定卸载 <b>v{0}</b>？此操作不可恢复。', version),
+      okLabel: t('卸载'),
       danger: true,
       onOk: async () => {
         const res = await window.term.ccUninstall(version)
         if (!res.ok) {
-          this.setCcHint(`卸载失败：${res.error ?? '未知'}`, 'err')
+          this.setCcHint(t('卸载失败：{0}', t(res.error ?? '未知')), 'err')
           return
         }
         void this.refresh(false)
@@ -483,15 +491,12 @@ export class SettingsPanel {
       version === this.ccDetectedVersion &&
       !this.ccInstalledSet.has(version)
     const msg = isBackup
-      ? `你现在正用着 <b>v${version}</b>（自定义路径），把它安装到托管一份作为备份？<br>` +
-        `安装期间当前使用不受影响；装完后可通过「启用」在托管副本与自定义路径之间切换。`
-      : `即将从 <b>npm 镜像</b> 安装 <b>v${version}</b>。<br>` +
-        `安装过程中会调 npm 下载并解压依赖，可能耗时几十秒。<br>` +
-        `安装中可以点「取消」中止。`
+      ? t('你现在正用着 <b>v{0}</b>（自定义路径），把它安装到托管一份作为备份？<br>安装期间当前使用不受影响；装完后可通过「启用」在托管副本与自定义路径之间切换。', version)
+      : t('即将从 <b>npm 镜像</b> 安装 <b>v{0}</b>。<br>安装过程中会调 npm 下载并解压依赖，可能耗时几十秒。<br>安装中可以点「取消」中止。', version)
     confirmDialog({
-      title: isBackup ? '备份到托管' : '安装 CC 版本',
+      title: isBackup ? t('备份到托管') : t('安装 CC 版本'),
       message: msg,
-      okLabel: isBackup ? '备份' : '安装',
+      okLabel: isBackup ? t('备份') : t('安装'),
       danger: false,
       onOk: () => void this.installVersion(version)
     })
@@ -508,8 +513,9 @@ export class SettingsPanel {
     this.ccInstallTicker = window.setInterval(() => this.updateInstallingRow(), 700)
     try {
       const res = await window.term.ccInstall(version)
+      // '已取消' 是主进程回传的协议串（保持中文比对，不能翻译后再比）
       if (!res.ok && res.error !== '已取消') {
-        this.setCcHint(`安装失败：${res.error ?? '未知'}`, 'err')
+        this.setCcHint(t('安装失败：{0}', t(res.error ?? '未知')), 'err')
       }
     } finally {
       if (this.ccInstallTicker !== null) {
@@ -525,7 +531,7 @@ export class SettingsPanel {
   private async cancelInstall(version: string): Promise<void> {
     const res = await window.term.ccInstallCancel(version)
     if (!res.ok) {
-      this.setCcHint(`取消失败：${res.error ?? '未知'}`, 'err')
+      this.setCcHint(t('取消失败：{0}', t(res.error ?? '未知')), 'err')
     }
     // 成功后 install() 会走 error='已取消' 分支 resolve，走 installVersion 的 finally 收尾
   }
@@ -569,8 +575,8 @@ export class SettingsPanel {
     const val = this.fDefaultModel.dataset.val ?? ''
     const label =
       val === ''
-        ? FOLLOW_CC_LABEL
-        : MODEL_GROUPS.flatMap((g) => g.rows).find((r) => r.arg === val)?.label ?? FOLLOW_CC_LABEL
+        ? t(FOLLOW_CC_LABEL)
+        : MODEL_GROUPS.flatMap((g) => g.rows).find((r) => r.arg === val)?.label ?? t(FOLLOW_CC_LABEL)
     const muted = val === '' ? ' mute' : ''
     this.fDefaultModel.innerHTML =
       `<span class="picker-label${muted}">${label}</span>` +
@@ -586,7 +592,7 @@ export class SettingsPanel {
       this.commitChange()
     }
     const items: import('./ui-helpers').CtxItem[] = [
-      { label: FOLLOW_CC_LABEL, icon: cur === '' ? '✓' : '', act: () => setVal('') },
+      { label: t(FOLLOW_CC_LABEL), icon: cur === '' ? '✓' : '', act: () => setVal('') },
       { sep: true }
     ]
     MODEL_GROUPS.forEach((g, gi) => {
@@ -604,6 +610,54 @@ export class SettingsPanel {
     // 菜单宽 ≈ picker 宽度，从下方展开；showCtxMenu 会自己夹进视口
     this.fDefaultModel.classList.add('open')
     showCtxMenu(items, r.left, r.bottom + 4, () => this.fDefaultModel.classList.remove('open'))
+  }
+
+  // ─── 界面语言 ───────────────────────────────────────────────
+  // 下拉选项固定用各自语言显示（简体中文 / English），不随界面语言翻译
+  private paintLanguagePicker(): void {
+    const val = (this.fLanguage.dataset.val as AppLanguage) || 'zh'
+    const label = val === 'en' ? 'English' : '简体中文'
+    this.fLanguage.innerHTML =
+      `<span class="picker-label">${label}</span>` +
+      `<span class="picker-chev">${icon('chevron-down', { size: 14 })}</span>`
+  }
+
+  private openLanguagePicker(): void {
+    const cur = (this.fLanguage.dataset.val as AppLanguage) || 'zh'
+    const setVal = (v: AppLanguage): void => {
+      if (((this.fLanguage.dataset.val as AppLanguage) || 'zh') === v) return
+      this.fLanguage.dataset.val = v
+      this.paintLanguagePicker()
+      this.commitChange()
+      this.promptLanguageRestart()
+    }
+    const items: import('./ui-helpers').CtxItem[] = [
+      { label: '简体中文', icon: cur === 'zh' ? '✓' : '', act: () => setVal('zh') },
+      { label: 'English', icon: cur === 'en' ? '✓' : '', act: () => setVal('en') }
+    ]
+    const r = this.fLanguage.getBoundingClientRect()
+    this.fLanguage.classList.add('open')
+    showCtxMenu(items, r.left, r.bottom + 4, () => this.fLanguage.classList.remove('open'))
+  }
+
+  // 语言重启才生效：行内常驻提示（带「立即重启」），再弹一次确认支持立即重启。
+  // 提示文案用当前运行语言 —— 那是用户此刻一定看得懂的语言。
+  private promptLanguageRestart(): void {
+    this.fLanguageHint.hidden = false
+    this.fLanguageHint.textContent = t('语言切换将在重启应用后生效')
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'link-btn'
+    btn.textContent = t('立即重启')
+    btn.addEventListener('click', () => window.term.relaunchApp())
+    this.fLanguageHint.append(btn)
+    confirmDialog({
+      title: t('切换语言'),
+      message: t('语言切换将在重启应用后生效。<br>立即重启？所有终端会话都会被终止。'),
+      okLabel: t('立即重启'),
+      danger: true,
+      onOk: () => window.term.relaunchApp()
+    })
   }
 
   // 设置里勾了「禁止自动升级」但系统环境变量还没写（如默认勾选、从未触发过写入）→
@@ -641,6 +695,8 @@ export class SettingsPanel {
     this.setSeg(this.fDowngradeSec, String(s.statusDowngradeSec))
     this.fShowUsage.checked = s.showClaudeUsage
     this.syncUsageStyleVis()
+    this.fLanguage.dataset.val = s.language || 'zh'
+    this.paintLanguagePicker()
     this.fShowFloater.checked = s.showFloater
     // 老配置没有该字段时兜底「确认后退出」（现状行为）
     this.setSeg(this.fCloseBehavior, s.closeBehavior || 'quit')
@@ -692,7 +748,8 @@ export class SettingsPanel {
       statusDowngradeSec: this.clamp(Number(this.getSeg(this.fDowngradeSec)), 1, 10, cur.statusDowngradeSec),
       showClaudeUsage: this.fShowUsage.checked,
       showFloater: this.fShowFloater.checked,
-      closeBehavior: (this.getSeg(this.fCloseBehavior) as CloseBehavior) || cur.closeBehavior
+      closeBehavior: (this.getSeg(this.fCloseBehavior) as CloseBehavior) || cur.closeBehavior,
+      language: (this.fLanguage.dataset.val as AppLanguage) || cur.language
     }
     this.hooks.setSettings(next)
     if (this.lastDisableUpd !== null && this.lastDisableUpd !== next.disableAutoupdater) {

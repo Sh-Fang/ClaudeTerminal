@@ -26,6 +26,7 @@ import { SavedManager, type ManageGroupView, type ManageWorkspaceView } from './
 import { UsageIndicator } from './usage-indicator'
 import { SessionInfoBar } from './session-info'
 import { HistoryManager, type HistoryEntry } from './history-manager'
+import { setLanguage, t, translateDom } from './i18n'
 
 const usageIndicator = new UsageIndicator()
 
@@ -360,14 +361,14 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   if (claudeBin) {
     // 自定义路径：先校验文件存在
     if (!(await window.term.pathExists(claudeBin))) {
-      tab.term.writeln(`\x1b[33m[claude 路径不存在：${claudeBin}，跳过自动启动]\x1b[0m`)
-      tab.term.writeln('\x1b[90m请到设置 → Claude Code 中重新选择 claude 可执行文件。\x1b[0m')
+      tab.term.writeln(`\x1b[33m${t('[claude 路径不存在：{0}，跳过自动启动]', claudeBin)}\x1b[0m`)
+      tab.term.writeln(`\x1b[90m${t('请到设置 → Claude Code 中重新选择 claude 可执行文件。')}\x1b[0m`)
       return
     }
   } else {
     const available = await window.term.claudeAvailable()
     if (!available) {
-      tab.term.writeln('\x1b[90m[claude 未在 PATH 中，跳过自动启动 Claude Code]\x1b[0m')
+      tab.term.writeln(`\x1b[90m${t('[claude 未在 PATH 中，跳过自动启动 Claude Code]')}\x1b[0m`)
       return
     }
   }
@@ -554,15 +555,15 @@ async function newGroup(): Promise<void> {
   const prefilledCwd = settings.lastUsedCwd || settings.defaults.cwd
   openModal({
     kind: 'new-group',
-    title: '新建分组',
-    sub: '分组以路径为单位。组内可挂多个标签。',
-    name: '新分组',
+    title: t('新建分组'),
+    sub: t('分组以路径为单位。组内可挂多个标签。'),
+    name: t('新分组'),
     cwd: prefilledCwd,
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
     showTabName: true,
     tabName: 'A',
-    okLabel: '创建',
+    okLabel: t('创建'),
     autoNameFromCwd: true,
     onPickCwd: (cur) => window.term.pickDirectory(cur || prefilledCwd),
     onOk: async (v) => {
@@ -580,7 +581,7 @@ async function newGroup(): Promise<void> {
         void window.term.saveSettings(settings)
       }
       scheduleSave()
-      toast(`已新建分组「${g.name}」`)
+      toast(t('已新建分组「{0}」', g.name))
     }
   })
 }
@@ -594,7 +595,7 @@ async function newGroup(): Promise<void> {
 function basenameOfPath(p: string): string {
   // 磁盘根（D:\ / D: / D:/）没有"最后一段"，美化成「D 盘」而不是裸盘符 "D:"
   const drive = /^([a-zA-Z]):[\\/]?$/.exec(p.trim())
-  if (drive) return `${drive[1].toUpperCase()} 盘`
+  if (drive) return t('{0} 盘', drive[1].toUpperCase())
   const segs = p.split(/[\\/]+/).filter(Boolean)
   return segs[segs.length - 1] ?? p
 }
@@ -605,7 +606,7 @@ async function openHereWithPath(rawPath: string): Promise<void> {
   // 先校验路径存在，避免右键选中一个已重命名/删除的目录时静默 spawn 失败
   const exists = await window.term.pathExists(p)
   if (!exists) {
-    toast(`路径不存在：${p}`)
+    toast(t('路径不存在：{0}', p))
     return
   }
   const bn = basenameOfPath(p) || p
@@ -631,7 +632,7 @@ async function openHereWithPath(rawPath: string): Promise<void> {
     settings = { ...settings, lastUsedCwd: p }
     void window.term.saveSettings(settings)
   }
-  toast(`已在「${g.name}」新建标签`)
+  toast(t('已在「{0}」新建标签', g.name))
 }
 
 async function promptNewTabInGroup(groupId: string): Promise<void> {
@@ -640,13 +641,13 @@ async function promptNewTabInGroup(groupId: string): Promise<void> {
   const nm = String.fromCharCode(65 + g.tabs.length)
   openModal({
     kind: 'new-tab',
-    title: `在「${g.name}」新建标签`,
-    sub: '同分组共用 cwd。',
+    title: t('在「{0}」新建标签', g.name),
+    sub: t('同分组共用 cwd。'),
     name: nm,
     cwd: undefined,
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
-    okLabel: '创建',
+    okLabel: t('创建'),
     onOk: async (v) => {
       const tab = makeTab(g, { name: v.name, autoLaunchCC: v.autoLaunchCC })
       g.collapsed = false
@@ -673,13 +674,13 @@ function addTabToSavedGroup(savedId: string): void {
   if (!s) return
   openModal({
     kind: 'new-tab',
-    title: `在「${s.name}」新增标签页`,
-    sub: '确认后会在后台打开该分组和新标签页，并自动保存到该分组。',
+    title: t('在「{0}」新增标签页', s.name),
+    sub: t('确认后会在后台打开该分组和新标签页，并自动保存到该分组。'),
     name: String.fromCharCode(65 + Math.min(25, s.snapshot.tabs.length)),
     cwd: undefined,
     showCC: true,
     ccChecked: settings.defaults.autoLaunchCC,
-    okLabel: '创建',
+    okLabel: t('创建'),
     onOk: async (v) => {
       // 复用已打开的同分组实例（srcId → name+cwd 兜底），否则按保存记录新建；
       // 并把保存记录的 srcId 重绑到 live 分组，isGroupDirty / autoSync 才认得
@@ -700,7 +701,7 @@ function addTabToSavedGroup(savedId: string): void {
       sidebar.render()
       savedManager.render()
       scheduleSave()
-      toast(`已在「${s.name}」新增并保存标签「${tab.name}」`)
+      toast(t('已在「{0}」新增并保存标签「{1}」', s.name, tab.name))
     }
   })
 }
@@ -804,10 +805,10 @@ function closeTab(tabId: string): void {
     return
   }
   confirmDialog({
-    title: `关闭标签「${tab.name}」？`,
-    message: `该标签下有 <b>${tab.sessions.length}</b> 条会话，关闭后该标签将从分组移除。` +
-      (isLast ? '<br/>这是分组「' + escapeHtml(group.name) + '」的最后一个标签，关闭后<b>分组也会被关闭</b>。' : ''),
-    okLabel: '关闭标签',
+    title: t('关闭标签「{0}」？', tab.name),
+    message: t('该标签下有 <b>{0}</b> 条会话，关闭后该标签将从分组移除。', tab.sessions.length) +
+      (isLast ? t('<br/>这是分组「{0}」的最后一个标签，关闭后<b>分组也会被关闭</b>。', escapeHtml(group.name)) : ''),
+    okLabel: t('关闭标签'),
     onOk: finalize
   })
 }
@@ -860,7 +861,7 @@ function setAllGroupsCollapsed(collapsed: boolean): void {
 function locateActiveTab(): void {
   const ctx = activeContext()
   if (!ctx) {
-    toast('当前没有活动标签')
+    toast(t('当前没有活动标签'))
     return
   }
   if (ctx.group.collapsed) {
@@ -885,17 +886,17 @@ function renameGroup(groupId: string): void {
   if (!g) return
   openModal({
     kind: 'rename',
-    title: '重命名分组',
-    sub: '只改名字，cwd 与标签保持不变。',
+    title: t('重命名分组'),
+    sub: t('只改名字，cwd 与标签保持不变。'),
     name: g.name,
-    okLabel: '保存',
+    okLabel: t('保存'),
     onOk: (v) => {
       g.name = v.name
       // 分组元信息变了 → isGroupDirty 会通过 name 与 saved.snapshot.name 不一致自然为 true
       sidebar.render()
       toolbar.render()
       scheduleSave()
-      toast('已重命名分组')
+      toast(t('已重命名分组'))
     }
   })
 }
@@ -1014,7 +1015,7 @@ function saveGroup(groupId: string): void {
   sidebar.render()
   savedManager.render()
   scheduleSave()
-  toast(`已保存「${g.name}」（${g.tabs.length} 个标签）`)
+  toast(t('已保存「{0}」（{1} 个标签）', g.name, g.tabs.length))
 }
 
 function saveTab(tabId: string): void {
@@ -1048,7 +1049,7 @@ function saveTab(tabId: string): void {
   sidebar.render()
   savedManager.render()
   scheduleSave()
-  toast(`已保存标签「${tab.name}」`)
+  toast(t('已保存标签「{0}」', tab.name))
 }
 
 function closeGroup(groupId: string): void {
@@ -1058,7 +1059,7 @@ function closeGroup(groupId: string): void {
   const saved = savedGroups.some((s) => s.srcId === g.id) && !isGroupDirty(g)
   const busyCount = g.tabs.filter((t) => t.status === 'busy' || t.status === 'attention').length
   const busyHint = busyCount > 0
-    ? `<br/><b>注意</b>：其中 <b>${busyCount}</b> 个标签正在运行或待决策，关闭会立即中断。`
+    ? t('<br/><b>注意</b>：其中 <b>{0}</b> 个标签正在运行或待决策，关闭会立即中断。', busyCount)
     : ''
   const doClose = (): void => {
     for (const t of g.tabs) t.dispose()
@@ -1072,7 +1073,7 @@ function closeGroup(groupId: string): void {
     sidebar.render()
     toolbar.render()
     scheduleSave()
-    toast(`已关闭分组「${g.name}」`)
+    toast(t('已关闭分组「{0}」', g.name))
   }
   // 纯 pwsh 分组 + 无 busy → 直接关闭（保护的是 cc 会话数据，纯 pwsh 没数据可丢）。
   // 其余情况一律二次确认（不再提供关闭确认的开关）。
@@ -1081,13 +1082,13 @@ function closeGroup(groupId: string): void {
     return
   }
   confirmDialog({
-    title: `关闭分组「${g.name}」？`,
-    message: `将关闭该分组下的 ${g.tabs.length} 个标签。` +
+    title: t('关闭分组「{0}」？', g.name),
+    message: t('将关闭该分组下的 {0} 个标签。', g.tabs.length) +
       (saved
-        ? '该分组<b>已保存</b>，之后可在「已保存的分组」一键恢复。'
-        : '该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。') +
+        ? t('该分组<b>已保存</b>，之后可在「已保存的分组」一键恢复。')
+        : t('该分组<b>尚未保存</b>（或有改动未保存），关闭后将无法恢复其标签布局。')) +
       busyHint,
-    okLabel: '关闭分组',
+    okLabel: t('关闭分组'),
     onOk: doClose
   })
 }
@@ -1168,10 +1169,10 @@ async function restoreSavedTabs(
   scheduleSave()
   // toast 文案区分：纯新建 / 恢复+新建 / 纯恢复
   const restoredN = created.length - (addBlank ? 1 : 0)
-  if (created.length === 0) toast(`分组「${s.name}」已经打开`)
-  else if (restoredN === 0 && addBlank) toast(`在「${s.name}」新建了 1 个空白标签`)
-  else if (addBlank) toast(`已恢复「${s.name}」${restoredN} 个标签 + 1 个新空白`)
-  else toast(`已恢复「${s.name}」的 ${restoredN} 个标签`)
+  if (created.length === 0) toast(t('分组「{0}」已经打开', s.name))
+  else if (restoredN === 0 && addBlank) toast(t('在「{0}」新建了 1 个空白标签', s.name))
+  else if (addBlank) toast(t('已恢复「{0}」{1} 个标签 + 1 个新空白', s.name, restoredN))
+  else toast(t('已恢复「{0}」的 {1} 个标签', s.name, restoredN))
 }
 
 function restoreSavedAll(savedId: string): void {
@@ -1185,7 +1186,7 @@ function openRestoreSelect(savedId: string): void {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
   if (s.snapshot.tabs.length === 0) {
-    toast('该保存的分组里没有标签')
+    toast(t('该保存的分组里没有标签'))
     return
   }
   const live = s.srcId ? findGroup(s.srcId) : undefined
@@ -1193,35 +1194,35 @@ function openRestoreSelect(savedId: string): void {
   // 会话级恢复(入口①·语义 B)：tabId → 指定的活跃会话。点某标签的会话数选一条即写入这里，
   // 取消勾选/选"用默认"则移除；点底部「恢复」时连同勾选一起传给 restoreSavedTabs。
   const overrides = new Map<string, string>()
-  const items: PickItem[] = s.snapshot.tabs.map((t) => {
-    const inLive = liveIds.has(t.id)
-    const activeId = t.activeSessionId ?? t.sessions[t.sessions.length - 1]?.sessionId
+  const items: PickItem[] = s.snapshot.tabs.map((st) => {
+    const inLive = liveIds.has(st.id)
+    const activeId = st.activeSessionId ?? st.sessions[st.sessions.length - 1]?.sessionId
     return {
-      id: t.id,
-      label: t.name,
-      meta: inLive ? '已在当前分组中' : `${t.sessions.length} 个会话`,
+      id: st.id,
+      label: st.name,
+      meta: inLive ? t('已在当前分组中') : t('{0} 个会话', st.sessions.length),
       disabled: inLive,
       // 默认不勾 —— 用户语义是"看一下要恢复哪些"，避免直接全恢复
       defaultChecked: false,
-      deleteTitle: '从保存里删除此标签',
-      onDelete: () => deleteSavedTabFromPicker(savedId, t.id, t.name),
+      deleteTitle: t('从保存里删除此标签'),
+      onDelete: () => deleteSavedTabFromPicker(savedId, st.id, st.name),
       // 已在 live 里的标签不提供会话选择（会被跳过）
       sessionPick: inLive
         ? undefined
         : {
             // 只列重命名过的会话，默认名「会话 N」不参与选择；仍可用"用默认会话恢复"回退
-            entries: t.sessions
+            entries: st.sessions
               .filter((se) => se.userTitle)
               .map((se) => ({
                 sessionId: se.sessionId,
-                title: sessionTitle(se, t.sessions),
+                title: sessionTitle(se, st.sessions),
                 source: se.source,
                 ts: se.lastTs ?? se.createdAt,
                 isDefault: se.sessionId === activeId
               })),
             onPick: (sid) => {
-              if (sid) overrides.set(t.id, sid)
-              else overrides.delete(t.id)
+              if (sid) overrides.set(st.id, sid)
+              else overrides.delete(st.id)
             }
           }
     }
@@ -1233,18 +1234,18 @@ function openRestoreSelect(savedId: string): void {
     id: PICK_ACTION_NEW_BLANK,
     label: '',
     defaultChecked: false,
-    inputPlaceholder: '+ 新建空白标签（直接输入名字）',
+    inputPlaceholder: t('+ 新建空白标签（直接输入名字）'),
     sideToggle: {
       defaultChecked: settings.defaults.autoLaunchCC,
-      label: '启动 CC',
-      title: '新建标签是否自动启动 Claude Code；默认值来自「设置 → 新建默认值」'
+      label: t('启动 CC'),
+      title: t('新建标签是否自动启动 Claude Code；默认值来自「设置 → 新建默认值」')
     }
   })
   openPickTabs({
-    title: `恢复「${s.name}」的标签`,
-    sub: '勾选要恢复的标签。已在当前分组中的标签会被跳过。',
+    title: t('恢复「{0}」的标签', s.name),
+    sub: t('勾选要恢复的标签。已在当前分组中的标签会被跳过。'),
     items,
-    okLabel: '恢复',
+    okLabel: t('恢复'),
     onOk: (ids, inputs, toggles) =>
       void restoreSavedTabs(
         savedId,
@@ -1262,9 +1263,9 @@ function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: strin
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
   confirmDialog({
-    title: `从保存里移除「${tabName}」？`,
-    message: '只把该标签从保存记录里删除，已打开的实例不受影响。',
-    okLabel: '删除',
+    title: t('从保存里移除「{0}」？', tabName),
+    message: t('只把该标签从保存记录里删除，已打开的实例不受影响。'),
+    okLabel: t('删除'),
     onOk: () => {
       const idx = s.snapshot.tabs.findIndex((t) => t.id === tabId)
       if (idx < 0) return
@@ -1275,7 +1276,7 @@ function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: strin
       if (s.snapshot.tabs.length === 0) {
         // 没标签可选了，pick 弹窗也没意义了；分组卡片留着
         closePickTabs()
-        toast(`「${s.name}」已没有保存的标签`)
+        toast(t('「{0}」已没有保存的标签', s.name))
         return
       }
       // 弹窗里就地刷新一遍 —— 复用 openRestoreSelect，不闪不丢焦点。
@@ -1289,16 +1290,16 @@ function deleteSaved(savedId: string): void {
   if (idx < 0) return
   const s = savedGroups[idx]
   confirmDialog({
-    title: `删除已保存的「${s.name}」？`,
-    message: '只删除保存记录，不影响当前打开的分组。',
-    okLabel: '删除',
+    title: t('删除已保存的「{0}」？', s.name),
+    message: t('只删除保存记录，不影响当前打开的分组。'),
+    okLabel: t('删除'),
     onOk: () => {
       savedGroups.splice(idx, 1)
       // 对应 live 分组没有保存记录时 isGroupDirty 天然为 true
       sidebar.render()
       savedManager.render()
       scheduleSave()
-      toast('已删除保存的分组')
+      toast(t('已删除保存的分组'))
     }
   })
 }
@@ -1308,10 +1309,10 @@ function renameSaved(savedId: string): void {
   if (!s) return
   openModal({
     kind: 'rename',
-    title: '重命名已保存的分组',
-    sub: '只改保存项的名字。',
+    title: t('重命名已保存的分组'),
+    sub: t('只改保存项的名字。'),
     name: s.name,
-    okLabel: '保存',
+    okLabel: t('保存'),
     onOk: (v) => {
       s.name = v.name
       s.snapshot.name = v.name
@@ -1346,11 +1347,11 @@ async function openSessionInNewTab(sessionId: string): Promise<void> {
   activateUI(newTab.id)
   await spawnTabPty(newTab)
   scheduleSave()
-  toast(`已在新标签打开会话「${name}」`)
+  toast(t('已在新标签打开会话「{0}」', name))
 }
 
 function tabNameForSession(s: SessionRecord): string {
-  const raw = s.userTitle || `会话 ${s.sessionId.slice(0, 8)}`
+  const raw = s.userTitle || t('会话 {0}', s.sessionId.slice(0, 8))
   return raw.length > 20 ? raw.slice(0, 19) + '…' : raw
 }
 
@@ -1362,18 +1363,18 @@ function openSessionCtx(sessionId: string, x: number, y: number): void {
   if (!sess) return
   const onlyOne = ctx.tab.sessions.length <= 1
   const items: import('./ui-helpers').CtxItem[] = [
-    { label: '在新标签页中打开该会话', icon: icon('external-link'), act: () => void openSessionInNewTab(sessionId) },
+    { label: t('在新标签页中打开该会话'), icon: icon('external-link'), act: () => void openSessionInNewTab(sessionId) },
     { sep: true },
-    { label: '重命名会话', icon: icon('edit'), act: () => renameSession(sessionId) }
+    { label: t('重命名会话'), icon: icon('edit'), act: () => renameSession(sessionId) }
   ]
   if (sess.userTitle) {
-    items.push({ label: '清除自定义标题', icon: icon('rotate-ccw'), act: () => renameSession(sessionId, '') })
+    items.push({ label: t('清除自定义标题'), icon: icon('rotate-ccw'), act: () => renameSession(sessionId, '') })
   }
   items.push({ sep: true })
   if (onlyOne) {
-    items.push({ label: '删除（至少保留一条）', icon: icon('trash'), act: () => toast('至少保留一条会话') })
+    items.push({ label: t('删除（至少保留一条）'), icon: icon('trash'), act: () => toast(t('至少保留一条会话')) })
   } else {
-    items.push({ label: '删除会话', icon: icon('trash'), danger: true, act: () => void deleteSession(sessionId) })
+    items.push({ label: t('删除会话'), icon: icon('trash'), danger: true, act: () => void deleteSession(sessionId) })
   }
   showCtxMenu(items, x, y)
 }
@@ -1395,16 +1396,16 @@ function renameSession(sessionId: string, forceText?: string): void {
   // 显式清除分支：右键「清除自定义标题」时跳过 modal
   if (forceText === '') {
     apply('')
-    toast('已清除自定义标题')
+    toast(t('已清除自定义标题'))
     return
   }
   const current = sess.userTitle ?? ''
   openModal({
     kind: 'rename',
-    title: '重命名会话',
-    sub: '不填就用默认名「会话 N」（N 按创建顺序）。右键菜单可「清除自定义标题」回到默认名。',
+    title: t('重命名会话'),
+    sub: t('不填就用默认名「会话 N」（N 按创建顺序）。右键菜单可「清除自定义标题」回到默认名。'),
     name: current,
-    okLabel: '保存',
+    okLabel: t('保存'),
     onOk: (v) => apply(v.name)
   })
 }
@@ -1420,11 +1421,11 @@ async function deleteSession(sessionId: string): Promise<void> {
   const wasActive = tab.activeSessionId === sessionId
   const title = sess.userTitle || defaultSessionTitle(sess, tab.sessions)
   confirmDialog({
-    title: `删除会话「${title}」？`,
+    title: t('删除会话「{0}」？', title),
     message: wasActive
-      ? '这是当前激活的会话，删除后会切到栈顶并重启 shell。<br/>已在磁盘的 cc 历史不会被删，只是从此标签的栈里移除。'
-      : '只把该会话从栈里移除。磁盘上的 cc 历史不受影响。',
-    okLabel: '删除',
+      ? t('这是当前激活的会话，删除后会切到栈顶并重启 shell。<br/>已在磁盘的 cc 历史不会被删，只是从此标签的栈里移除。')
+      : t('只把该会话从栈里移除。磁盘上的 cc 历史不受影响。'),
+    okLabel: t('删除'),
     onOk: () => {
       tab.sessions.splice(idx, 1)
       if (wasActive) {
@@ -1436,7 +1437,7 @@ async function deleteSession(sessionId: string): Promise<void> {
       sidebar.render()
       toolbar.render()
       scheduleSave()
-      toast('已删除会话')
+      toast(t('已删除会话'))
     }
   })
 }
@@ -1462,12 +1463,12 @@ function openGroupCtx(groupId: string, x: number, y: number): void {
   if (!g) return
   showCtxMenu(
     [
-      { label: '新建会话标签', icon: icon('plus'), act: () => promptNewTabInGroup(g.id) },
-      { label: '重命名分组', icon: icon('edit'), act: () => renameGroup(g.id) },
+      { label: t('新建会话标签'), icon: icon('plus'), act: () => promptNewTabInGroup(g.id) },
+      { label: t('重命名分组'), icon: icon('edit'), act: () => renameGroup(g.id) },
       { sep: true },
-      { label: '保存分组', icon: icon('save'), act: () => saveGroup(g.id) },
+      { label: t('保存分组'), icon: icon('save'), act: () => saveGroup(g.id) },
       { sep: true },
-      { label: '关闭分组', icon: icon('close'), danger: true, act: () => closeGroup(g.id) }
+      { label: t('关闭分组'), icon: icon('close'), danger: true, act: () => closeGroup(g.id) }
     ],
     x,
     y
@@ -1513,32 +1514,32 @@ function openTabCtx(tabId: string, x: number, y: number): void {
   const s = ctx.tab.status ?? 'idle'
   const items: import('./ui-helpers').CtxItem[] = []
   if (s === 'idle') {
-    items.push({ label: '标记为待查看', icon: icon('check-square'), act: () => markTabPending(tabId) })
+    items.push({ label: t('标记为待查看'), icon: icon('check-square'), act: () => markTabPending(tabId) })
   } else if (s === 'done' || s === 'attention' || s === 'error') {
-    items.push({ label: '标记为已查看', icon: icon('square'), act: () => markTabViewed(tabId) })
+    items.push({ label: t('标记为已查看'), icon: icon('square'), act: () => markTabViewed(tabId) })
   }
   showCtxMenu(
     [
       ...items,
-      { label: '保存标签', icon: icon('save'), act: () => saveTab(tabId) },
+      { label: t('保存标签'), icon: icon('save'), act: () => saveTab(tabId) },
       { sep: true },
       {
-        label: '重命名标签',
+        label: t('重命名标签'),
         icon: icon('edit'),
         act: () => {
           openModal({
             kind: 'rename',
-            title: '重命名标签',
+            title: t('重命名标签'),
             sub: '',
             name: ctx.tab.name,
-            okLabel: '保存',
+            okLabel: t('保存'),
             onOk: (v) => renameTab(tabId, v.name)
           })
         }
       },
-      { label: '在本组新建标签', icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
+      { label: t('在本组新建标签'), icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
       { sep: true },
-      { label: '关闭标签', icon: icon('close'), danger: true, act: () => closeTab(tabId) }
+      { label: t('关闭标签'), icon: icon('close'), danger: true, act: () => closeTab(tabId) }
     ],
     x,
     y
@@ -1550,23 +1551,24 @@ function nextWorkspaceDefaultName(): string {
   // 默认名 "工作区N"：找当前 savedWorkspaces 里最大数字 + 1
   let max = 0
   for (const w of savedWorkspaces) {
-    const m = /^工作区(\d+)$/.exec(w.name)
+    // 兼容中英两种默认名形态：「工作区N」/「Workspace N」都参与取最大序号
+    const m = /^(?:工作区|Workspace\s*)(\d+)$/.exec(w.name)
     if (m) max = Math.max(max, parseInt(m[1], 10))
   }
-  return `工作区${max + 1}`
+  return t('工作区{0}', max + 1)
 }
 
 function promptSaveWorkspace(): void {
   if (groups.length === 0) {
-    toast('当前工作区为空，没什么可保存的')
+    toast(t('当前工作区为空，没什么可保存的'))
     return
   }
   openModal({
     kind: 'rename',
-    title: '保存该工作区',
-    sub: '把当前打开的分组、每个分组下的标签整体存档，之后可一键恢复。',
+    title: t('保存该工作区'),
+    sub: t('把当前打开的分组、每个分组下的标签整体存档，之后可一键恢复。'),
     name: nextWorkspaceDefaultName(),
-    okLabel: '保存',
+    okLabel: t('保存'),
     onOk: (v) => {
       const nm = v.name.trim() || nextWorkspaceDefaultName()
       saveCurrentAsWorkspace(nm)
@@ -1598,7 +1600,7 @@ function saveCurrentAsWorkspace(name: string): void {
   sidebar.render()
   savedManager.render()
   scheduleSave()
-  toast(`已保存工作区「${name}」（${snapshotGroups.length} 个分组）`)
+  toast(t('已保存工作区「{0}」（{1} 个分组）', name, snapshotGroups.length))
 }
 
 // 把快照分组追加恢复到当前工作区（工作区整体恢复 / 单分组恢复共用）。
@@ -1676,11 +1678,10 @@ async function restoreSavedWorkspace(wsId: string): Promise<void> {
   if (!w) return
   const tabCount = w.snapshot.groups.reduce((n, g) => n + g.tabs.length, 0)
   confirmDialog({
-    title: `恢复工作区「${w.name}」`,
+    title: t('恢复工作区「{0}」', w.name),
     message:
-      `即将追加恢复 <b>${w.snapshot.groups.length}</b> 个分组、<b>${tabCount}</b> 个标签到当前工作区。<br>` +
-      `已打开的同分组不会被覆盖，只会补齐缺失的标签。`,
-    okLabel: '恢复',
+      t('即将追加恢复 <b>{0}</b> 个分组、<b>{1}</b> 个标签到当前工作区。<br>已打开的同分组不会被覆盖，只会补齐缺失的标签。', w.snapshot.groups.length, tabCount),
+    okLabel: t('恢复'),
     danger: false,
     onOk: async () => {
       const n = await restoreSnapshotGroups(w.snapshot.groups, w.snapshot.activeTabId)
@@ -1688,7 +1689,7 @@ async function restoreSavedWorkspace(wsId: string): Promise<void> {
       w.lastRestoredAt = new Date().toISOString()
       sidebar.render()
       scheduleSave()
-      toast(`已恢复工作区「${w.name}」的 ${n} 个新标签`)
+      toast(t('已恢复工作区「{0}」的 {1} 个新标签', w.name, n))
     }
   })
 }
@@ -1698,7 +1699,7 @@ function restoreWorkspaceGroup(wsId: string, groupId: string): void {
   const sg = w?.snapshot.groups.find((g) => g.id === groupId)
   if (!sg) return
   void restoreSnapshotGroups([sg], null).then((n) => {
-    toast(`已恢复分组「${sg.name}」的 ${n} 个新标签`)
+    toast(t('已恢复分组「{0}」的 {1} 个新标签', sg.name, n))
   })
 }
 
@@ -1729,9 +1730,9 @@ function deleteSavedWorkspace(wsId: string): void {
   if (idx < 0) return
   const w = savedWorkspaces[idx]
   confirmDialog({
-    title: '删除已保存的工作区',
-    message: `确定删除「${escapeHtml(w.name)}」？<br>只删除这份工作区留档，不会删除任何分组和标签页。`,
-    okLabel: '删除',
+    title: t('删除已保存的工作区'),
+    message: t('确定删除「{0}」？<br>只删除这份工作区留档，不会删除任何分组和标签页。', escapeHtml(w.name)),
+    okLabel: t('删除'),
     danger: true,
     onOk: () => {
       savedWorkspaces.splice(idx, 1)
@@ -1746,7 +1747,7 @@ function openWorkspacePaneCtx(x: number, y: number): void {
   showCtxMenu(
     [
       {
-        label: '保存该工作区',
+        label: t('保存该工作区'),
         icon: icon('rotate-ccw'),
         act: () => promptSaveWorkspace()
       }
@@ -1844,11 +1845,11 @@ function activeCcTabForInject(): TerminalTab | null {
   if (!ctx) return null
   const { tab } = ctx
   if (tab.ptyId == null || !tab.activeSessionId) {
-    toast('当前标签没有活跃的 Claude 会话')
+    toast(t('当前标签没有活跃的 Claude 会话'))
     return null
   }
   if (tab.status === 'busy' || tab.status === 'attention') {
-    toast('Claude 正忙，请等当前回合结束再切换')
+    toast(t('Claude 正忙，请等当前回合结束再切换'))
     return null
   }
   return tab
@@ -1867,7 +1868,7 @@ function switchActiveModel(arg: string, label: string): void {
   const tab = activeCcTabForInject()
   if (!tab) return
   injectSlash(tab, '/model ' + arg)
-  toast('已切换模型 → ' + label)
+  toast(t('已切换模型 → {0}', label))
 }
 
 // /effort 带参直接设当前会话思考强度（不持久，属会话级）。
@@ -1875,7 +1876,7 @@ function switchActiveEffort(level: string): void {
   const tab = activeCcTabForInject()
   if (!tab) return
   injectSlash(tab, '/effort ' + level)
-  toast('已切换思考强度 → ' + level)
+  toast(t('已切换思考强度 → {0}', level))
 }
 
 const sessionInfo = new SessionInfoBar({
@@ -2063,7 +2064,7 @@ function saveActiveDirtyGroup(): void {
   const g = groups.find((x) => x.tabs.some((t) => t.id === activeTabId))
   if (!g) return
   if (!isGroupDirty(g)) {
-    toast(`「${g.name}」没有未保存的改动`)
+    toast(t('「{0}」没有未保存的改动', g.name))
     return
   }
   saveGroup(g.id)
@@ -2124,21 +2125,20 @@ window.term.onWindowCloseRequest(() => {
   const showDirty = dirtyGroups.length > 0
   if (showDirty) {
     const lines = dirtyGroups
-      .map((g) => `• <b>${escapeHtml(g.name)}</b>（${g.tabs.length} 个标签）`)
+      .map((g) => t('• <b>{0}</b>（{1} 个标签）', escapeHtml(g.name), g.tabs.length))
       .join('<br/>')
     confirmDialog({
-      title: '有未保存的分组，仍要关闭？',
-      message: `以下分组未保存，关闭后将丢失标签布局：<br/>${lines}<br/><br/>` +
-        '可先在分组右键「保存分组」，或直接关闭。',
-      okLabel: '仍然关闭',
+      title: t('有未保存的分组，仍要关闭？'),
+      message: t('以下分组未保存，关闭后将丢失标签布局：<br/>{0}<br/><br/>可先在分组右键「保存分组」，或直接关闭。', lines),
+      okLabel: t('仍然关闭'),
       onOk: () => window.term.winConfirmClose()
     })
     return
   }
   confirmDialog({
-    title: '确认关闭 Claude Terminal？',
-    message: '关闭后所有终端会话将被终止。确认继续？',
-    okLabel: '关闭',
+    title: t('确认关闭 Claude Terminal？'),
+    message: t('关闭后所有终端会话将被终止。确认继续？'),
+    okLabel: t('关闭'),
     onOk: () => window.term.winConfirmClose()
   })
 })
@@ -2308,16 +2308,16 @@ const savedManager = new SavedManager({
     const s = savedGroups.find((x) => x.id === id)
     if (!s) return
     confirmDialog({
-      title: `删除已保存的「${s.name}」？`,
-      message: '会删除该分组下的所有标签页。只动保存记录，已打开的实例不受影响。',
-      okLabel: '删除',
+      title: t('删除已保存的「{0}」？', s.name),
+      message: t('会删除该分组下的所有标签页。只动保存记录，已打开的实例不受影响。'),
+      okLabel: t('删除'),
       onOk: () => {
         const idx = savedGroups.findIndex((x) => x.id === id)
         if (idx >= 0) savedGroups.splice(idx, 1)
         sidebar.render()
         savedManager.render()
         scheduleSave()
-        toast('已删除保存的分组')
+        toast(t('已删除保存的分组'))
       }
     })
   },
@@ -2384,7 +2384,7 @@ async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
   if (g.tabs.some((t) => t.id === entry.tabId)) {
     activeTabId = entry.tabId
     activateUI(entry.tabId)
-    toast(`已切到「${entry.tabName}」`)
+    toast(t('已切到「{0}」', entry.tabName))
     return
   }
   // 该分组已保存 且 该 tabId 在保存快照里就有：视为"回到已保存的位置"，不打脏。
@@ -2409,7 +2409,7 @@ async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
   activateUI(tab.id)
   await spawnTabPty(tab)
   scheduleSave()
-  toast(`已从历史恢复「${entry.tabName}」`)
+  toast(t('已从历史恢复「{0}」', entry.tabName))
 }
 
 const historyManager = new HistoryManager({
@@ -2424,6 +2424,10 @@ locateActiveBtn?.addEventListener('click', () => locateActiveTab())
 // 启动即空状态，等用户点「新建分组」或从已保存的分组恢复。
 ;(async () => {
   settings = await window.term.loadSettings()
+  // 语言尽早定死：后续所有动态渲染（sidebar/toolbar/弹窗）里的 t() 都依赖它。
+  // translateDom 把静态 HTML 里的中文一次性翻掉（en 时），动态内容走 t()。
+  setLanguage(settings.language)
+  translateDom()
   applyAppTheme(settings.appTheme)
   applyTabBarMode()
   syncHostsBackdrop()

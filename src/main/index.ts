@@ -10,6 +10,11 @@ import { setFloaterEnabled, destroyFloater } from './floater'
 import { loadSettings, saveSettings } from './settings'
 import { detectClaudePath } from './claude-helper'
 import { logEvent, startLogging, stopLogging } from './app-log'
+import { setLanguage, t } from './i18n'
+
+// 界面语言在进程启动时定死（loadSettings 是同步读文件，ready 前即可用）；
+// 切换语言走 app:relaunch 重启生效，运行中不做热切换。
+try { setLanguage(loadSettings().language) } catch {}
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
@@ -39,10 +44,10 @@ function ensureTray(): void {
   tray = new Tray(join(__dirname, '../../resources', iconFile))
   tray.setToolTip('Claude Terminal')
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '打开 Claude Terminal', click: () => showMainWindow() },
+    { label: t('打开 Claude Terminal'), click: () => showMainWindow() },
     { type: 'separator' },
     {
-      label: '退出（终止所有会话）',
+      label: t('退出（终止所有会话）'),
       click: () => {
         allowClose = true
         fastQuit('tray-quit')
@@ -241,12 +246,12 @@ function createWindow(): void {
     }
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: 'warning',
-      buttons: ['关闭', '取消'],
+      buttons: [t('关闭'), t('取消')],
       defaultId: 1,
       cancelId: 1,
-      title: '确认关闭',
-      message: '确认关闭 Claude Terminal？',
-      detail: '关闭后所有终端会话将被终止。'
+      title: t('确认关闭'),
+      message: t('确认关闭 Claude Terminal？'),
+      detail: t('关闭后所有终端会话将被终止。')
     })
     if (choice === 0) {
       allowClose = true
@@ -366,6 +371,19 @@ app.whenReady().then(() => {
     const out = [...pendingOpenHere]
     pendingOpenHere.length = 0
     return out
+  })
+  // 语言切换等场景的显式重启。不能走 fastQuit/hardExit：SIGKILL 直接被 OS 回收，
+  // app.relaunch 注册的重启不会发生。这里先同步 killAll 把 conpty 收干净
+  // （避免 exit() 析构与 conpty 线程竞态弹断言框），再正常 app.exit。
+  ipcMain.on('app:relaunch', () => {
+    allowClose = true
+    app.relaunch()
+    try { stopWatchers() } catch {}
+    try { destroyTray() } catch {}
+    try { destroyFloater() } catch {}
+    try { killAll() } catch {}
+    try { stopLogging('relaunch') } catch {}
+    app.exit(0)
   })
   ipcMain.on('window:closeConfirmed', () => {
     allowClose = true

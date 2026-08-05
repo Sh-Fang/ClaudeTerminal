@@ -2321,6 +2321,9 @@ mark.hl {
 }
 .cc-ver-hint.err { color: var(--danger, #d33); }
 .cc-ver-hint.ok { color: #1a7f37; }
+/* 设置行下的小字提示（语言切换「重启后生效」等），带内联「立即重启」链接按钮 */
+.set-row-hint { margin-top: 6px; font-size: 11px; color: var(--mute); }
+.set-row-hint .link-btn { margin-left: 6px; }
 .set-subhead {
   margin: 18px 0 8px;
   padding-top: 14px;

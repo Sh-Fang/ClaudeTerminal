@@ -1,3 +1,5 @@
+import { t } from './i18n'
+
 // 与 preload 的 ClaudeUsage 对齐（renderer 不跨进程 import，本地镜像一份）
 interface UsageWindow {
   utilization: number
@@ -23,7 +25,7 @@ function fmtCountdown(resetsAt: string | null): string {
   if (!resetsAt) return ''
   const ms = new Date(resetsAt).getTime() - Date.now()
   if (!Number.isFinite(ms)) return ''
-  if (ms <= 0) return '即将重置'
+  if (ms <= 0) return t('即将重置')
   const m = Math.floor(ms / 60_000)
   const h = Math.floor(m / 60)
   const d = Math.floor(h / 24)
@@ -113,7 +115,7 @@ export class UsageIndicator {
   private start(): void {
     this.panel.hidden = false
     this.el.className = 'usage-bars loading'
-    this.el.textContent = 'Claude 用量…'
+    this.el.textContent = t('Claude 用量…')
     // 非 force：快照/新鲜缓存(180s)直接秒显，过期或没有才真拉 —— 反复开关不重复打接口，
     // 也不会无视失败冷却硬打；首次无缓存时仍会立即拉。
     void this.refresh(false)
@@ -141,7 +143,7 @@ export class UsageIndicator {
     } catch {
       if (!this.enabled) return
       this.el.className = 'usage-bars error'
-      this.el.textContent = 'Claude 用量 ✕'
+      this.el.textContent = t('Claude 用量 ✕')
     }
   }
 
@@ -150,27 +152,27 @@ export class UsageIndicator {
     if (!u) return
     if (!u.ok) {
       this.el.className = 'usage-bars error'
-      this.el.textContent = 'Claude 用量 ✕'
-      this.el.title = u.error || '获取失败'
+      this.el.textContent = t('Claude 用量 ✕')
+      this.el.title = t(u.error || '获取失败')
       return
     }
     // 5h 缺失才跳过；本周额度始终渲染，最终没拿到就传 null → 显示横杠占位（区别于真实 0%）
     const render = this.style === 'ring' ? ring : bar
     const items: string[] = []
-    if (u.fiveHour) items.push(render('5h额度', pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt)))
+    if (u.fiveHour) items.push(render(t('5h额度'), pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt)))
     // 周额度主条：账号级总池 → 「本周额度」；没有总池、只有模型专属配额（如 Fable）→ 「Fable额度」；
     // 彻底没拿到 → 仍用「本周额度」显示横杠占位。
-    const weeklyLabel = u.sevenDay?.scopeLabel ? `${u.sevenDay.scopeLabel}额度` : '本周额度'
+    const weeklyLabel = u.sevenDay?.scopeLabel ? t('{0}额度', u.sevenDay.scopeLabel) : t('本周额度')
     // hover 卡片：仅当主条是账号总池（无 scopeLabel）且另有模型级配额时，悬浮补显模型额度。
     // 主条本身就是模型级（总池缺失退回 Fable）时不再重复展示，模型级缺失则 hover 无反应。
     const model = (u.sevenDay && !u.sevenDay.scopeLabel && u.sevenDayModel) || null
     items.push(
       u.sevenDay
         ? render(weeklyLabel, pct(u.sevenDay), fmtCountdown(u.sevenDay.resetsAt), model ? 'data-weekly' : '')
-        : render('本周额度', null, '')
+        : render(t('本周额度'), null, '')
     )
     const pop = model
-      ? `<div class="usage-pop">${render(`${model.scopeLabel}额度`, pct(model), fmtCountdown(model.resetsAt))}</div>`
+      ? `<div class="usage-pop">${render(t('{0}额度', model.scopeLabel ?? ''), pct(model), fmtCountdown(model.resetsAt))}</div>`
       : ''
     this.el.title = ''
     this.el.className = this.style === 'ring' ? 'usage-bars is-rings' : 'usage-bars'

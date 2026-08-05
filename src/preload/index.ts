@@ -95,6 +95,7 @@ export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
 export type CloseBehavior = 'quit' | 'tray'
 export type TabBarMode = 'vertical' | 'horizontal'
+export type AppLanguage = 'zh' | 'en'
 
 export interface Settings {
   version: 1
@@ -119,6 +120,7 @@ export interface Settings {
   floaterX: number | null
   floaterY: number | null
   tabBarMode: TabBarMode
+  language: AppLanguage
 }
 
 export interface FloaterCounts {
@@ -263,6 +265,8 @@ export interface TermBridge {
   // renderer 启动完成后主动拉一次：把首次启动 argv 里的 path（如果有）取走。
   // 避免"send 时 renderer 监听器还没注册"导致的丢消息。
   consumePendingOpenHere(): Promise<string[]>
+  // 语言切换等需要整体重启的场景：app.relaunch + 清理后正常退出
+  relaunchApp(): void
 }
 
 const api: TermBridge = {
@@ -365,7 +369,8 @@ const api: TermBridge = {
     ipcRenderer.on('app:openHere', h)
     return () => ipcRenderer.off('app:openHere', h)
   },
-  consumePendingOpenHere: () => ipcRenderer.invoke('app:consumePendingOpenHere')
+  consumePendingOpenHere: () => ipcRenderer.invoke('app:consumePendingOpenHere'),
+  relaunchApp: () => ipcRenderer.send('app:relaunch')
 }
 
 contextBridge.exposeInMainWorld('term', api)

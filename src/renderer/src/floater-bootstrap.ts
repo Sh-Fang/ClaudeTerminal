@@ -5,6 +5,12 @@
 // 右键菜单直接在窗口内展开，零窗口 resize。
 // 复用主窗口同款 preload，所以 window.term 是可用的。
 // 这里手抄一份 FloaterCounts 结构，避免跨 tsconfig 直接 import preload。
+import { setLanguage, t } from './i18n'
+
+// 语言异步加载：菜单是右键时才构建，加载完成前用户几乎不可能已经打开菜单；
+// 即使抢先打开也只是那一次显示中文，无功能影响。
+void window.term?.loadSettings?.().then((s) => setLanguage(s.language))
+
 interface FloaterCounts {
   done: number
   attention: number
@@ -152,9 +158,9 @@ window.addEventListener('contextmenu', (e) => {
   }
   openCtx(
     [
-      { label: '打开主窗口', icon: ICON_OPEN, act: () => window.term?.floaterFocusMain?.() },
+      { label: t('打开主窗口'), icon: ICON_OPEN, act: () => window.term?.floaterFocusMain?.() },
       { sep: true },
-      { label: '隐藏悬浮窗', icon: ICON_EYE_OFF, danger: true, act: () => window.term?.floaterHide?.() }
+      { label: t('隐藏悬浮窗'), icon: ICON_EYE_OFF, danger: true, act: () => window.term?.floaterHide?.() }
     ],
     e.clientX,
     e.clientY

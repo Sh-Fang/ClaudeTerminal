@@ -9,5 +9,5 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/renderer/**/*.ts", "src/preload/index.d.ts"]
+  "include": ["src/shared/**/*.ts", "src/renderer/**/*.ts", "src/preload/index.d.ts"]
 }

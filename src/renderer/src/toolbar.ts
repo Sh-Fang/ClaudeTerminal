@@ -1,4 +1,5 @@
 import { escapeHtml, formatTs, sessionTitle, srcLabel, statusLabel, toast } from './ui-helpers'
+import { t } from './i18n'
 import type { TerminalTab, SessionRecord } from './terminal-tab'
 import type { TabStatus } from './ui-helpers-types'
 
@@ -31,7 +32,7 @@ export class Toolbar {
       const p = this.sbCwd.textContent?.trim()
       if (!p) return
       void window.term.openPath(p).then((r) => {
-        if (!r.ok) toast(`打开失败：${r.error ?? '未知错误'}`)
+        if (!r.ok) toast(t('打开失败：{0}', r.error ?? t('未知错误')))
       })
     })
     this.sessSelect.addEventListener('click', (e) => {
@@ -55,7 +56,7 @@ export class Toolbar {
       this.cbTab.textContent = ''
       this.cbStatus.innerHTML = ''
       this.sessTime.textContent = ''
-      this.sessTitle.textContent = '（无活动标签）'
+      this.sessTitle.textContent = t('（无活动标签）')
       this.sessSelect.classList.add('empty')
       this.sessList.innerHTML = ''
       this.sbCwd.textContent = ''
@@ -74,7 +75,7 @@ export class Toolbar {
     const st = (tab.status ?? 'idle') as TabStatus
     if (st === 'idle') this.cbStatus.innerHTML = ''
     else {
-      const title = tab.note ? `${statusLabel(st)}：${tab.note}` : statusLabel(st)
+      const title = tab.note ? t('{0}：{1}', statusLabel(st), tab.note) : statusLabel(st)
       this.cbStatus.innerHTML =
         `<span class="status-pill sp-${st}" title="${escapeHtml(title)}"><span class="st-dot st-${st}"></span>${escapeHtml(statusLabel(st))}</span>`
     }
@@ -86,10 +87,10 @@ export class Toolbar {
       this.sessTitle.textContent = title
     } else {
       this.sessTime.textContent = ''
-      this.sessTitle.textContent = '（未创建会话）'
+      this.sessTitle.textContent = t('（未创建会话）')
     }
     this.sbCwd.textContent = groupCwd
-    this.sbCwd.title = `${groupCwd}\n双击用资源管理器打开`
+    this.sbCwd.title = `${groupCwd}\n${t('双击用资源管理器打开')}`
 
     // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
     // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。
@@ -106,7 +107,7 @@ export class Toolbar {
       empty.style.padding = '10px 12px'
       empty.style.fontSize = '12px'
       empty.style.color = 'var(--mute)'
-      empty.textContent = '没有会话记录。激活标签后 cc 会自动创建首个会话。'
+      empty.textContent = t('没有会话记录。激活标签后 cc 会自动创建首个会话。')
       this.sessList.appendChild(empty)
       return
     }
@@ -121,7 +122,7 @@ export class Toolbar {
         <span class="sdot"></span>
         <div class="sess-body">
           <div class="sess-title">${escapeHtml(sessionTitle(s, tab.sessions))}</div>
-          <div class="sess-meta">${escapeHtml(formatTs(s.lastTs || s.createdAt))} · <span class="src">${escapeHtml(srcLabel(s.source))}</span> · ${escapeHtml(s.sessionId.slice(0, 8))}${isCurrent ? ' · <span class="cur">当前</span>' : ''}</div>
+          <div class="sess-meta">${escapeHtml(formatTs(s.lastTs || s.createdAt))} · <span class="src">${escapeHtml(srcLabel(s.source))}</span> · ${escapeHtml(s.sessionId.slice(0, 8))}${isCurrent ? ` · <span class="cur">${t('当前')}</span>` : ''}</div>
         </div>
       `
       it.addEventListener('click', () => {

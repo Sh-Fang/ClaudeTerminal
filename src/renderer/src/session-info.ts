@@ -1,4 +1,5 @@
 import { escapeHtml, showCtxMenu } from './ui-helpers'
+import { t } from './i18n'
 
 // 左下角模型芯片的候选：按家族分组、每组列具体版本。
 // ── 维护点 ──：模型上新 / 退役时改这里。
@@ -213,8 +214,8 @@ export class SessionInfoBar {
       const p = hasCtx ? (u!.ctxPercent as number) : 0
       const lv = ctxLevel(p)
       const tip = hasCtx && u!.ctxTokens != null
-        ? ` title="上下文 ${u!.ctxTokens!.toLocaleString()} / ${(u!.ctxWindow ?? 0).toLocaleString()} tokens${u!.ctxApprox ? '（窗口为估算，未读到会话快照）' : ''}"`
-        : ' title="新会话，等待 cc 上报上下文用量"'
+        ? ` title="${t('上下文 {0} / {1} tokens', u!.ctxTokens!.toLocaleString(), (u!.ctxWindow ?? 0).toLocaleString())}${u!.ctxApprox ? t('（窗口为估算，未读到会话快照）') : ''}"`
+        : ` title="${t('新会话，等待 cc 上报上下文用量')}"`
       if (this.usageStyle === 'ring') {
         // 迷你圆环：13px 视觉尺寸贴合状态栏行高，绝不撑高底栏
         const R = 6
@@ -241,13 +242,13 @@ export class SessionInfoBar {
       }
       const model = u?.modelLabel ?? this.stickyModel ?? 'Claude'
       parts.push(
-        `<span class="sbi-model" title="点击切换模型">${escapeHtml(model)}</span>`
+        `<span class="sbi-model" title="${t('点击切换模型')}">${escapeHtml(model)}</span>`
       )
       // effort 芯片：仅在 cc 上报了 effort（模型支持思考强度）时展示，夹在模型与 git 分支之间。
       const eff = u?.effort
       if (eff)
         parts.push(
-          `<span class="sbi-effort" title="点击切换思考强度 (effort)">${escapeHtml(cap(eff))}</span>`
+          `<span class="sbi-effort" title="${t('点击切换思考强度 (effort)')}">${escapeHtml(cap(eff))}</span>`
         )
     }
     if (this.branch)
