@@ -113,6 +113,8 @@ interface CtxState {
   x: number
   y: number
   onClose: (() => void) | null
+  // 下拉式用法（如设置面板的语言/模型 picker）可指定最小宽度对齐触发按钮
+  minWidth: number | null
 }
 
 interface OverlaysState {
@@ -158,9 +160,17 @@ export const useOverlays = create<OverlaysState>(() => ({
 
 // ─── ctx 右键菜单 ────────────────────────────────────────────────
 
-export function showCtxMenu(items: CtxItem[], x: number, y: number, onClose?: () => void): void {
+export function showCtxMenu(
+  items: CtxItem[],
+  x: number,
+  y: number,
+  onClose?: () => void,
+  opts?: { minWidth?: number }
+): void {
   // 覆盖式打开：已开着时直接换内容/换位置，旧 onClose 不触发（与原实现一致）
-  useOverlays.setState({ ctx: { items, x, y, onClose: onClose ?? null } })
+  useOverlays.setState({
+    ctx: { items, x, y, onClose: onClose ?? null, minWidth: opts?.minWidth ?? null }
+  })
 }
 export function closeCtxMenu(): void {
   const cur = useOverlays.getState().ctx

@@ -508,9 +508,9 @@ export function SettingsPanel() {
     const btn = modelBtnRef.current
     if (!btn) return
     const r = btn.getBoundingClientRect()
-    // 菜单宽 ≈ picker 宽度，从下方展开；showCtxMenu 会自己夹进视口
+    // 菜单宽与 picker 对齐，从下方展开；showCtxMenu 会自己夹进视口
     setModelOpen(true)
-    showCtxMenu(items, r.left, r.bottom + 4, () => setModelOpen(false))
+    showCtxMenu(items, r.left, r.bottom + 4, () => setModelOpen(false), { minWidth: r.width })
   }
 
   // 下拉选项固定用各自语言显示（简体中文 / English），不随界面语言翻译
@@ -529,7 +529,7 @@ export function SettingsPanel() {
     if (!btn) return
     const r = btn.getBoundingClientRect()
     setLangOpen(true)
-    showCtxMenu(items, r.left, r.bottom + 4, () => setLangOpen(false))
+    showCtxMenu(items, r.left, r.bottom + 4, () => setLangOpen(false), { minWidth: r.width })
   }
 
   // 语言重启才生效：行内常驻提示（带「立即重启」），再弹一次确认支持立即重启。

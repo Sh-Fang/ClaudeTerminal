@@ -72,7 +72,13 @@ function CtxMenu() {
   }, [ctx])
 
   return (
-    <div className={'ctx' + (ctx ? ' open' : '')} id="ctx" ref={ref}>
+    <div
+      className={'ctx' + (ctx ? ' open' : '')}
+      id="ctx"
+      ref={ref}
+      // minWidth 在渲染期生效，useLayoutEffect 量宽夹视口时已含它
+      style={ctx?.minWidth != null ? { minWidth: ctx.minWidth } : undefined}
+    >
       {ctx?.items.map((it, i) => {
         if (it.sep) return <div key={i} className="ctx-sep" />
         if (it.eyebrow) return <div key={i} className="ctx-eyebrow">{it.eyebrow}</div>
