@@ -10,7 +10,7 @@ export const I18N_EN: Record<string, string> = {
 
   // ─── 侧边栏 ─────────────────────────────────────────────────
   '工作区': 'Workspace',
-  '工作区(列表)': 'Workspaces',
+  '工作区||列表': 'Workspaces',
   '新建分组': 'New Group',
   '定位当前标签': 'Locate current tab',
   '收起全部分组': 'Collapse all groups',

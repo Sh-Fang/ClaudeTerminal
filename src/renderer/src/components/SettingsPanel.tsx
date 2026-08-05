@@ -606,22 +606,21 @@ export function SettingsPanel() {
       commit({ npmReg: v })
     }
     const lat = npmLatRef.current
-    const items: CtxItem[] = NPM_MIRRORS.map((m) => ({
+    const entries: { name: string; url: string }[] = [...NPM_MIRRORS]
+    // 老配置的自定义地址不在预置列表 → 追加一项，保证已有配置可见可选不丢失
+    if (cur && !NPM_MIRRORS.some((m) => m.url === cur)) {
+      entries.push({ name: '自定义', url: cur })
+    }
+    // 每次展示按测速快慢升序：已出结果的按 ms 排，测速中排其后，超时/不通垫底
+    const latRank = (ms: number | undefined): number =>
+      ms === undefined ? 1_000_000 : ms < 0 ? 2_000_000 : ms
+    entries.sort((a, b) => latRank(lat[a.url]) - latRank(lat[b.url]))
+    return entries.map((m) => ({
       label: `${t(m.name)} · ${hostOf(m.url)}`,
       icon: cur === m.url ? '✓' : '',
       metaHtml: latBadge(lat[m.url]),
       act: () => setVal(m.url)
     }))
-    // 老配置的自定义地址不在预置列表 → 追加一项，保证已有配置可见可选不丢失
-    if (cur && !NPM_MIRRORS.some((m) => m.url === cur)) {
-      items.push({
-        label: `${t('自定义')} · ${hostOf(cur)}`,
-        icon: '✓',
-        metaHtml: latBadge(lat[cur]),
-        act: () => {}
-      })
-    }
-    return items
   }
 
   function showNpmMenu(): void {

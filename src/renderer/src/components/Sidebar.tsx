@@ -634,7 +634,7 @@ export function Sidebar() {
                 role="tab"
                 onClick={() => setSavedView('workspaces')}
               >
-                {t('工作区(列表)')}
+                {t('工作区||列表')}
               </button>
             </span>
             <span className="line"></span>

@@ -604,9 +604,10 @@ button.saved-toggle:hover { color: var(--ink); }
 .crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
 .crumb.is-empty .sep,
 .crumb.is-empty .t { display: none; }
-.crumb .g { font-weight: 600; letter-spacing: -0.2px; color: var(--ink); white-space: nowrap; flex: 0 0 auto; }
+/* 分组/标签名允许鼠标选中复制（全局 body 是 user-select:none，这里单独放开） */
+.crumb .g { font-weight: 600; letter-spacing: -0.2px; color: var(--ink); white-space: nowrap; flex: 0 0 auto; user-select: text; cursor: text; }
 .crumb .sep { color: var(--hairline-strong); flex: 0 0 auto; }
-.crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; }
+.crumb .t { color: var(--body); white-space: nowrap; flex: 0 0 auto; user-select: text; cursor: text; }
 #cbStatus { flex: 0 0 auto; display: inline-flex; }
 #cbStatus:empty { display: none; }
 
