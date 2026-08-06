@@ -2234,6 +2234,27 @@ export function isTabDragOver(dt: DataTransfer | null): boolean {
   return true
 }
 
+// 同分组内标签拖动排序（Sidebar 标签行 / Toolbar 标签条共用）。
+// 跨分组不支持：标签的 cwd 跟随分组，挪组会让 PTY 工作目录与分组语义脱节。
+export function moveTabWithinGroup(tabId: string, targetTabId: string, before: boolean): void {
+  if (tabId === targetTabId) return
+  const src = findTab(tabId)
+  const dst = findTab(targetTabId)
+  if (!src || !dst || src.group !== dst.group) return
+  const tabs = src.group.tabs
+  const fromIdx = tabs.indexOf(src.tab)
+  if (fromIdx < 0) return
+  tabs.splice(fromIdx, 1)
+  let toIdx = tabs.indexOf(dst.tab)
+  if (toIdx < 0) {
+    tabs.splice(fromIdx, 0, src.tab) // 还原
+    return
+  }
+  if (!before) toIdx += 1
+  tabs.splice(toIdx, 0, src.tab)
+  refreshUI()
+}
+
 // drop 落地：本窗口的 tab（窗口内拖动）忽略，交给原有交互；其他窗口的 tab → 迁移过来
 export function handleTabDrop(dt: DataTransfer | null): void {
   const raw = dt?.getData(TAB_DND_MIME)

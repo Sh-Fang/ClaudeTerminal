@@ -41,6 +41,7 @@ import {
   openRestoreSelect,
   restoreSavedWorkspace,
   locateActiveTab,
+  moveTabWithinGroup,
   setTabDragData,
   handleTabDragEnd,
   isTabDragOver,
@@ -76,6 +77,11 @@ export function Sidebar() {
   const [dragGroupId, setDragGroupId] = useState<string | null>(null)
   const [dropMark, setDropMark] = useState<{ id: string; before: boolean } | null>(null)
   const dragIdRef = useRef<string | null>(null)
+  // 标签行拖动排序（同分组内）：ref 记录拖动中的标签与其分组，dragover 据此判定可否插位。
+  // 跨窗口拖入的标签 ref 为 null（dragstart 不在本窗口）→ 自然落到容器级的迁移 drop。
+  const dragTabRef = useRef<{ tabId: string; groupId: string } | null>(null)
+  const [dragTabId, setDragTabId] = useState<string | null>(null)
+  const [tabDropMark, setTabDropMark] = useState<{ id: string; before: boolean } | null>(null)
 
   const sidebarRef = useRef<HTMLElement | null>(null)
   const savedSectionRef = useRef<HTMLElement | null>(null)
@@ -225,7 +231,7 @@ export function Sidebar() {
   const toggleAllLabel = allCollapsed ? t('展开全部分组') : t('收起全部分组')
 
   // ─── 标签行 ──────────────────────────────────────────────────
-  const renderTabRow = (tab: TerminalTab, active: boolean) => {
+  const renderTabRow = (tab: TerminalTab, active: boolean, groupId: string) => {
     const st = (tab.status ?? 'idle') as TabStatus
     const isIdle = st === 'idle'
     const badgeText = isIdle ? t('{0}会话', tab.sessions.length) : statusShort(st)
@@ -239,7 +245,12 @@ export function Sidebar() {
     return (
       <div
         key={tab.id}
-        className={'tab-row' + (active ? ' active' : '')}
+        className={
+          'tab-row' +
+          (active ? ' active' : '') +
+          (dragTabId === tab.id ? ' dragging' : '') +
+          (tabDropMark?.id === tab.id ? (tabDropMark.before ? ' drop-before' : ' drop-after') : '')
+        }
         data-t={tab.id}
         // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并。stopPropagation 挡住
         // 冒泡到 .group 的分组重排 dragstart（否则拖标签会连分组一起标记 dragging）
@@ -247,10 +258,42 @@ export function Sidebar() {
         onDragStart={(e) => {
           e.stopPropagation()
           setTabDragData(e, tab.id)
+          dragTabRef.current = { tabId: tab.id, groupId }
+          setDragTabId(tab.id)
         }}
         onDragEnd={(e) => {
           e.stopPropagation()
+          dragTabRef.current = null
+          setDragTabId(null)
+          setTabDropMark(null)
           handleTabDragEnd(e, tab.id)
+        }}
+        // 同分组内拖动排序：本窗口拖动中且同组才接住并画插位线；
+        // 跨分组/跨窗口不 preventDefault，冒泡给容器（容器只处理跨窗口迁移）
+        onDragOver={(e) => {
+          const d = dragTabRef.current
+          if (!d || d.tabId === tab.id || d.groupId !== groupId) return
+          e.preventDefault()
+          e.stopPropagation()
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+          const rect = e.currentTarget.getBoundingClientRect()
+          const before = e.clientY < rect.top + rect.height / 2
+          setTabDropMark((prev) =>
+            prev && prev.id === tab.id && prev.before === before ? prev : { id: tab.id, before }
+          )
+        }}
+        onDragLeave={(e) => {
+          if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return
+          setTabDropMark((prev) => (prev && prev.id === tab.id ? null : prev))
+        }}
+        onDrop={(e) => {
+          const d = dragTabRef.current
+          if (!d || d.groupId !== groupId) return
+          e.preventDefault()
+          e.stopPropagation()
+          const before = tabDropMark != null && tabDropMark.id === tab.id && tabDropMark.before
+          setTabDropMark(null)
+          moveTabWithinGroup(d.tabId, tab.id, before)
         }}
         onClick={(e) => {
           // 编辑中点击自身不切换激活
@@ -393,7 +436,7 @@ export function Sidebar() {
             dangerouslySetInnerHTML={{ __html: icon('more-horizontal') }}
           />
         </div>
-        <div className="group-tabs">{g.tabs.map((tab) => renderTabRow(tab, activeTabId === tab.id))}</div>
+        <div className="group-tabs">{g.tabs.map((tab) => renderTabRow(tab, activeTabId === tab.id, g.id))}</div>
       </div>
     )
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../state/store'
 import {
   getToolbarCtx,
@@ -15,6 +15,7 @@ import {
   openSessionCtx,
   startCcInActiveTab,
   switchSession,
+  moveTabWithinGroup,
   setTabDragData,
   handleTabDragEnd,
   isTabDragOver,
@@ -92,6 +93,10 @@ export function Toolbar() {
   void rev
   // 会话栈下拉的开合（原 Toolbar 的 sessMenu/sessSelect .open 类）
   const [menuOpen, setMenuOpen] = useState(false)
+  // 标签条 chip 拖动排序（同分组内）：ref 记录拖动中的标签与其分组
+  const dragChipRef = useRef<{ tabId: string; groupId: string } | null>(null)
+  const [dragChipId, setDragChipId] = useState<string | null>(null)
+  const [chipDropMark, setChipDropMark] = useState<{ id: string; before: boolean } | null>(null)
 
   const cur = getToolbarCtx()
   const groups = getGroupViews()
@@ -216,14 +221,54 @@ export function Toolbar() {
                 return (
                   <div
                     key={tb.id}
-                    className={'tabchip' + (activeTabId === tb.id ? ' active' : '')}
+                    className={
+                      'tabchip' +
+                      (activeTabId === tb.id ? ' active' : '') +
+                      (dragChipId === tb.id ? ' dragging' : '') +
+                      (chipDropMark?.id === tb.id ? (chipDropMark.before ? ' drop-before' : ' drop-after') : '')
+                    }
                     data-t={tb.id}
                     // hover 显示所属分组 / 路径（扁平后仍能知道来源）
                     title={g.cwd ? `${g.name} · ${g.cwd}` : g.name}
                     // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并
                     draggable
-                    onDragStart={(e) => setTabDragData(e, tb.id)}
-                    onDragEnd={(e) => handleTabDragEnd(e, tb.id)}
+                    onDragStart={(e) => {
+                      setTabDragData(e, tb.id)
+                      dragChipRef.current = { tabId: tb.id, groupId: g.id }
+                      setDragChipId(tb.id)
+                    }}
+                    onDragEnd={(e) => {
+                      dragChipRef.current = null
+                      setDragChipId(null)
+                      setChipDropMark(null)
+                      handleTabDragEnd(e, tb.id)
+                    }}
+                    // 同分组内拖动排序（横向：左半 = 插到前面）；跨分组/跨窗口冒泡给标签条容器
+                    onDragOver={(e) => {
+                      const d = dragChipRef.current
+                      if (!d || d.tabId === tb.id || d.groupId !== g.id) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const before = e.clientX < rect.left + rect.width / 2
+                      setChipDropMark((prev) =>
+                        prev && prev.id === tb.id && prev.before === before ? prev : { id: tb.id, before }
+                      )
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return
+                      setChipDropMark((prev) => (prev && prev.id === tb.id ? null : prev))
+                    }}
+                    onDrop={(e) => {
+                      const d = dragChipRef.current
+                      if (!d || d.groupId !== g.id) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const before = chipDropMark != null && chipDropMark.id === tb.id && chipDropMark.before
+                      setChipDropMark(null)
+                      moveTabWithinGroup(d.tabId, tb.id, before)
+                    }}
                     onClick={() => activateTab(tb.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()

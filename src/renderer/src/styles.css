@@ -457,7 +457,22 @@ button.saved-toggle:hover { color: var(--ink); }
   color: var(--body);
   border: 1px solid transparent;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
+  position: relative; /* 拖动排序的插位线锚点 */
 }
+/* 标签行拖动排序（同分组内）：拖动中半透明 + 目标行上/下沿插位线（与分组排序同款视觉） */
+.tab-row.dragging { opacity: 0.4; }
+.tab-row.drop-before::before,
+.tab-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 6px; right: 6px;
+  height: 2px;
+  background: var(--link);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.tab-row.drop-before::before { top: -2px; }
+.tab-row.drop-after::after { bottom: -2px; }
 .tab-row:hover { background: var(--canvas-soft-2); }
 .tab-row.active {
   background: var(--canvas);
@@ -654,8 +669,23 @@ button.saved-toggle:hover { color: var(--ink); }
   color: var(--body);
   font-size: 12px;
   cursor: pointer;
+  position: relative; /* 拖动排序的插位线锚点 */
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
+/* 标签条 chip 拖动排序（同分组内）：拖动中半透明 + 目标 chip 左/右沿竖插位线 */
+.tabchip.dragging { opacity: 0.4; }
+.tabchip.drop-before::before,
+.tabchip.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 3px; bottom: 3px;
+  width: 2px;
+  background: var(--link);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.tabchip.drop-before::before { left: -4px; }
+.tabchip.drop-after::after { right: -4px; }
 .tabchip:hover { background: var(--canvas-soft-2); }
 .tabchip.active {
   background: var(--canvas);
