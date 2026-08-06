@@ -229,6 +229,12 @@ export function registerWindowIpc(): void {
       try { targetWc.send('tab:import', payload) } catch {
         return { ok: false, error: 'import send failed' }
       }
+      // 源是副窗口且最后一个标签被迁走 → 自动关窗（Chrome 同款）。必须在这里做而非
+      // 渲染层：此刻 export 回包已收到（数据安全）、releaseTab 已执行（路由表准确）。
+      const srcWin = BrowserWindow.fromWebContents(srcWc)
+      if (srcWin && !srcWin.isDestroyed() && isSecondaryWindow(srcWin) && !wcHasTabs(srcWc)) {
+        try { srcWin.destroy() } catch {}
+      }
       // import 完成由目标窗口回 'tab:import-done'（含 claim + flushPty），这里不再等待
       return { ok: true }
     } finally {

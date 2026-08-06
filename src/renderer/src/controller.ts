@@ -821,6 +821,13 @@ function disposeTabInternal(group: Group, tab: TerminalTab): void {
   }
 }
 
+// 副窗口空了（手动关掉最后一个标签/分组）→ 自动关窗（Chrome 同款）。
+// 拖走迁空的场景由主进程迁移流程负责关窗，这里只管用户手动关闭的路径——
+// 此路径 tabRelease 先于 winClose 发出（IPC 保序），主进程 close handler 查表时已无标签，直接放行。
+function maybeCloseEmptySecondary(): void {
+  if (isSecondary && groups.length === 0) window.term.winClose()
+}
+
 export function closeTab(tabId: string): void {
   const ctx = findTab(tabId)
   if (!ctx) return
@@ -832,6 +839,7 @@ export function closeTab(tabId: string): void {
       const idx = groups.indexOf(group)
       if (idx >= 0) groups.splice(idx, 1)
     }
+    maybeCloseEmptySecondary()
     refreshUI()
     scheduleSave()
   }
@@ -1110,6 +1118,7 @@ function closeGroup(groupId: string): void {
       activeTabId = next?.id ?? null
       if (next) activateUI(next.id)
     }
+    maybeCloseEmptySecondary()
     refreshUI()
     scheduleSave()
     toast(t('已关闭分组「{0}」', g.name))
@@ -2127,10 +2136,9 @@ async function exportTabForTransfer(tabId: string): Promise<TabTransferPayload |
   }
   refreshUI()
   scheduleSave()
-  // 副窗口最后一个标签被拖走 → 自动关窗（Chrome 同款；主进程见「无标签」直接放行销毁）
-  if (isSecondary && groups.length === 0) {
-    window.term.winClose()
-  }
+  // 注意：副窗口迁空的「自动关窗」由主进程迁移流程负责（windows.ts）——此刻路由表还没
+  // release 本 tab，渲染层发 winClose 会被 close handler 的 wcHasTabs 检查误拦；且渲染层
+  // 自关可能抢在 export 回包送达之前销毁进程，丢掉迁移数据。
   return payload
 }
 
