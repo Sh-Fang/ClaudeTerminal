@@ -209,14 +209,17 @@ export function SavedManager() {
   const editingRef = useRef<Editing | null>(null) // commit 的幂等守卫（blur/Enter 可能双触发）
   const downOnScrimRef = useRef(false)
 
-  // 打开时：切到指定页签、清空搜索（对应原 open(undefined, view)）
+  // 打开时：切到指定页签、清空搜索（对应原 open(undefined, view)）、聚焦搜索框——
+  // 打开即可直接敲字搜索，不用先用鼠标点进输入框
   const wasOpenRef = useRef(false)
+  const searchRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       if (initialView) setActiveTab(initialView)
       setSearchQuery('')
       setEditing(null)
       editingRef.current = null
+      searchRef.current?.focus()
     }
     wasOpenRef.current = isOpen
   }, [isOpen, initialView])
@@ -228,9 +231,16 @@ export function SavedManager() {
 
   // Esc：有搜索词时先清空搜索，再次 Esc 才关弹窗 —— 跟浏览器搜索框直觉一致。
   // 行内改名与会话浮层的 Esc 各自 stopPropagation，不会落到这里。
+  // Tab：在「已保存分组 / 已保存工作区」两个页签间切换（行内改名中不抢——那是编辑心流）。
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Tab') {
+        if ((e.target as HTMLElement).closest?.('[contenteditable="true"]')) return
+        e.preventDefault()
+        setActiveTab((prev) => (prev === 'groups' ? 'workspaces' : 'groups'))
+        return
+      }
       if (e.key !== 'Escape') return
       if (searchQuery) {
         setSearchQuery('')
@@ -695,6 +705,7 @@ export function SavedManager() {
               placeholder={placeholder}
               autoComplete="off"
               spellCheck={false}
+              ref={searchRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />

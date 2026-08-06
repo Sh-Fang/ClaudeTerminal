@@ -56,11 +56,14 @@ export function HistoryDialog() {
 
   const grouped = regroup(entries)
 
-  // 打开时拉最近 7 天历史，默认跳到第一个非空桶（用户最关心今天，但今天为空就跳昨天）
+  // 打开时拉最近 7 天历史，默认跳到第一个非空桶（用户最关心今天，但今天为空就跳昨天）。
+  // 同时聚焦搜索框——打开即可直接敲字搜索，不用先用鼠标点进输入框。
+  const searchRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     if (!isOpen) return
     let alive = true
     setSearchQuery('')
+    searchRef.current?.focus()
     void window.term.tabHistoryList().then((list) => {
       if (!alive) return
       setEntries(list)
@@ -261,6 +264,7 @@ export function HistoryDialog() {
               placeholder={t('搜索：分组名 / 路径 / 标签名（支持模糊匹配）')}
               autoComplete="off"
               spellCheck={false}
+              ref={searchRef}
               value={searchQuery}
               onChange={(e) => onSearchInput(e.target.value)}
             />
