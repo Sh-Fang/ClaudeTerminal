@@ -14,7 +14,12 @@ import {
   openTabCtx,
   openSessionCtx,
   startCcInActiveTab,
-  switchSession
+  switchSession,
+  setTabDragData,
+  handleTabDragEnd,
+  isTabDragOver,
+  handleTabDrop,
+  TAB_DND_MIME
 } from '../controller'
 import { openSettings, openSavedManager } from '../state/overlays'
 import { formatTs, sessionTitle, srcLabel, statusLabel } from '../lib/format'
@@ -185,7 +190,19 @@ export function Toolbar() {
     <>
       {/* 水平标签栏：仅 tabBarMode=horizontal 时显示（.app.tabbar-horizontal 由 CSS 控制），
           平铺当前工作区里所有分组的标签（无分组层级）。数据模型不变，仅显示层扁平化。 */}
-      <div className="tabstrip" id="tabstrip">
+      <div
+        className="tabstrip"
+        id="tabstrip"
+        // 跨窗口标签拖入（拖回/合并）：整条标签条都是 drop 目标
+        onDragOver={(e) => {
+          if (isTabDragOver(e.dataTransfer)) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer?.types.includes(TAB_DND_MIME)) return
+          e.preventDefault()
+          handleTabDrop(e.dataTransfer)
+        }}
+      >
         <div className="tabstrip-list" id="tabstripList">
           {groups.length === 0 ? (
             <div className="tabstrip-empty">{t('没有打开的标签')}</div>
@@ -203,6 +220,10 @@ export function Toolbar() {
                     data-t={tb.id}
                     // hover 显示所属分组 / 路径（扁平后仍能知道来源）
                     title={g.cwd ? `${g.name} · ${g.cwd}` : g.name}
+                    // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并
+                    draggable
+                    onDragStart={(e) => setTabDragData(e, tb.id)}
+                    onDragEnd={(e) => handleTabDragEnd(e, tb.id)}
                     onClick={() => activateTab(tb.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()

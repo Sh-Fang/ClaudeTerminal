@@ -1,7 +1,7 @@
-import type { BrowserWindow } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFile, watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { isTabStatus } from './session-constants'
+import { resolveTabWc } from './tab-router'
 
 interface FileState {
   debounce: NodeJS.Timeout | null
@@ -12,7 +12,8 @@ export class StateEventWatcher {
   private files = new Map<string, FileState>()
   private watcher: FSWatcher | null = null
 
-  constructor(private dir: string, private getWindow: () => BrowserWindow | null) {}
+  // 多窗口：事件按 tabId 路由到承载窗口（tab-router 解析，找不到兜底主窗口）
+  constructor(private dir: string) {}
 
   start(): void {
     if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true })
@@ -67,10 +68,8 @@ export class StateEventWatcher {
         message: typeof obj.message === 'string' ? obj.message : undefined,
         ts: typeof obj.ts === 'string' ? obj.ts : undefined
       }
-      const w = this.getWindow()
-      if (!w || w.isDestroyed()) return
-      const wc = w.webContents
-      if (!wc || wc.isDestroyed()) return
+      const wc = resolveTabWc(tabId)
+      if (!wc) return
       try { wc.send('state:event', payload) } catch {}
     })
   }

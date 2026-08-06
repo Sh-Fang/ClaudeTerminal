@@ -1,4 +1,3 @@
-import type { BrowserWindow } from 'electron'
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +12,7 @@ import {
 import { join } from 'node:path'
 import { UUID_RE } from './claude-paths'
 import { isSessionSource } from './session-constants'
+import { resolveTabWc } from './tab-router'
 
 interface FileState {
   offset: number
@@ -45,7 +45,8 @@ export class SessionEventWatcher {
   private files = new Map<string, FileState>()
   private watcher: FSWatcher | null = null
 
-  constructor(dir: string, private getWindow: () => BrowserWindow | null) {
+  // 多窗口：事件按 tabId 路由到承载窗口（tab-router 解析，找不到兜底主窗口）
+  constructor(dir: string) {
     this.dir = dir
   }
 
@@ -123,10 +124,8 @@ export class SessionEventWatcher {
       cwd: typeof obj.cwd === 'string' ? obj.cwd : undefined,
       ts: typeof obj.ts === 'string' ? obj.ts : undefined
     }
-    const w = this.getWindow()
-    if (!w || w.isDestroyed()) return
-    const wc = w.webContents
-    if (!wc || wc.isDestroyed()) return
+    const wc = resolveTabWc(tabId)
+    if (!wc) return
     try { wc.send('session:event', payload) } catch {}
   }
 }

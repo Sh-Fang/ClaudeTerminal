@@ -191,6 +191,13 @@ export const I18N_EN: Record<string, string> = {
   '确认关闭 Claude Terminal？': 'Close Claude Terminal?',
   '关闭后所有终端会话将被终止。': 'All terminal sessions will be terminated.',
 
+  // ─── 多窗口 / 标签拖出拖回 ──────────────────────────────────
+  '确认关闭此窗口？': 'Close this window?',
+  '关闭后该窗口内的终端会话将被终止。确认继续？': 'Terminal sessions in this window will be terminated. Continue?',
+  '移到新窗口': 'Move to new window',
+  '已移入标签「{0}」': 'Tab "{0}" moved in',
+  '移动标签失败：{0}': 'Failed to move tab: {0}',
+
   // ─── 悬浮窗 ─────────────────────────────────────────────────
   '打开主窗口': 'Open main window',
   '隐藏悬浮窗': 'Hide floating widget',

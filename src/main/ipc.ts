@@ -31,6 +31,8 @@ import {
   type HistoryEntry
 } from './tab-history'
 import { moveFloaterTo, pushCountsToFloater, setFloaterDragging, setFloaterEnabled, setFloaterFocusable } from './floater'
+import { routePtyData, setPtyRoute, releasePty } from './tab-router'
+import { allAppWebContents } from './windows'
 
 function shouldDisableAutoupdate(): boolean {
   try { return loadSettings().disableAutoupdater } catch { return true }
@@ -94,14 +96,28 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return err ? { ok: false, error: err } : { ok: true }
   })
 
+  // 多窗口一致性：任一窗口落盘后广播给其余窗口刷新内存副本（sender 自己不用刷）。
+  // savedGroups 并发写仍是"后写覆盖"，但广播把不一致窗口压缩到去抖间隙内，实用上足够。
+  const broadcastExcept = (sender: Electron.WebContents, channel: string, payload?: unknown): void => {
+    for (const wc of allAppWebContents()) {
+      if (wc === sender || wc.isDestroyed()) continue
+      try { wc.send(channel, payload) } catch {}
+    }
+  }
+
   ipcMain.handle('workspace:load', () => loadWorkspace())
-  ipcMain.handle('workspace:save', (_e, ws: Workspace) => {
+  ipcMain.handle('workspace:save', (e, ws: Workspace) => {
     saveWorkspace(ws)
+    broadcastExcept(e.sender, 'workspace:changed')
     return true
   })
 
   ipcMain.handle('settings:load', () => loadSettings())
-  ipcMain.handle('settings:save', (_e, s: unknown) => saveSettings(s))
+  ipcMain.handle('settings:save', (e, s: unknown) => {
+    const normed = saveSettings(s)
+    broadcastExcept(e.sender, 'settings:changed', normed)
+    return normed
+  })
 
   ipcMain.handle('clipboard:read', () => readClipboardSelection())
   ipcMain.handle('clipboard:write', (_e, text: unknown) =>
@@ -198,13 +214,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       if (shouldDisableAutoupdate()) {
         env.DISABLE_AUTOUPDATER = '1'
       }
-      const safeSend = (channel: string, payload: unknown): void => {
-        const w = getWindow()
-        if (!w || w.isDestroyed()) return
-        const wc = w.webContents
-        if (!wc || wc.isDestroyed()) return
-        try { wc.send(channel, payload) } catch {}
-      }
+      // 多窗口：数据/退出按 ptyId 路由到承载窗口（迁移中自动进暂存队列），
+      // 创建时把路由指向发起请求的窗口。
       const id = createPty(
         {
           cols: opts?.cols,
@@ -213,9 +224,13 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
           env,
           profiles: { pwsh: hp.pwshProfilePs1, zsh: hp.zshProfile, bash: hp.bashProfile }
         },
-        (sid, data) => safeSend('pty:data', { id: sid, data }),
-        (sid, exitCode) => safeSend('pty:exit', { id: sid, exitCode })
+        (sid, data) => routePtyData(sid, 'pty:data', { id: sid, data }),
+        (sid, exitCode) => {
+          routePtyData(sid, 'pty:exit', { id: sid, exitCode })
+          releasePty(sid)
+        }
       )
+      setPtyRoute(id, _e.sender)
       return id
     }
   )
@@ -273,19 +288,36 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.on('floater:setEnabled', (_e, on: boolean) => setFloaterEnabled(!!on))
-  ipcMain.on('floater:push', (_e, counts: unknown) => {
+  // 多窗口聚合：每个窗口只报自己名下标签的计数，这里按窗口记账、求和后推给悬浮窗。
+  // 窗口销毁时把它的份额清零（destroyed 监听），避免残留幽灵计数。
+  const floaterCountsByWc = new Map<Electron.WebContents, { done: number; attention: number; busy: number; total: number }>()
+  const pushAggregated = (): void => {
+    const sum = { done: 0, attention: 0, busy: 0, total: 0 }
+    for (const c of floaterCountsByWc.values()) {
+      sum.done += c.done; sum.attention += c.attention; sum.busy += c.busy; sum.total += c.total
+    }
+    pushCountsToFloater(sum)
+  }
+  ipcMain.on('floater:push', (e, counts: unknown) => {
     if (!counts || typeof counts !== 'object') return
     const c = counts as Record<string, unknown>
     const n = (v: unknown): number => {
       const x = typeof v === 'number' ? v : Number(v)
       return Number.isFinite(x) && x >= 0 ? Math.floor(x) : 0
     }
-    pushCountsToFloater({
+    if (!floaterCountsByWc.has(e.sender)) {
+      e.sender.once('destroyed', () => {
+        floaterCountsByWc.delete(e.sender)
+        pushAggregated()
+      })
+    }
+    floaterCountsByWc.set(e.sender, {
       done: n(c.done),
       attention: n(c.attention),
       busy: n(c.busy),
       total: n(c.total)
     })
+    pushAggregated()
   })
   // 悬浮窗 focusable:false，自己 click 不能切焦点，转手让主进程把主窗口拉到前台
   ipcMain.on('floater:focusMain', () => {

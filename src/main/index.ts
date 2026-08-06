@@ -11,6 +11,11 @@ import { loadSettings, saveSettings } from './settings'
 import { detectClaudePath } from './claude-helper'
 import { logEvent, startLogging, stopLogging } from './app-log'
 import { setLanguage, t } from './i18n'
+import { setFallbackWcGetter, dropWc } from './tab-router'
+import { killPty } from './pty-manager'
+import {
+  setMainWindowGetter, registerWindowIpc, isSecondaryWindow, destroyAllSecondary
+} from './windows'
 
 // 界面语言在进程启动时定死（loadSettings 是同步读文件，ready 前即可用）；
 // 切换语言走 app:relaunch 重启生效，运行中不做热切换。
@@ -261,8 +266,17 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
-  // 主窗口一旦被销毁就把悬浮窗也带走 —— 悬浮窗 skipTaskbar，留着会卡住 window-all-closed
-  mainWindow.on('closed', () => { destroyFloater(); destroyTray() })
+  // 主窗口一旦被销毁就把悬浮窗/副窗口也带走 —— 主窗口退出即整个 app 退出
+  mainWindow.on('closed', () => { destroyFloater(); destroyTray(); destroyAllSecondary() })
+
+  // 主窗口渲染进程销毁：路由表清账（正常退出场景 PTY 由退出流程统一回收，这里防崩溃残留）
+  mainWindow.webContents.on('destroyed', () => {
+    if (mainWindow && !fastQuitting) {
+      for (const ptyId of dropWc(mainWindow.webContents)) {
+        try { killPty(ptyId) } catch {}
+      }
+    }
+  })
 
   // 终端输出里的链接（xterm web-links 等）触发 window.open 时，只放行 http(s)，
   // 挡掉 file: / 自定义协议等可被恶意内容利用的 scheme。
@@ -365,6 +379,10 @@ app.whenReady().then(() => {
     try { powerMonitor.on(ev as never, () => logEvent('power', { kind: ev })) } catch {}
   }
 
+  // 多窗口基建：路由兜底指向主窗口；windows.ts 拿主窗口引用；注册迁移相关 IPC
+  setFallbackWcGetter(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null))
+  setMainWindowGetter(() => mainWindow)
+  registerWindowIpc()
   registerPtyIpc(() => mainWindow)
   // 主动拉取：renderer 启动 IIFE 完成后 invoke 一次，把首次启动 argv 里带来的路径取走。
   ipcMain.handle('app:consumePendingOpenHere', () => {
@@ -381,20 +399,27 @@ app.whenReady().then(() => {
     try { stopWatchers() } catch {}
     try { destroyTray() } catch {}
     try { destroyFloater() } catch {}
+    try { destroyAllSecondary() } catch {}
     try { killAll() } catch {}
     try { stopLogging('relaunch') } catch {}
     app.exit(0)
   })
-  ipcMain.on('window:closeConfirmed', () => {
+  ipcMain.on('window:closeConfirmed', (e) => {
+    // 副窗口确认关闭：只销毁该窗口（destroyed 监听会清路由表 + 杀它名下的 PTY），app 继续跑
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win && isSecondaryWindow(win)) {
+      try { win.destroy() } catch {}
+      return
+    }
     allowClose = true
-    // 直接 app.exit(0)：跳过 mainWindow.close() → renderer beforeunload → Chromium
+    // 主窗口：直接 app.exit(0)——跳过 mainWindow.close() → renderer beforeunload → Chromium
     // helper 回收这条慢路径。原本这条路径要 2~3s（xterm 逐 tab dispose + kill IPC
     // 串行 + Chromium 回收），fastQuit 通常 <300ms。
     fastQuit('user-close')
   })
   const hp = ensureHookAssets()
-  sessionWatcher = new SessionEventWatcher(hp.eventsDir, () => mainWindow)
-  stateWatcher = new StateEventWatcher(hp.stateDir, () => mainWindow)
+  sessionWatcher = new SessionEventWatcher(hp.eventsDir)
+  stateWatcher = new StateEventWatcher(hp.stateDir)
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()

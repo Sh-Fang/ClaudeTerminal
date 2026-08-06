@@ -2,6 +2,7 @@ import { Terminal, type IUnicodeVersionProvider } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { backgroundFor, themeForPreset, type Settings } from './themes'
 import { t } from './i18n'
@@ -152,6 +153,7 @@ export class TerminalTab {
   readonly term: Terminal
   readonly fit: FitAddon
   readonly search: SearchAddon
+  private readonly serializer: SerializeAddon
 
   ptyId: number | null = null
   private pendingInput = ''
@@ -226,8 +228,10 @@ export class TerminalTab {
 
     this.fit = new FitAddon()
     this.search = new SearchAddon()
+    this.serializer = new SerializeAddon()
     this.term.loadAddon(this.fit)
     this.term.loadAddon(this.search)
+    this.term.loadAddon(this.serializer)
     // 宽度表对齐：xterm 内置的是 Unicode 6 时代宽度表，emoji（如 ✅）被记 1 格，
     // 而 cc（string-width，新版 Unicode）按 2 格打印 —— buffer 格数和视觉字形错位，
     // 选中重绘时就会整段平移/凭空多空格。切到 Unicode 11 表与打印方对齐。
@@ -785,6 +789,44 @@ export class TerminalTab {
     }
     try { this.term.dispose() } catch {}
     this.host.remove()
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //   跨窗口迁移（拖出/拖回独立窗口）
+  // ═══════════════════════════════════════════════════════════
+
+  // 缓冲区序列化：整个 scrollback + 当前视口 + 光标/模式状态打包成 ANSI 序列，
+  // 在目标窗口的新 xterm 上原样 write 即可无损重现画面。失败返回空串（画面丢失但
+  // PTY 照常接管，属可接受降级）。
+  serializeBuffer(): string {
+    try {
+      return this.serializer.serialize()
+    } catch (e) {
+      console.warn('[term] serialize failed', e)
+      return ''
+    }
+  }
+
+  // 迁出：销毁 xterm 与 DOM，但**不杀 PTY**（进程要交给目标窗口继续用）。
+  // 与 dispose 的唯一区别就是 PTY 归属——调用前应已把 ptyId 打包进迁移 payload。
+  detach(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.ptyId = null // 先摘走引用，绝不能走到 kill
+    try { this.term.dispose() } catch {}
+    this.host.remove()
+  }
+
+  // 迁入：接管一个已存在的 PTY（跳过 startPty 的 create）。调用方需先 write 序列化
+  // 缓冲，再 adopt；adopt 后 refit 一次把新窗口的真实尺寸推给 PTY（迁移前后窗口
+  // 尺寸几乎必然不同，cc 会收 SIGWINCH 按新尺寸重画视口）。
+  adoptPty(id: number): void {
+    if (this.disposed) return
+    this.ptyId = id
+    if (this.pendingInput) {
+      window.term.send(id, this.pendingInput)
+      this.pendingInput = ''
+    }
   }
 }
 

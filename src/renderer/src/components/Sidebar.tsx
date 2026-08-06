@@ -40,7 +40,12 @@ import {
   reorderGroups,
   openRestoreSelect,
   restoreSavedWorkspace,
-  locateActiveTab
+  locateActiveTab,
+  setTabDragData,
+  handleTabDragEnd,
+  isTabDragOver,
+  handleTabDrop,
+  TAB_DND_MIME
 } from '../controller'
 
 const ORDER: Record<TabStatus, number> = { error: 4, attention: 3, done: 2, busy: 1, idle: 0 }
@@ -236,6 +241,17 @@ export function Sidebar() {
         key={tab.id}
         className={'tab-row' + (active ? ' active' : '')}
         data-t={tab.id}
+        // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并。stopPropagation 挡住
+        // 冒泡到 .group 的分组重排 dragstart（否则拖标签会连分组一起标记 dragging）
+        draggable={!renaming}
+        onDragStart={(e) => {
+          e.stopPropagation()
+          setTabDragData(e, tab.id)
+        }}
+        onDragEnd={(e) => {
+          e.stopPropagation()
+          handleTabDragEnd(e, tab.id)
+        }}
         onClick={(e) => {
           // 编辑中点击自身不切换激活
           if ((e.target as HTMLElement).closest('[contenteditable="true"]')) return
@@ -563,7 +579,18 @@ export function Sidebar() {
               </svg>
             </button>
           </div>
-          <div className="side-open-scroll">
+          <div
+            className="side-open-scroll"
+            // 跨窗口标签拖入（拖回/合并）：整个工作区滚动区都是 drop 目标
+            onDragOver={(e) => {
+              if (isTabDragOver(e.dataTransfer)) e.preventDefault()
+            }}
+            onDrop={(e) => {
+              if (!e.dataTransfer?.types.includes(TAB_DND_MIME)) return
+              e.preventDefault()
+              handleTabDrop(e.dataTransfer)
+            }}
+          >
             <div id="groupList">
               {groups.length === 0 ? (
                 <div className="side-empty">{t('工作区为空')}</div>

@@ -270,6 +270,50 @@ export interface TermBridge {
   consumePendingOpenHere(): Promise<string[]>
   // 语言切换等需要整体重启的场景：app.relaunch + 清理后正常退出
   relaunchApp(): void
+
+  // ── 多窗口 / 标签跨窗口迁移 ─────────────────────────────────
+  windowId(): Promise<number>
+  // 渲染层认领/释放 tabId：主进程按此路由 PTY 数据与 hook 事件
+  tabClaim(tabId: string): void
+  tabRelease(tabId: string): void
+  // 迁移入口：targetWindowId 有值 = 迁到该窗口（拖回）；无值 = 在屏幕坐标处开新窗（拖出）
+  tabMoveToWindow(opts: {
+    tabId: string
+    targetWindowId?: number
+    screenX?: number
+    screenY?: number
+  }): Promise<{ ok: boolean; error?: string }>
+  // 源窗口 serialize 前调：让该 PTY 的输出进入主进程暂存队列（迁移期间不丢字节）
+  ptyHold(ptyId: number): Promise<void>
+  onTabExportRequest(cb: (req: { reqId: string; tabId: string }) => void): () => void
+  tabExportReply(reqId: string, payload: TabTransferPayload | null): void
+  onTabImport(cb: (payload: TabTransferPayload) => void): () => void
+  tabImportDone(tabId: string, ptyId: number | null): void
+  // 副窗口渲染层 initApp 完成后上报（主进程据此开始向它 import）
+  secondaryReady(): void
+  // 其他窗口落盘引发的跨窗口同步
+  onSettingsChanged(cb: (s: Settings) => void): () => void
+  onWorkspaceChanged(cb: () => void): () => void
+}
+
+// 跨窗口标签迁移的传输包：源窗口打包 → 主进程转交 → 目标窗口重建
+export interface TabTransferPayload {
+  tab: {
+    id: string
+    name: string
+    cwd: string
+    sessions: SessionRecord[]
+    activeSessionId?: string
+    autoLaunchCC: boolean
+    status: string
+    note?: string
+    dirty: boolean
+    ccActive: boolean
+  }
+  group: { id: string; name: string; cwd: string }
+  ptyId: number | null
+  // xterm 缓冲区的 ANSI 序列化快照（@xterm/addon-serialize）
+  buffer: string
 }
 
 const api: TermBridge = {
@@ -374,7 +418,37 @@ const api: TermBridge = {
     return () => ipcRenderer.off('app:openHere', h)
   },
   consumePendingOpenHere: () => ipcRenderer.invoke('app:consumePendingOpenHere'),
-  relaunchApp: () => ipcRenderer.send('app:relaunch')
+  relaunchApp: () => ipcRenderer.send('app:relaunch'),
+
+  // ── 多窗口 / 标签跨窗口迁移 ─────────────────────────────────
+  windowId: () => ipcRenderer.invoke('window:id'),
+  tabClaim: (tabId) => ipcRenderer.send('tab:claim', tabId),
+  tabRelease: (tabId) => ipcRenderer.send('tab:release', tabId),
+  tabMoveToWindow: (opts) => ipcRenderer.invoke('tab:moveToWindow', opts),
+  ptyHold: (ptyId) => ipcRenderer.invoke('pty:hold', ptyId),
+  onTabExportRequest: (cb) => {
+    const h = (_e: IpcRendererEvent, req: { reqId: string; tabId: string }) => cb(req)
+    ipcRenderer.on('tab:export-request', h)
+    return () => ipcRenderer.off('tab:export-request', h)
+  },
+  tabExportReply: (reqId, payload) => ipcRenderer.send(`tab:export-reply:${reqId}`, payload),
+  onTabImport: (cb) => {
+    const h = (_e: IpcRendererEvent, payload: TabTransferPayload) => cb(payload)
+    ipcRenderer.on('tab:import', h)
+    return () => ipcRenderer.off('tab:import', h)
+  },
+  tabImportDone: (tabId, ptyId) => ipcRenderer.send('tab:import-done', { tabId, ptyId }),
+  secondaryReady: () => ipcRenderer.send('window:secondary-ready'),
+  onSettingsChanged: (cb) => {
+    const h = (_e: IpcRendererEvent, s: Settings) => cb(s)
+    ipcRenderer.on('settings:changed', h)
+    return () => ipcRenderer.off('settings:changed', h)
+  },
+  onWorkspaceChanged: (cb) => {
+    const h = (): void => cb()
+    ipcRenderer.on('workspace:changed', h)
+    return () => ipcRenderer.off('workspace:changed', h)
+  }
 }
 
 contextBridge.exposeInMainWorld('term', api)
