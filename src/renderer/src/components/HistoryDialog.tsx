@@ -111,10 +111,19 @@ export function HistoryDialog() {
     }
   }
 
-  // Esc：有搜索词时先清空搜索（并按需跳桶），再次 Esc 才关弹窗
+  // Esc：有搜索词时先清空搜索（并按需跳桶），再次 Esc 才关弹窗。
+  // Tab：在 今天 / 昨天 / 更早 三个时间桶间循环切换。
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        setActiveBucket((prev) => {
+          const idx = BUCKETS.findIndex((b) => b.key === prev)
+          return BUCKETS[(idx + 1) % BUCKETS.length].key
+        })
+        return
+      }
       if (e.key !== 'Escape') return
       if (searchQuery) {
         setSearchQuery('')
