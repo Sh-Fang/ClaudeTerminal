@@ -348,16 +348,18 @@ export function Sidebar() {
         )}
         {showDirty && <span className="trow-dirty" title={t('有未保存改动')}></span>}
         <span className={'trow-badge' + badgeCls}>{badgeText}</span>
-        <span
-          className="trow-close"
-          data-close={tab.id}
-          title={t('关闭标签')}
-          onClick={(e) => {
-            e.stopPropagation()
-            closeTab(tab.id)
-          }}
-          dangerouslySetInnerHTML={{ __html: icon('close', { size: 12, stroke: 2 }) }}
-        />
+        <span className="trow-actions">
+          <span
+            className="trow-close"
+            data-close={tab.id}
+            title={t('关闭标签')}
+            onClick={(e) => {
+              e.stopPropagation()
+              closeTab(tab.id)
+            }}
+            dangerouslySetInnerHTML={{ __html: icon('close', { size: 12, stroke: 2 }) }}
+          />
+        </span>
       </div>
     )
   }
@@ -414,27 +416,29 @@ export function Sidebar() {
             ></span>
           )}
           <span className="group-count">{g.tabs.length}</span>
-          <span
-            className="group-add"
-            data-addtab={g.id}
-            title={t('新建会话标签')}
-            onClick={(e) => {
-              e.stopPropagation()
-              promptNewTabInGroup(g.id)
-            }}
-            dangerouslySetInnerHTML={{ __html: icon('plus', { size: 13, stroke: 2.2 }) }}
-          />
-          <span
-            className="group-more"
-            data-more={g.id}
-            title={t('更多')}
-            onClick={(e) => {
-              e.stopPropagation()
-              const rect = e.currentTarget.getBoundingClientRect()
-              openGroupCtx(g.id, rect.right, rect.bottom)
-            }}
-            dangerouslySetInnerHTML={{ __html: icon('more-horizontal') }}
-          />
+          <span className="group-actions">
+            <span
+              className="group-add"
+              data-addtab={g.id}
+              title={t('新建会话标签')}
+              onClick={(e) => {
+                e.stopPropagation()
+                promptNewTabInGroup(g.id)
+              }}
+              dangerouslySetInnerHTML={{ __html: icon('plus', { size: 13, stroke: 2.2 }) }}
+            />
+            <span
+              className="group-more"
+              data-more={g.id}
+              title={t('更多')}
+              onClick={(e) => {
+                e.stopPropagation()
+                const rect = e.currentTarget.getBoundingClientRect()
+                openGroupCtx(g.id, rect.right, rect.bottom)
+              }}
+              dangerouslySetInnerHTML={{ __html: icon('more-horizontal') }}
+            />
+          </span>
         </div>
         <div className="group-tabs">{g.tabs.map((tab) => renderTabRow(tab, activeTabId === tab.id, g.id))}</div>
       </div>

@@ -433,15 +433,25 @@ button.saved-toggle:hover { color: var(--ink); }
   background: var(--canvas); border: 1px solid var(--hairline);
   border-radius: var(--r-full); padding: 1px 6px; flex: 0 0 auto;
 }
-/* 平时不占位（display:none），行 hover 才出现——把宽度留给分组名/路径 */
+/* 操作按钮悬浮层：绝对定位钉在行右缘、不参与 flex 排版——hover 出现/消失零回流，
+   行宽行高都不变（平时宽度仍留给分组名/路径）；左缘渐变把滑到按钮下方的计数徽标淡出 */
+.group-actions {
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  padding: 0 8px 0 22px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(to right, transparent, var(--canvas-soft-2) 22px);
+}
+.group-head:hover .group-actions { display: flex; }
 .group-more, .group-add {
   width: 22px; height: 22px; border-radius: var(--r-sm);
-  display: none; place-items: center; color: var(--mute);
+  display: grid; place-items: center; color: var(--mute);
   flex: 0 0 auto; transition: background 0.12s, color 0.12s;
   cursor: pointer; line-height: 1;
 }
-.group-head:hover .group-more,
-.group-head:hover .group-add { display: grid; }
 .group-more:hover { background: var(--hairline); color: var(--ink); }
 .group-add:hover { background: var(--canvas); color: var(--link); box-shadow: 0 0 0 1px var(--hairline); }
 
@@ -473,9 +483,11 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .tab-row.drop-before::before { top: -2px; }
 .tab-row.drop-after::after { bottom: -2px; }
-.tab-row:hover { background: var(--canvas-soft-2); }
+/* --row-hover-bg：hover 时行的实际底色，供 .trow-actions 渐变遮罩取色衔接 */
+.tab-row:hover { background: var(--canvas-soft-2); --row-hover-bg: var(--canvas-soft-2); }
 .tab-row.active {
   background: var(--canvas);
+  --row-hover-bg: var(--canvas);
   color: var(--ink);
   border-color: var(--hairline);
   box-shadow: var(--sh-1);
@@ -536,15 +548,24 @@ button.saved-toggle:hover { color: var(--ink); }
   flex: 0 0 6px;
   background: #f5a623;
 }
-/* 平时不占位（display:none），行 hover 才出现——把宽度留给标签名/徽标 */
+/* 关闭按钮悬浮层：同 .group-actions 思路——绝对定位不占位、零回流，渐变遮罩淡出徽标 */
+.trow-actions {
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  padding: 0 8px 0 18px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: none;
+  align-items: center;
+  background: linear-gradient(to right, transparent, var(--row-hover-bg, var(--canvas-soft-2)) 18px);
+}
+.tab-row:hover .trow-actions { display: flex; }
 .trow-close {
   width: 18px; height: 18px;
   border-radius: var(--r-full);
-  display: none; place-items: center;
+  display: grid; place-items: center;
   color: var(--mute);
   line-height: 1; flex: 0 0 18px; cursor: pointer;
 }
-.tab-row:hover .trow-close { display: grid; }
 .trow-close:hover { background: var(--hairline); color: var(--ink); }
 
 /* Saved groups */
@@ -661,7 +682,11 @@ button.saved-toggle:hover { color: var(--ink); }
 .tabstrip-empty { color: var(--mute); font-size: 12px; padding: 4px 6px; }
 .tabchip {
   display: inline-flex; align-items: center; gap: 6px;
-  flex: 0 0 auto;
+  /* Chrome 式等宽标签：basis 0 让所有 chip 无视内容长短等分空间，
+     少量标签时各自撑到 max-width 的固定宽，标签多了整体一起收缩到 min-width 才开始滚动 */
+  flex: 1 1 0;
+  max-width: 200px;
+  min-width: 72px;
   padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
@@ -694,12 +719,13 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .tabchip .st-dot { flex: 0 0 auto; }
 .tabchip-name {
+  flex: 1 1 auto; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 160px;
 }
 .tabchip .trow-dirty { flex: 0 0 auto; }
 .tabchip-close {
   display: inline-grid; place-items: center;
+  flex: 0 0 auto;
   width: 16px; height: 16px;
   border-radius: var(--r-xs);
   color: var(--mute);
