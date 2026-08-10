@@ -28,7 +28,7 @@ import { icon } from '../svg-icons'
 import { t } from '../i18n'
 import type { TerminalTab, SessionRecord, TabStatus } from '../terminal-tab'
 
-// 当前会话：优先按 activeSessionId 找，找不到（或没设）退回栈顶（数组末尾）
+// 当前会话：优先按 activeSessionId 找，找不到退回栈顶
 function currentSession(tab: TerminalTab): SessionRecord | undefined {
   if (!tab.activeSessionId) return tab.sessions[tab.sessions.length - 1]
   return (
@@ -37,13 +37,13 @@ function currentSession(tab: TerminalTab): SessionRecord | undefined {
   )
 }
 
-// 行内改名：把名字 span 临时置为 contentEditable，直接在原文字上继续改（原 Sidebar 同款）。
-// commit 后 renameTab 触发 rev bump → React 重渲染回正常文本；取消/空值则手动还原旧文案。
+// 行内改名：名字 span 临时置为 contentEditable；commit 后 renameTab 触发 rev bump 重渲染，
+// 取消/空值手动还原旧文案。
 function startInlineRename(tabId: string, el: HTMLSpanElement): void {
   const old = el.textContent ?? ''
   el.contentEditable = 'true'
   el.focus()
-  // 不全选：光标 collapse 到末尾，视觉上就是在原始文字上继续改
+  // 光标 collapse 到末尾（不全选）
   const range = document.createRange()
   range.selectNodeContents(el)
   range.collapse(false)
@@ -79,7 +79,7 @@ function startInlineRename(tabId: string, el: HTMLSpanElement): void {
   el.addEventListener('keydown', onKey)
 }
 
-// 「+」：在当前活动标签所属分组内新建标签；没有活动标签时退回新建分组
+// 「+」：在活动标签所属分组内新建标签；无活动标签退回新建分组
 function addTabInActiveGroup(): void {
   const activeTabId = getActiveTabId()
   const groups = getGroupViews()
@@ -91,9 +91,8 @@ function addTabInActiveGroup(): void {
 export function Toolbar() {
   const rev = useAppStore((s) => s.rev)
   void rev
-  // 会话栈下拉的开合（原 Toolbar 的 sessMenu/sessSelect .open 类）
   const [menuOpen, setMenuOpen] = useState(false)
-  // 标签条 chip 拖动排序（同分组内）：ref 记录拖动中的标签与其分组
+  // 标签条 chip 同分组内拖动排序
   const dragChipRef = useRef<{ tabId: string; groupId: string } | null>(null)
   const [dragChipId, setDragChipId] = useState<string | null>(null)
   const [chipDropMark, setChipDropMark] = useState<{ id: string; before: boolean } | null>(null)
@@ -102,14 +101,13 @@ export function Toolbar() {
   const groups = getGroupViews()
   const activeTabId = getActiveTabId()
 
-  // 无活动标签 → 强制收起会话菜单（对齐原 render() 空态里的 closeMenu()）
+  // 无活动标签 → 强制收起会话菜单
   const hasCtx = cur != null
   useEffect(() => {
     if (!hasCtx) setMenuOpen(false)
   }, [hasCtx])
 
-  // 全局点击关闭下拉：点在 .session-menu / .session-select 之外才关。
-  // session-select 自身的 onClick 有 stopPropagation，不会被这里误关。
+  // 点在 .session-menu / .session-select 之外才关下拉
   useEffect(() => {
     if (!menuOpen) return
     const onDocClick = (e: MouseEvent): void => {
@@ -123,14 +121,12 @@ export function Toolbar() {
   const tab = cur?.tab
   const st = (tab?.status ?? 'idle') as TabStatus
   const curSess = tab ? currentSession(tab) : undefined
-  // "启动 CC"入口显示条件：没勾自动启动 CC，且当下 cc 进程不活跃。
-  // 用 ccActive 而非 sessions.length：cc 起过再退出时也让按钮回来，语义是"当前是纯 pwsh"。
+  // "启动 CC"显示条件：没勾自动启动且 cc 进程不活跃（用 ccActive：cc 退出后按钮要回来）
   const pureNonCc = tab != null && !tab.autoLaunchCC && !tab.ccActive
-  // 水平标签栏：整条 .toolbar 隐藏（CSS），会话/管理/设置入口以图标并入标签条右侧，
-  // 会话下拉菜单也要跟着挂到 .tabstrip 下（.toolbar display:none 后其内部 absolute 弹层弹不出来）
+  // 水平标签栏时整条 .toolbar 被 CSS 隐藏，会话菜单要挂到 .tabstrip 下才弹得出来
   const horizontal = getSettings().tabBarMode === 'horizontal'
 
-  // 会话栈下拉菜单：垂直模式挂 .toolbar、水平模式挂 .tabstrip，同一份 JSX 两处按需渲染
+  // 会话栈下拉菜单：垂直模式挂 .toolbar、水平模式挂 .tabstrip
   const sessionMenu = (
     <div className={'session-menu' + (menuOpen ? ' open' : '')} id="sessionMenu">
       <div className="menu-eyebrow">{t('本标签的会话（栈顶 = 当前）')}</div>
@@ -141,7 +137,7 @@ export function Toolbar() {
               {t('没有会话记录。激活标签后 cc 会自动创建首个会话。')}
             </div>
           ) : (
-            // 倒序展示：栈顶在最上面
+            // 倒序展示，栈顶在最上面
             [...tab.sessions].reverse().map((s) => {
               const isCurrent = s.sessionId === tab.activeSessionId
               return (
@@ -193,12 +189,11 @@ export function Toolbar() {
 
   return (
     <>
-      {/* 水平标签栏：仅 tabBarMode=horizontal 时显示（.app.tabbar-horizontal 由 CSS 控制），
-          平铺当前工作区里所有分组的标签（无分组层级）。数据模型不变，仅显示层扁平化。 */}
+      {/* 水平标签栏：仅 tabBarMode=horizontal 时显示，平铺所有分组的标签（仅显示层扁平化） */}
       <div
         className="tabstrip"
         id="tabstrip"
-        // 跨窗口标签拖入（拖回/合并）：整条标签条都是 drop 目标
+        // 跨窗口标签拖入：整条标签条都是 drop 目标
         onDragOver={(e) => {
           if (isTabDragOver(e.dataTransfer)) e.preventDefault()
         }}
@@ -215,7 +210,7 @@ export function Toolbar() {
             groups.flatMap((g) =>
               g.tabs.map((tb) => {
                 const cst = (tb.status ?? 'idle') as TabStatus
-                // dirty 点：跟 isGroupDirty 的过滤条件对齐——纯 pwsh tab 即便 dirty=true 也不显示
+                // dirty 点与 isGroupDirty 过滤条件对齐：纯 pwsh tab 不显示
                 const showDirty = tb.dirty && isCcTab(tb)
                 const dotTitle = tb.note ? t('{0}：{1}', statusLabel(cst), tb.note) : statusLabel(cst)
                 return (
@@ -228,9 +223,8 @@ export function Toolbar() {
                       (chipDropMark?.id === tb.id ? (chipDropMark.before ? ' drop-before' : ' drop-after') : '')
                     }
                     data-t={tb.id}
-                    // hover 显示所属分组 / 路径（扁平后仍能知道来源）
+                    // hover 显示所属分组 / 路径
                     title={g.cwd ? `${g.name} · ${g.cwd}` : g.name}
-                    // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并
                     draggable
                     onDragStart={(e) => {
                       setTabDragData(e, tb.id)
@@ -243,7 +237,7 @@ export function Toolbar() {
                       setChipDropMark(null)
                       handleTabDragEnd(e, tb.id)
                     }}
-                    // 同分组内拖动排序（横向：左半 = 插到前面）；跨分组/跨窗口冒泡给标签条容器
+                    // 同分组内拖动排序（左半 = 插到前面）；跨分组/跨窗口冒泡给容器
                     onDragOver={(e) => {
                       const d = dragChipRef.current
                       if (!d || d.tabId === tb.id || d.groupId !== g.id) return
@@ -310,7 +304,7 @@ export function Toolbar() {
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
-        {/* 水平模式下整条 .toolbar 隐藏，会话/管理/设置以图标并入标签条右侧 */}
+        {/* 水平模式下会话/管理/设置以图标并入标签条右侧 */}
         {horizontal && (
           <>
             <button
@@ -418,7 +412,7 @@ export function Toolbar() {
             </svg>
           </span>
         </div>
-        {/* 顶栏「分组/工作区管理」按钮（水平标签栏下左栏隐藏，靠它进管理弹窗；显隐由 CSS 控制） */}
+        {/* 顶栏「分组/工作区管理」按钮，显隐由 CSS 控制 */}
         <button
           className="tool-icon-btn"
           id="manageTopBtn"

@@ -1,14 +1,9 @@
 import { useEffect } from 'react'
 import { t } from '../i18n'
 
-// 标题栏：brand + 自绘窗口控制三键。
-// 平台标记：macOS 用系统红绿灯（frame hiddenInset），CSS 据 body.platform-mac
-// 隐藏自绘的右侧窗口按钮并给标题栏左侧留出红绿灯位置。
-// body 的 platform-mac / platform-win 类由 controller.preBoot 设置，这里不重复管。
+// 标题栏：brand + 自绘窗口控制三键；macOS 用系统红绿灯，CSS 据 body.platform-mac 隐藏自绘按钮。
 export function TitleBar() {
-  // Windows caption 语义：最大化时把「最大化」方框图标切成「还原」双框图标。
-  // body.win-maximized 驱动 CSS 切换；订阅主进程的 maximize/unmaximize 状态 + 拉一次初始态。
-  // （macOS 用系统红绿灯，自绘按钮已隐藏，这里直接跳过。）
+  // 最大化时切「还原」图标：body.win-maximized 驱动 CSS，订阅主进程状态 + 拉一次初始态
   useEffect(() => {
     if (window.term.platform === 'darwin') return
     const applyMax = (maximized: boolean): void => {

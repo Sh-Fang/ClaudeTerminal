@@ -1,7 +1,4 @@
-// 设置面板（React 版）：由原 settings-panel.ts + index.html #settingsScrim 整块迁移。
-// 结构 / id / class 与原静态 DOM 一一对应；开合状态订阅 overlays 的 settings 开关。
-// 表单是「打开时从 getSettings() 绑定一次，每次变更整装新 Settings 提交」——
-// 与原 bindFromSettings / commitChange 流程一致。
+// 设置面板：开合订阅 overlays；表单打开时从 getSettings() 绑定一次，每次变更整装新 Settings 提交。
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   DEFAULT_SETTINGS,
@@ -21,8 +18,7 @@ import { t } from '../i18n'
 import { getSettings, updateSettings } from '../controller'
 import { useAppStore } from '../state/store'
 
-// 与 preload/index.ts 的 InstalledCcVersion 同构。不直接 import：preload/index.ts 不在
-// tsconfig.web 的文件清单里（web 项目只认 index.d.ts 的全局声明），跨项目 import 会报 TS6307。
+// 与 preload 的 InstalledCcVersion 同构；跨 tsconfig import 会报 TS6307，手抄一份
 interface InstalledCcVersion {
   version: string
   path: string
@@ -33,7 +29,7 @@ interface InstalledCcVersion {
 const FOLLOW_CC_LABEL = '跟随 cc 默认'
 const CC_PAGE_SIZE = 10
 
-// 简易 semver 比较：与主进程 cc-versions.ts 里保持一致；pre-release 视为更小
+// 简易 semver 比较：与主进程 cc-versions.ts 保持一致；pre-release 视为更小
 function cmpSemver(a: string, b: string): number {
   const [ah, ap = ''] = a.split('-', 2)
   const [bh, bp = ''] = b.split('-', 2)
@@ -55,18 +51,14 @@ function clamp(n: number, min: number, max: number, fb: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
-// ─── npm 镜像候选 ────────────────────────────────────────────────
-// 国内常用镜像 + npm 官方（配合「使用 npm 镜像」开关：关 = 主进程直接走官方源）。
-// name 是词典 key；测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
-// 只收真正实现 npm registry 协议的源（清华/中科大镜像站不反代 registry，装包会 404）
+// npm 镜像候选：只收真正实现 npm registry 协议的源（部分镜像站不反代 registry，装包会 404）；
+// 测速走主进程 npm:ping（渲染层 CSP 不放行外网 fetch）。
 const NPM_MIRRORS: { name: string; url: string }[] = [
   { name: '腾讯云', url: 'https://mirrors.cloud.tencent.com/npm/' },
-  // npmmirror（前身淘宝镜像）由阿里云提供；不带尾斜杠，与 DEFAULT_SETTINGS.npmRegistry 一致
   { name: '阿里云', url: 'https://registry.npmmirror.com' },
   { name: '官方镜像', url: 'https://registry.npmjs.org' }
 ]
 
-// URL 归一化比较：尾斜杠不参与判等（老配置/默认值可能带或不带）
 function normUrl(u: string): string {
   return u.trim().replace(/\/+$/, '')
 }
@@ -75,7 +67,6 @@ function hostOf(u: string): string {
   try { return new URL(u).host } catch { return u }
 }
 
-// picker 按钮上显示的当前镜像：预置项显示名称·host，老配置的自定义地址兜底「自定义」
 function npmRegLabel(reg: string): string {
   const cur = normUrl(reg)
   const m = NPM_MIRRORS.find((x) => normUrl(x.url) === cur)
@@ -83,8 +74,7 @@ function npmRegLabel(reg: string): string {
   return `${t('自定义')} · ${hostOf(cur)}`
 }
 
-// 时延徽标 HTML（CtxItem.metaHtml）：undefined = 未返回（测速中），-1 = 超时/不通。
-// 分级：<100ms 绿 / 100~200 蓝 / 200~500 黄 / >500 红。
+// 时延徽标 HTML：undefined = 测速中，-1 = 超时/不通
 function latBadge(ms: number | undefined): string {
   if (ms === undefined) return '<span>…</span>'
   if (ms < 0) return `<span class="lat-bad">${t('超时')}</span>`
@@ -92,8 +82,7 @@ function latBadge(ms: number | undefined): string {
   return `<span class="${cls}">${ms}ms</span>`
 }
 
-// 面板表单快照：对应原实现里各控件的即时值。文本/数字输入存原始串，
-// 提交时才 clamp（与原 commitChange 读 .value 再 clamp 的行为一致，输入框不被改写）。
+// 面板表单快照：文本/数字输入存原始串，提交时才 clamp，输入框不被改写
 interface Form {
   family: string
   size: string
@@ -117,9 +106,8 @@ interface Form {
   language: AppLanguage
 }
 
-// 原 bindFromSettings：Settings → 控件值（含各兜底）
+// Settings → 控件值（老配置缺字段/存了已退役 model id 时各自兜底）
 function formFromSettings(s: Settings): Form {
-  // 未知的 model arg 兜底到空（跟随 cc 默认）—— 老配置里存了已退役 id 时不至于白屏
   const known = new Set<string>(['', ...MODEL_GROUPS.flatMap((g) => g.rows.map((r) => r.arg))])
   return {
     family: s.font.family,
@@ -127,16 +115,12 @@ function formFromSettings(s: Settings): Form {
     line: String(s.font.lineHeight),
     scrollback: String(s.terminal.scrollback),
     npmReg: s.npmRegistry,
-    // 老配置没有该字段时兜底开启（现状行为：默认走 npmmirror）
     npmMirror: s.npmMirrorEnabled !== false,
     theme: s.terminal.theme,
     appTheme: s.appTheme,
-    // 老配置没有该字段时兜底垂直
     tabBarMode: s.tabBarMode || 'vertical',
-    // 老配置没有该字段时兜底进度条，保证进设置一定有选中态
     usageStyle: s.usageStyle || 'bar',
     downgradeSec: String(s.statusDowngradeSec),
-    // 老配置没有该字段时兜底「确认后退出」（现状行为）
     closeBehavior: s.closeBehavior || 'quit',
     cursor: s.cursor.style,
     cursorBlink: s.cursor.blink,
@@ -149,8 +133,7 @@ function formFromSettings(s: Settings): Form {
   }
 }
 
-// CC 版本管理的内部状态：沿用原 class 字段的可变心智，塞进一个 ref 对象，
-// 变更后手动 rerender ——避免异步流程里到处踩 React state 的闭包陈旧坑。
+// CC 版本管理内部状态：塞进 ref 对象手动 rerender，避免异步流程踩 React state 闭包陈旧坑
 interface CcState {
   installedSet: Set<string>
   installedMap: Map<string, { path: string; active: boolean }>
@@ -159,11 +142,10 @@ interface CcState {
   detectedVersion: string // 从 claudePath 反查到的版本（含自定义路径场景）
   installingVer: string
   loaded: boolean
-  infoLoaded: boolean // applyInstalled 至少跑过一次（否则「正在使用」卡片显示 —）
+  infoLoaded: boolean // applyInstalled 至少跑过一次
   page: number
-  // 首次拉完远端后要自动跳到含使用中版本的页；之后用户改 filter/search 时不再自动跳
+  // 首次拉完远端后自动跳到含使用中版本的页；之后不再自动跳
   autoJumpPending: boolean
-  // 安装进度
   installStartTs: number
   installPhase: string
   hintText: string
@@ -176,10 +158,10 @@ interface CcState {
 export function SettingsPanel() {
   const open = useOverlays((s) => s.settingsOpen)
   const rev = useAppStore((s) => s.rev)
-  void rev // 声明依赖：设置在别处（如版本切换写 claudePath）变化时刷新「正在使用」卡片
+  void rev // 设置在别处变化时刷新「正在使用」卡片
 
   const [form, setForm] = useState<Form>(() => formFromSettings(DEFAULT_SETTINGS))
-  // commit 之间可能同 tick 连发（菜单选择等），走 ref 保证读到最新快照
+  // commit 可能同 tick 连发，走 ref 保证读到最新快照
   const formRef = useRef(form)
   formRef.current = form
   const [section, setSection] = useState('appearance')
@@ -190,20 +172,18 @@ export function SettingsPanel() {
   const scrimDownRef = useRef(false)
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const langBtnRef = useRef<HTMLButtonElement>(null)
-  // npm 镜像下拉：时延按 url 记账（undefined = 测速中 / 未测；-1 = 超时）
+  // npm 镜像下拉：时延按 url 记账
   const [npmOpen, setNpmOpen] = useState(false)
   const [npmLat, setNpmLat] = useState<Record<string, number | undefined>>({})
   const npmLatRef = useRef(npmLat)
   npmLatRef.current = npmLat
   const npmBtnRef = useRef<HTMLButtonElement>(null)
 
-  // 关于区
   const [aboutVer, setAboutVer] = useState('—')
   const aboutVerLoadedRef = useRef(false)
   const [aboutChecking, setAboutChecking] = useState(false)
   const [aboutHint, setAboutHint] = useState('')
 
-  // CC 版本管理
   const cc = useRef<CcState>({
     installedSet: new Set(),
     installedMap: new Map(),
@@ -228,12 +208,10 @@ export function SettingsPanel() {
   const ccInstallTickerRef = useRef<number | null>(null)
   const ccInstallPhaseUnsubRef = useRef<(() => void) | null>(null)
 
-  // ─── 提交流程（原 commitChange）────────────────────────────
   function doCommit(f: Form): void {
     const cur = getSettings()
     const next: Settings = {
-      // 用 cur 打底，保留面板里没有的字段（lastUsedCwd / sidebarWidth /
-      // sidebarCollapsed / savedCollapsed），否则它们会在每次保存时被抹掉。
+      // 用 cur 打底，保留面板里没有的字段，否则每次保存会被抹掉
       ...cur,
       version: 1,
       font: {
@@ -253,12 +231,12 @@ export function SettingsPanel() {
       tabBarMode: (f.tabBarMode as TabBarMode) || cur.tabBarMode,
       usageStyle: (f.usageStyle as UsageStyle) || cur.usageStyle,
       defaults: {
-        // cwd 预填全靠 lastUsedCwd 自动记忆，设置面板不再提供手动默认路径
+        // cwd 预填靠 lastUsedCwd 自动记忆，面板不提供手动默认路径
         cwd: cur.defaults.cwd,
         autoLaunchCC: f.defaultCC,
         model: f.model ?? ''
       },
-      // claudePath 由 CC 版本管理 / 首启自动检测维护，面板不直接编辑（...cur 已带上）
+      // claudePath 由 CC 版本管理维护，面板不直接编辑（...cur 已带上）
       npmRegistry: f.npmReg.trim() || DEFAULT_SETTINGS.npmRegistry,
       npmMirrorEnabled: f.npmMirror,
       disableAutoupdater: f.disableUpd,
@@ -283,14 +261,11 @@ export function SettingsPanel() {
   }
 
   async function syncSystemEnv(enabled: boolean): Promise<void> {
-    // 行为保留：写入/移除 Windows 用户环境变量；UI 上不再回显结果
     try {
       await window.term.applyDisableAutoupdater(enabled)
     } catch {}
   }
 
-  // 设置里勾了「禁止自动升级」但系统环境变量还没写（如默认勾选、从未触发过写入）→
-  // 补写一次，保持设置与系统状态一致。
   async function ensureUpdConsistency(): Promise<void> {
     try {
       const cur = await window.term.readDisableAutoupdater()
@@ -300,11 +275,10 @@ export function SettingsPanel() {
     } catch {}
   }
 
-  // ─── 打开 / 关闭 ───────────────────────────────────────────
+  // 打开时：绑定表单 + 回到外观分区 + 环境变量一致性补写
   const prevOpenRef = useRef(false)
   useEffect(() => {
     if (open && !prevOpenRef.current) {
-      // 原 open()：bindFromSettings + 回到外观分区 + 环境变量一致性补写
       const s = getSettings()
       const f = formFromSettings(s)
       formRef.current = f
@@ -316,13 +290,11 @@ export function SettingsPanel() {
     prevOpenRef.current = open
   }, [open])
 
-  // 打开面板即并发测速全部镜像（含老配置的自定义地址），结果陆续填进 npmLat。
-  // 每次打开清空重测——网络环境可能变了，别拿上次的旧数字骗人。
+  // 每次打开清空重测全部镜像时延
   useEffect(() => {
     if (!open) return
     setNpmLat({})
     const urls = new Set(NPM_MIRRORS.map((m) => m.url))
-    // normUrl 与菜单里 custom entry 的记账 key 对齐（尾斜杠差异不至于查不到时延）
     const cur = normUrl(getSettings().npmRegistry)
     if (cur) urls.add(cur)
     for (const url of urls) {
@@ -354,7 +326,7 @@ export function SettingsPanel() {
     setSection(name)
     if (name === 'claude') {
       ensureInstallPhaseSub()
-      // 首次打开必拉；之后只刷新已安装（远端保持缓存，靠「刷新」按钮显式重拉）
+      // 首次打开必拉远端；之后只刷新已安装，远端靠「刷新」按钮重拉
       void refresh(!cc.loaded)
     }
     if (name === 'about' && !aboutVerLoadedRef.current) {
@@ -363,7 +335,6 @@ export function SettingsPanel() {
     }
   }
 
-  // ─── CC 版本管理 ───────────────────────────────────────────
   function ensureInstallPhaseSub(): void {
     if (ccInstallPhaseUnsubRef.current) return
     ccInstallPhaseUnsubRef.current = window.term.onCcInstallPhase(({ version, phase }) => {
@@ -388,7 +359,6 @@ export function SettingsPanel() {
     cc.infoLoaded = true
   }
 
-  // 拉数据 + 重渲染。fetchRemote=true 时会重新问远端（首次打开或用户点「刷新」）。
   async function refresh(fetchRemote: boolean): Promise<void> {
     if (fetchRemote) {
       cc.refreshing = true
@@ -417,7 +387,6 @@ export function SettingsPanel() {
       ])
       applyInstalled(installed, curVer)
     }
-    // 首次拉完远端 → 自动跳到含使用中版本的页；用户改 filter 后不再自动跳
     if (fetchRemote && cc.autoJumpPending) {
       const pg = pageOfCurrent()
       if (pg > 0) cc.page = pg
@@ -426,7 +395,6 @@ export function SettingsPanel() {
     rerender()
   }
 
-  // 合并 + 过滤后的版本序列（供分页与页码计算复用）
   function computeFiltered(): string[] {
     const q = cc.search.trim().toLowerCase()
     const onlyInstalled = cc.onlyInstalled
@@ -434,7 +402,7 @@ export function SettingsPanel() {
     for (const v of cc.installedSet) all.add(v)
     if (cc.detectedVersion) all.add(cc.detectedVersion)
     const versions = Array.from(all).sort(cmpSemver).reverse()
-    // 「已安装」= 托管的 ∪ 反查到的（自定义路径 / 系统 PATH 里的 claude 都算）
+    // 「已安装」= 托管的 ∪ 反查到的
     const isInstalledForFilter = (v: string): boolean =>
       cc.installedSet.has(v) || (!!cc.detectedVersion && v === cc.detectedVersion)
     return versions.filter((v) => {
@@ -444,7 +412,6 @@ export function SettingsPanel() {
     })
   }
 
-  // 使用中版本在当前过滤序列中所属的页（1-based）；不在或无 => 0
   function pageOfCurrent(): number {
     const target = cc.activeVersion || cc.detectedVersion
     if (!target) return 0
@@ -459,9 +426,7 @@ export function SettingsPanel() {
     if (cur.claudePath === path) return
     const next = { ...cur, claudePath: path }
     updateSettings(next)
-    // updateSettings 走 300ms 去抖落盘 —— 但下面 refresh 立即通过 IPC 让主进程读磁盘
-    // 拿 claudePath 判断哪版是 active。抢跑就会读到旧值 → UI 显示"没换"。
-    // 这里显式 await 一次落盘（幂等，去抖的第二次写入也无副作用），确保 refresh 拿到新值。
+    // updateSettings 是 300ms 去抖落盘，refresh 会立即读磁盘；显式 await 一次落盘防抢跑读旧值
     await window.term.saveSettings(next)
     await refresh(false)
   }
@@ -486,7 +451,7 @@ export function SettingsPanel() {
 
   function confirmInstall(version: string): void {
     if (cc.installingVer) return
-    // 使用中·自定义路径的版本安装 → 语义是"备份到托管"，改一下措辞让用户明白目的
+    // 使用中·自定义路径的版本安装 → 语义是"备份到托管"
     const isBackup =
       !!cc.detectedVersion && version === cc.detectedVersion && !cc.installedSet.has(version)
     const msg = isBackup
@@ -508,11 +473,10 @@ export function SettingsPanel() {
     cc.installPhase = ''
     setCcHint('', '')
     rerender()
-    // 每 700ms 重渲染一次，刷新 installing 行的 meta（elapsed 秒计数）
     ccInstallTickerRef.current = window.setInterval(() => rerender(), 700)
     try {
       const res = await window.term.ccInstall(version)
-      // '已取消' 是主进程回传的协议串（保持中文比对，不能翻译后再比）
+      // '已取消' 是主进程回传的协议串，保持中文比对
       if (!res.ok && res.error !== '已取消') {
         setCcHint(t('安装失败：{0}', t(res.error ?? '未知')), 'err')
       }
@@ -533,7 +497,7 @@ export function SettingsPanel() {
       setCcHint(t('取消失败：{0}', t(res.error ?? '未知')), 'err')
       rerender()
     }
-    // 成功后 install() 会走 error='已取消' 分支 resolve，走 installVersion 的 finally 收尾
+    // 成功后 install() 走 error='已取消' 分支 resolve，由 installVersion 的 finally 收尾
   }
 
   function formatInstallingMeta(): string {
@@ -545,15 +509,14 @@ export function SettingsPanel() {
     return t('安装中 · {0}s', secs) + (short ? ' · ' + short : '')
   }
 
-  // ─── 模型 / 语言 picker（showCtxMenu 浮层复用）─────────────
+  // 模型 / 语言 picker（showCtxMenu 浮层复用）；已展开时再点收起
   function openModelPicker(): void {
-    // 已展开 → 再点收起（closeCtxMenu 触发 onClose 把 open 态翻回 false）
     if (modelOpen) {
       closeCtxMenu()
       return
     }
     const cur = formRef.current.model
-    // arg = '' 视为"跟随 cc 默认"。用共享 MODEL_GROUPS 保证与左下芯片候选一致。
+    // arg = '' 视为"跟随 cc 默认"；共享 MODEL_GROUPS 与左下芯片候选一致
     const setVal = (v: string): void => {
       if (formRef.current.model === v) return
       commit({ model: v })
@@ -576,14 +539,12 @@ export function SettingsPanel() {
     const btn = modelBtnRef.current
     if (!btn) return
     const r = btn.getBoundingClientRect()
-    // 菜单宽与 picker 对齐，从下方展开；showCtxMenu 会自己夹进视口
     setModelOpen(true)
     showCtxMenu(items, r.left, r.bottom + 4, () => setModelOpen(false), { minWidth: r.width })
   }
 
-  // 下拉选项固定用各自语言显示（简体中文 / English），不随界面语言翻译
+  // 下拉选项固定用各自语言显示，不随界面语言翻译
   function openLanguagePicker(): void {
-    // 已展开 → 再点收起（closeCtxMenu 触发 onClose 把 open 态翻回 false）
     if (langOpen) {
       closeCtxMenu()
       return
@@ -605,7 +566,6 @@ export function SettingsPanel() {
     showCtxMenu(items, r.left, r.bottom + 4, () => setLangOpen(false), { minWidth: r.width })
   }
 
-  // ─── npm 镜像 picker ────────────────────────────────────────
   function npmMenuItems(): CtxItem[] {
     const cur = normUrl(formRef.current.npmReg)
     const setVal = (v: string): void => {
@@ -614,11 +574,11 @@ export function SettingsPanel() {
     }
     const lat = npmLatRef.current
     const entries: { name: string; url: string }[] = [...NPM_MIRRORS]
-    // 老配置的自定义地址不在预置列表 → 追加一项，保证已有配置可见可选不丢失
+    // 老配置的自定义地址不在预置列表 → 追加一项
     if (cur && !NPM_MIRRORS.some((m) => normUrl(m.url) === cur)) {
       entries.push({ name: '自定义', url: cur })
     }
-    // 每次展示按测速快慢升序：已出结果的按 ms 排，测速中排其后，超时/不通垫底
+    // 按测速快慢升序：测速中排其后，超时/不通垫底
     const latRank = (ms: number | undefined): number =>
       ms === undefined ? 1_000_000 : ms < 0 ? 2_000_000 : ms
     entries.sort((a, b) => latRank(lat[a.url]) - latRank(lat[b.url]))
@@ -638,7 +598,6 @@ export function SettingsPanel() {
   }
 
   function openNpmPicker(): void {
-    // 已展开 → 再点收起（与语言/模型 picker 同款切换语义）
     if (npmOpen) {
       closeCtxMenu()
       return
@@ -647,14 +606,12 @@ export function SettingsPanel() {
     showNpmMenu()
   }
 
-  // 测速结果陆续返回时，若下拉正开着就原位刷新徽标（showCtxMenu 覆盖式打开，不闪不动位）
+  // 测速结果陆续返回时原位刷新已打开的下拉
   useEffect(() => {
     if (npmOpen) showNpmMenu()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [npmLat])
 
-  // 语言重启才生效：行内常驻提示（带「立即重启」），再弹一次确认支持立即重启。
-  // 提示文案用当前运行语言 —— 那是用户此刻一定看得懂的语言。
   function promptLanguageRestart(): void {
     setLangHintShown(true)
     confirmDialog({
@@ -673,9 +630,9 @@ export function SettingsPanel() {
       okLabel: t('恢复'),
       danger: true,
       onOk: () => {
-        // 语言不跟随「恢复默认」重置 —— 否则英文用户一键重置后界面变回中文
+        // 语言不跟随「恢复默认」重置
         const f = formFromSettings({ ...DEFAULT_SETTINGS, language: getSettings().language })
-        // 对齐原实现：bindFromSettings 先重置 lastDisableUpd 基线，再 commit —— 重置不触发环境变量同步
+        // 先重置 lastDisableUpd 基线再 commit，重置不触发环境变量同步
         lastDisableUpdRef.current = f.disableUpd
         formRef.current = f
         setForm(f)
@@ -684,8 +641,6 @@ export function SettingsPanel() {
     })
   }
 
-  // ─── 渲染辅助 ─────────────────────────────────────────────
-  // 通用分段按钮组（原 initSeg/setSeg）：点击切换 active + 提交
   const seg = (
     id: string,
     ariaLabel: string,
@@ -710,12 +665,10 @@ export function SettingsPanel() {
     </div>
   )
 
-  // 原 buildRow：单行版本条目
   function ccRow(version: string) {
     const installedInfo = cc.installedMap.get(version)
     const isManagedActive = version === cc.activeVersion
-    // 放宽：detected 且非 managed active 就算 external active —— 即使托管里也装了同版本，
-    // 只要 claudePath 还指向自定义路径，仍然显示为「使用中·自定义路径」；托管副本作为备份
+    // detected 且非 managed active 即 external active；托管里的同版本副本作为备份
     const isExternalActive =
       !isManagedActive && !!cc.detectedVersion && version === cc.detectedVersion
     const isActive = isManagedActive || isExternalActive
@@ -734,7 +687,6 @@ export function SettingsPanel() {
     } else if (isManagedActive) {
       metaText = t('使用中')
     } else if (isExternalActive) {
-      // external active + 已托管 → 仍是"使用中·自定义路径"，尾巴加个小提示
       metaText = isInstalled ? t('使用中 · 自定义路径 · 已备份到托管') : t('使用中 · 自定义路径')
     } else if (isInstalled) {
       metaText = t('已安装')
@@ -743,16 +695,15 @@ export function SettingsPanel() {
 
     let actions: ReactNode = null
     if (isInstalling) {
-      // 安装中 → 取消
       actions = (
         <button type="button" className="cvrow-btn danger" onClick={() => void cancelInstall(version)}>
           {t('取消')}
         </button>
       )
     } else if (isManagedActive) {
-      // 托管使用中：禁止自删自切 —— 无按钮
+      // 托管使用中：禁止自删自切，无按钮
     } else if (isExternalActive && !isInstalled) {
-      // 使用中但没在托管：给「安装」，把当前版本备份到托管，方便以后切回
+      // 使用中但没在托管：给「安装」备份到托管
       actions = (
         <button
           type="button"
@@ -765,7 +716,7 @@ export function SettingsPanel() {
         </button>
       )
     } else if (isExternalActive && isInstalled) {
-      // 使用中且已在托管：启用 = 把 claudePath 切到托管副本；卸载 = 只删托管副本、不影响外部
+      // 启用 = claudePath 切到托管副本；卸载 = 只删托管副本
       actions = (
         <>
           <button
@@ -787,7 +738,6 @@ export function SettingsPanel() {
         </>
       )
     } else if (isInstalled) {
-      // 普通托管备用版本
       actions = (
         <>
           <button
@@ -831,8 +781,6 @@ export function SettingsPanel() {
     )
   }
 
-  // ─── 派生渲染数据 ──────────────────────────────────────────
-  // 过滤 + 分页（原 renderList 的页码 clamp 在渲染时就地做）
   const filtered = computeFiltered()
   const ccTotal = filtered.length
   const totalPages = Math.max(1, Math.ceil(ccTotal / CC_PAGE_SIZE))
@@ -841,7 +789,6 @@ export function SettingsPanel() {
   const ccSlice = filtered.slice((cc.page - 1) * CC_PAGE_SIZE, (cc.page - 1) * CC_PAGE_SIZE + CC_PAGE_SIZE)
   const ccCurPage = pageOfCurrent()
 
-  // 「正在使用」卡片（原 applyInstalled 里的 innerHTML 拼装）
   const claudePathCur = getSettings().claudePath?.trim() || ''
   const ccCurLabel = !cc.infoLoaded ? (
     <>—</>
@@ -869,7 +816,6 @@ export function SettingsPanel() {
     </>
   )
 
-  // 默认模型 picker 文案
   const modelLabel =
     form.model === ''
       ? t(FOLLOW_CC_LABEL)
@@ -982,7 +928,6 @@ export function SettingsPanel() {
           </nav>
 
           <div className="settings-pane">
-            {/* ── 外观 ── */}
             <div className="set-section" data-section="appearance" hidden={section !== 'appearance'}>
               <div className="set-row">
                 <label>{t('标签栏')}</label>
@@ -1016,7 +961,6 @@ export function SettingsPanel() {
                     onChange={(e) => commit({ showUsage: e.target.checked })}
                   />
                 </div>
-                {/* 「额度显示样式」只有在「显示剩余额度」开启时才露出 */}
                 <div className="usage-cell" id="set-usage-style-wrap" hidden={!form.showUsage}>
                   <label>{t('额度显示样式')}</label>
                   {seg('set-usage-style', t('额度显示样式'), form.usageStyle, (v) => commit({ usageStyle: v }), [
@@ -1027,7 +971,6 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {/* ── 通用 ── */}
             <div className="set-section" data-section="general" hidden={section !== 'general'}>
               <div className="set-row">
                 <label>{t('语言 / Language')}</label>
@@ -1038,7 +981,7 @@ export function SettingsPanel() {
                   data-val={form.language}
                   ref={langBtnRef}
                   onClick={(e) => {
-                    e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
+                    e.stopPropagation() // 挡掉 document.click 关 ctx 的兜底
                     openLanguagePicker()
                   }}
                 >
@@ -1090,7 +1033,6 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {/* ── 终端 ── */}
             <div className="set-section" data-section="terminal" hidden={section !== 'terminal'}>
               <div className="set-row">
                 <label>{t('字体族')}</label>
@@ -1194,7 +1136,6 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {/* ── Claude Code ── */}
             <div className="set-section" data-section="claude" hidden={section !== 'claude'}>
               <div className="set-row">
                 <label>
@@ -1209,7 +1150,7 @@ export function SettingsPanel() {
                   data-val={form.model}
                   ref={modelBtnRef}
                   onClick={(e) => {
-                    e.stopPropagation() // 挡掉 ui-helpers 里 document.click 关 ctx 的兜底
+                    e.stopPropagation() // 挡掉 document.click 关 ctx 的兜底
                     openModelPicker()
                   }}
                 >
@@ -1237,7 +1178,7 @@ export function SettingsPanel() {
                   onChange={(e) => commit({ npmMirror: e.target.checked })}
                 />
               </div>
-              {/* 开关开启才露出镜像选择；关闭 = 版本管理走 npm 官方源 */}
+              {/* 开关关闭 = 版本管理走 npm 官方源 */}
               {form.npmMirror && (
                 <div className="set-row">
                   <label>{t('npm 镜像')}</label>
@@ -1348,7 +1289,7 @@ export function SettingsPanel() {
                       dangerouslySetInnerHTML={{ __html: t('第 <span class="cur">{0}</span> / {1} 页', cc.page, totalPages) }}
                     />
                     <span className="cvpager-spacer" />
-                    {/* 使用中版本所在页 → 若不在本页，展示一个小跳转 chip（在本页时不显示，rail + meta 已足够） */}
+                    {/* 使用中版本不在本页时展示跳转 chip */}
                     {ccCurPage > 0 && ccCurPage !== cc.page ? (
                       <button
                         type="button"
@@ -1384,7 +1325,6 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {/* ── 关于 ── */}
             <div className="set-section" data-section="about" hidden={section !== 'about'}>
               <div className="about-card">
                 <span className="about-icon" aria-hidden="true">
@@ -1398,7 +1338,7 @@ export function SettingsPanel() {
                 <div className="about-ver">
                   {t('版本')} <span id="about-version">{aboutVer}</span>
                 </div>
-                {/* 检查更新：目前是壳子，更新服务接入后替换这里的实现 */}
+                {/* 检查更新目前是壳子，更新服务接入后替换 */}
                 <button
                   id="about-check-update"
                   className="btn btn-secondary"

@@ -14,7 +14,7 @@ export interface SessionRecord {
   sessionId: string
   source: SessionSource
   createdAt: string
-  userTitle?: string // 用户手动重命名，空则默认「会话 N」——需持久化，否则保存的分组重载后丢失
+  userTitle?: string // 用户手动重命名；需持久化，否则保存的分组重载后丢失
   lastTs?: string
 }
 
@@ -47,7 +47,7 @@ export interface SavedGroupRecord {
   srcId?: string // 原始 group.id，用于「同组覆盖」
 }
 
-// 保存整个工作区：当前 groups + activeTabId 完整快照，用于一键恢复整套开发上下文
+// 整个工作区快照，用于一键恢复
 export interface SavedWorkspaceRecord {
   id: string
   name: string
@@ -95,7 +95,7 @@ function normalizeTab(t: unknown): TabRecord | null {
   if (Array.isArray(r.sessions)) {
     sessions = r.sessions.map(normalizeSession).filter((s): s is SessionRecord => !!s)
   } else if (typeof r.sessionId === 'string') {
-    // M5-A 老格式：迁移
+    // 老格式（单 sessionId）迁移
     sessions = [{ sessionId: r.sessionId, source: 'startup', createdAt: new Date().toISOString() }]
   }
 
@@ -179,10 +179,9 @@ function normalizeSavedWorkspace(s: unknown): SavedWorkspaceRecord | null {
   }
 }
 
+// v1（扁平 tabs）→ v2：按 cwd 聚合成组
 function migrateV1(data: Record<string, unknown>): Workspace {
-  // v1: { version:1, tabs:[{id,name,cwd,...}], activeTabId }
   const v1Tabs = Array.isArray(data.tabs) ? data.tabs : []
-  // 按 cwd 聚合：同 cwd → 同组
   const byCwd = new Map<string, { name: string; tabs: TabRecord[] }>()
   for (const raw of v1Tabs) {
     if (!raw || typeof raw !== 'object') continue

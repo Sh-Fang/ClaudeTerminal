@@ -1,7 +1,5 @@
-// controller.ts —— 业务核心（原 main.ts 全量移植，React 迁移后 UI 渲染交给组件树）。
-// 状态仍是"就地可变 + 显式刷新"模式：任何改动后调 refreshUI()（= store bump + 悬浮窗计数推送），
-// 订阅 rev 的组件重拉 getter 数据。弹窗/菜单/toast 走 state/overlays 的命令式 API（签名与原
-// ui-helpers 一致）；会话信息条的 nudge 走事件总线 busEmit。
+// controller.ts —— 业务核心。状态是"就地可变 + 显式刷新"：改动后调 refreshUI()（store bump + 悬浮窗计数推送），
+// 订阅 rev 的组件重拉 getter 数据；弹窗/菜单/toast 走 state/overlays 命令式 API。
 import { TerminalTab, type SessionRecord } from './terminal-tab'
 import { DEFAULT_SETTINGS, type Settings } from './themes'
 import {
@@ -39,7 +37,6 @@ import type {
   HistoryEntry
 } from './app-types'
 
-// 类型 re-export：组件统一从 controller 拿视图类型（app-types 亦可）
 export type {
   GroupView,
   SavedView,
@@ -52,9 +49,7 @@ export type {
   HistoryEntry
 } from './app-types'
 
-// ─── hosts 元素（TerminalHosts 组件挂载后注入） ────────────────────
-// xterm 命令式挂载的宿主容器。React 组件 ref 就绪后调 setHostsEl；initApp 开头
-// await hostsReady，保证恢复标签时 hostsEl 一定可用。
+// hosts 元素：xterm 命令式挂载的宿主容器。initApp 开头 await hostsReady，保证恢复标签时 hostsEl 可用。
 let hostsEl: HTMLDivElement | null = null
 let hostsReadyResolve: (() => void) | null = null
 const hostsReady = new Promise<void>((resolve) => {
@@ -69,7 +64,6 @@ export function setHostsEl(el: HTMLDivElement | null): void {
   hostsReadyResolve = null
 }
 
-// ─── 状态 ───────────────────────────────────────────────────────────
 export interface Group {
   id: string
   name: string
@@ -78,31 +72,23 @@ export interface Group {
   tabs: TerminalTab[]
 }
 
-// 标签是否"承载 cc"：勾了自动启动 cc，或实际已经起过 cc 会话（含手动 cct / claude 起的）。
-// 关键：autoLaunchCC 只是"新建时的意图"，cct 手动起的会话 autoLaunchCC=false 却有真实会话
-// 价值——只看 autoLaunchCC 会把这种 tab 误判成纯 pwsh，dirty / 关闭确认全部漏掉。
+// 标签是否"承载 cc"：勾了自动启动，或实际起过会话——cct 手动起的 autoLaunchCC=false 但有真实会话，也算。
 export function isCcTab(t: TerminalTab): boolean {
   return t.autoLaunchCC || t.sessions.length > 0
 }
 
-// 纯 pwsh 分组：所有标签既没勾"自动启动 cc"、也没起过任何 cc 会话。本质就是普通终端，
-// 关掉就关掉、下次重开就是空白，没有保存价值。
 function isPureNonCcGroup(g: Group): boolean {
   return g.tabs.length > 0 && g.tabs.every((t) => !isCcTab(t))
 }
 
-// 单个标签是否"可丢弃"：不承载 cc（没勾自动启动、也没有任何会话栈记录）。
-// 关闭这种标签不会丢失任何 cc 会话历史，跳过二次确认更顺手。
 function isTabExpendable(t: TerminalTab): boolean {
   return !isCcTab(t)
 }
 
-// 分组是否"脏"：组内有承载 cc 的未保存标签，或组元信息（name/cwd）与已保存的不一致，
-// 或根本没有对应的已保存条目。纯 pwsh 分组永远视为"不脏"——没东西可保存。
+// 分组是否"脏"：有承载 cc 的脏标签、元信息与已保存不一致、或无保存条目。纯 pwsh 分组永远不脏。
 function isGroupDirty(g: Group): boolean {
   if (isPureNonCcGroup(g)) return false
-  // 只有"承载 cc"的 tab 的 dirty 才传染到分组——纯 pwsh tab 改了也无所谓。
-  // 用 isCcTab 而非 autoLaunchCC：cct 手动起的会话（autoLaunchCC=false）也要能让分组显 dirty。
+  // 用 isCcTab 而非 autoLaunchCC：cct 手动起的会话也要能让分组显 dirty
   if (g.tabs.some((t) => t.dirty && isCcTab(t))) return true
   const saved = savedGroups.find((s) => s.srcId === g.id)
   if (!saved) return true
@@ -162,8 +148,6 @@ export function getSettings(): Settings {
   return settings
 }
 
-// 悬浮窗：统计 done / attention / busy 标签数 + 已打开分组下的标签总数。
-// 全 0 时悬浮窗自行退回展示 total（标签数），这里只负责老老实实推数。
 function pushFloaterCounts(): void {
   if (!settings.showFloater) return
   let done = 0, attention = 0, busy = 0, total = 0
@@ -179,8 +163,7 @@ function pushFloaterCounts(): void {
   window.term.floaterPush({ done, attention, busy, total })
 }
 
-// 统一刷新入口：原 sidebar.render()/toolbar.render()/savedManager.render() 全部汇聚到这里。
-// bump 让订阅 rev 的组件重渲染；悬浮窗计数原来包在 sidebar.render 外层，一并跟着刷。
+// 统一刷新入口：bump 触发订阅 rev 的组件重渲染，悬浮窗计数一并跟着刷。
 function refreshUI(): void {
   bump()
   pushFloaterCounts()
@@ -195,10 +178,8 @@ export function updateSettings(s: Settings): void {
   const prevTabBar = settings.tabBarMode
   settings = s
   applySettingsToAll()
-  // 主题/标签栏布局/终端背板等由 App 与组件按 settings 派生；这里只负责刷新与联动
-  // 设置里可能改了「已保存分组显示数量」，重渲染让侧边栏与管理弹窗即时反映
   refreshUI()
-  // 布局在垂直/水平之间切换会改变终端可用宽度 —— 布局稳定后重排一次，避免尺寸错位
+  // 垂直/水平布局切换改变终端可用宽度 —— 布局稳定后重排一次
   if (prevTabBar !== settings.tabBarMode) {
     setTimeout(() => activeContext()?.tab.refit(), 60)
   }
@@ -206,12 +187,10 @@ export function updateSettings(s: Settings): void {
     window.term.floaterSetEnabled(settings.showFloater)
   }
   if (settings.showFloater) pushFloaterCounts()
-  // 去抖落盘（含主进程归一化后回写，可能 clamp 了字段，保持本地一致）——与 persistSettings 同逻辑
   persistSettings()
 }
 
-// 就地合并（不落盘不刷新）：侧边栏拖宽度 / 已保存区拖高度过程中高频调用，
-// 拖完由调用方自己 persistSettings。
+// 就地合并（不落盘不刷新）：拖拽过程高频调用，拖完由调用方自己 persistSettings。
 export function patchSettingsLive(p: Partial<Settings>): void {
   settings = { ...settings, ...p }
 }
@@ -220,8 +199,7 @@ export function persistSettings(): void {
   if (settingsSaveTimer != null) window.clearTimeout(settingsSaveTimer)
   settingsSaveTimer = window.setTimeout(() => {
     settingsSaveTimer = null
-    // 合并而非整体替换：主进程若是旧构建（归一化白名单没有新字段），
-    // 整体替换会把渲染层刚写入的新字段悄悄抹掉（表现为"设置不生效/回跳"）
+    // 合并而非整体替换：旧构建主进程的归一化会把新字段悄悄抹掉
     void window.term.saveSettings(settings).then((normed) => { settings = { ...settings, ...normed } })
   }, 300)
 }
@@ -232,8 +210,6 @@ function uid(prefix: string): string {
 
 const IS_WIN_PLATFORM = window.term.platform === 'win32'
 
-// 平台感知的 shell 引号：Windows 走 pwsh（单引号内 '' 转义），
-// macOS/类 Unix 走 POSIX（单引号内 '\'' 转义）。用于把绝对路径 / tab 名安全拼进命令行。
 function quoteShell(s: string): string {
   return IS_WIN_PLATFORM
     ? `'${s.replace(/'/g, "''")}'`
@@ -242,11 +218,7 @@ function quoteShell(s: string): string {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// 判断 shell-integration 上报的命令行是不是「启动 cc」——命中就跳过 shell-busy 标注，
-// 让 cc 自己的 hooks 单独驱动 busy/attention/done/error。
-// 覆盖：`claude ...`、`& 'C:\...\claude.exe' ...`、`& claude ...`、`cct ...`（本 app pwsh
-// profile 注入的函数，内部就是启动可接管的 cc），以及用户在 settings 里指定的 claudePath
-// basename（改名后的 cc 也能识别）。扩展名 .exe/.cmd/.ps1/.bat 视为等价。
+// 判断命令行是否「启动 cc」（claude / cct / claudePath basename）：命中则跳过 shell-busy，交给 cc hooks 驱动状态。
 function commandLineIsCcInvocation(cmd: string | undefined, claudePath: string): boolean {
   if (!cmd) return false
   const m = /^\s*(?:&\s+)?(?:'([^']*)'|"([^"]*)"|(\S+))/.exec(cmd)
@@ -271,7 +243,6 @@ async function hookSettingsArg(): Promise<string> {
   return cachedHookSettingsArg
 }
 
-// ─── 寻找 / 当前激活 ───────────────────────────────────────────────
 function findTab(tabId: string): { group: Group; tab: TerminalTab } | null {
   for (const g of groups) {
     const t = g.tabs.find((x) => x.id === tabId)
@@ -290,28 +261,23 @@ export function getActiveTabId(): string | null {
   return activeTabId
 }
 
-// 当前活跃 tab 重排（原 ResizeObserver / 布局切换后的 refit 汇聚点，供组件调用）
 export function refitActive(): void {
   activeContext()?.tab.refit()
 }
 
-// Toolbar 组件的数据源（原 Toolbar hooks 的 getActiveTab）
 export function getToolbarCtx(): { tab: TerminalTab; groupName: string; groupCwd: string } | null {
   const ctx = activeContext()
   if (!ctx) return null
   return { tab: ctx.tab, groupName: ctx.group.name, groupCwd: ctx.group.cwd }
 }
 
-// SessionInfoBar 组件的数据源（原 SessionInfoBar hooks 的 getActive）
 export function getSessionInfoCtx(): { sessionId: string | null; cwd: string } | null {
   const ctx = activeContext()
   if (!ctx) return null
   return { sessionId: ctx.tab.activeSessionId ?? null, cwd: ctx.group.cwd }
 }
 
-// ─── 持久化 ────────────────────────────────────────────────────────
-// 轻量模式：只持久化已保存的分组（savedGroups），当前打开的分组与标签不写盘。
-// 用户希望"打开秒开 = 空状态"，未保存的工作随窗口关闭即销毁。
+// 轻量持久化：只写已保存条目，当前打开的分组不落盘，随窗口关闭即销毁。
 function scheduleSave(): void {
   if (saveDebounceTimer != null) window.clearTimeout(saveDebounceTimer)
   saveDebounceTimer = window.setTimeout(() => {
@@ -370,10 +336,7 @@ function scheduleSave(): void {
   }, 300)
 }
 
-// ─── 标签历史落底 ──────────────────────────────────────────────────
-// 每次"打开标签 / 激活标签 / 会话栈变化"都把 tab 当前状态写入历史，给崩溃后找回用。
-// 写盘走主进程同步落盘（atomic rename），调用频率上靠这里做轻量节流：同一 tab 1.5s 内
-// 至多写一次（除非强制）；新建/恢复/会话事件等关键时机用 force=true 立刻落。
+// 标签历史：打开/激活/会话栈变化时写入（崩溃后找回）；同 tab 1.5s 节流，关键时机 force=true 立刻落。
 const historyFlushAt = new Map<string, number>()
 function recordTabHistory(tab: TerminalTab, groupName: string, force = false): void {
   const now = Date.now()
@@ -393,14 +356,12 @@ function recordTabHistory(tab: TerminalTab, groupName: string, force = false): v
   })
 }
 
-// ─── 启动 cc ───────────────────────────────────────────────────────
 async function launchCC(tab: TerminalTab): Promise<void> {
   if (!tab.autoLaunchCC) return
   if (tab.ptyId == null) return
 
   const claudeBin = settings.claudePath.trim()
   if (claudeBin) {
-    // 自定义路径：先校验文件存在
     if (!(await window.term.pathExists(claudeBin))) {
       tab.term.writeln(`\x1b[33m${t('[claude 路径不存在：{0}，跳过自动启动]', claudeBin)}\x1b[0m`)
       tab.term.writeln(`\x1b[90m${t('请到设置 → Claude Code 中重新选择 claude 可执行文件。')}\x1b[0m`)
@@ -413,10 +374,8 @@ async function launchCC(tab: TerminalTab): Promise<void> {
       return
     }
   }
-  // 自定义路径走平台引号；默认走裸 claude（让 shell 自己解析）
   const claudeCmd = claudeBin ? quoteShell(claudeBin) : 'claude'
-  // Windows(pwsh)：带空格/反斜杠的绝对路径要加 & 调用操作符才执行；
-  // POSIX(zsh/bash)：引号包住的绝对路径可直接执行，无需前缀。
+  // pwsh 里引号包住的绝对路径要加 & 调用操作符才执行；POSIX 不用
   const invoker = claudeBin && IS_WIN_PLATFORM ? '& ' : ''
 
   const settingsArg = await hookSettingsArg()
@@ -432,9 +391,7 @@ async function launchCC(tab: TerminalTab): Promise<void> {
     const newId = crypto.randomUUID()
     tab.activeSessionId = newId
     scheduleSave()
-    // 设置里选了默认模型 → 新会话开局带上 --model；--resume 分支刻意不带，
-    // 避免覆盖旧会话原有模型（cc 恢复后仍走它自己保存的默认，用户想改用左下芯片手动切）。
-    // 只允许字母数字/-/./_，防注入（同时也能挡住"跟随 cc 默认"的空串）
+    // 新会话带 --model；--resume 分支刻意不带，避免覆盖旧会话原有模型。白名单校验防注入。
     const model = settings.defaults.model
     const modelArg = /^[A-Za-z0-9._-]+$/.test(model) ? ` --model ${model}` : ''
     cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quoteShell(tab.name)}${modelArg}${settingsArg}`
@@ -442,9 +399,7 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   window.term.send(tab.ptyId, cmd + '\r')
 }
 
-// 顶栏"启动 CC"按钮入口：在当前纯 pwsh 标签里手动起一次可被 app 接管的 cc 会话。
-// 等效于用户手敲 cct（走 shell profile 里的 cct 函数：--session-id 新 uuid --name <tab>
-// --settings <hooks>），给不知道 cct 命令的用户一个可视化入口；hook 上报后 onSessionEvent 压栈接管。
+// 顶栏"启动 CC"按钮：在纯 pwsh 标签里手动起可被接管的 cc（等效手敲 cct），hook 上报后压栈接管。
 export function startCcInActiveTab(): void {
   const ctx = activeContext()
   if (!ctx) return
@@ -455,7 +410,6 @@ export function startCcInActiveTab(): void {
   tab.term.focus()
 }
 
-// ─── Tab 工厂 ─────────────────────────────────────────────────────
 function makeTab(group: Group, opts: {
   id?: string
   name: string
@@ -496,23 +450,19 @@ function makeTab(group: Group, opts: {
         tabRef.note = undefined
         refreshUI()
       },
-      // cc 接口异常兜底：terminal-tab 扫到 API Error 时已把 status 置成 error，
-      // 这里补上 note 并刷新侧栏/顶栏（红点，需用户手动"标记为已查看"清除）。
+      // cc API Error：terminal-tab 已置 status=error，这里补 note 并刷新（红点需手动清除）
       onErrorDetected: (note) => {
         tabRef.note = note
         refreshUI()
       },
       onShellCommand: (kind, cmd) => {
-        // pwsh shell integration OSC 序列触发 → pwsh 一定在前台（cc 全屏 TUI 会完全屏蔽这些序列）。
-        // 顶栏"启动 CC"按钮据此显隐：cc 退出后 pwsh 打 prompt 触发一次 end → 按钮秒回。
+        // shell integration OSC 触发 → pwsh 一定在前台（cc 全屏 TUI 会屏蔽这些序列），据此翻回 ccActive
         if (tabRef.ccActive) {
           tabRef.ccActive = false
           refreshUI()
         }
-        // A: cc tab（autoLaunchCC=true）状态完全交给 cc hooks，shell 事件不参与，避免重复标注。
+        // cc tab 状态完全交给 cc hooks，shell 事件不参与
         if (tabRef.autoLaunchCC) return
-        // B: 过滤命令本身是启动 cc 的情况——用户在纯 pwsh tab 里手打 `claude` 也不上蓝点。
-        //   （字符串匹配漏了兜不住的其他形式，就让它按 shell-busy 显示也没关系，无副作用。）
         if (kind === 'start' && commandLineIsCcInvocation(cmd, settings.claudePath)) return
         if (kind === 'start') {
           if (tabRef.status === 'busy') return
@@ -525,7 +475,6 @@ function makeTab(group: Group, opts: {
           tabRef.note = undefined
         }
         refreshUI()
-        // 状态变化极频繁（每条 pwsh 命令一对），不落 scheduleSave —— 状态本身不会持久化
       }
     }
   )
@@ -534,28 +483,21 @@ function makeTab(group: Group, opts: {
   tabRef.mount(hostsEl!)
   // 多窗口路由：认领 tabId，主进程把该 tab 的 hook 事件推到本窗口
   window.term.tabClaim(id)
-  // 新建/恢复出来的 tab 立刻落历史，崩溃前哪怕一秒没动也能找回
   recordTabHistory(tabRef, group.name, true)
   return tabRef
 }
 
 async function spawnTabPty(tab: TerminalTab): Promise<void> {
-  // 等 setActive 里那帧 rAF 跑完再 startPty —— 此时 host 已 display:block 完成
-  // reflow、fit 算出真实 cols/rows、xterm 已 resize 到位。
-  // 否则 PTY 会用 mount 时 display:none 的 80×24 默认尺寸启动，cc 用 80×24 画
-  // splash 的同时 rAF refit 把 PTY 改成真实尺寸 → cc 收 SIGWINCH 边画边重排 →
-  // splash box-drawing 字符整屏错位（"切走再切回来就正常了"就是这个原因）。
+  // 等 setActive 的 rAF 跑完（fit 已算出真实 cols/rows）再 startPty；
+  // 否则 PTY 以 display:none 时的 80×24 启动，cc splash 画到一半收 SIGWINCH 会整屏错位。
   if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, tab.id, 'spawnTabPty: awaiting rAF before startPty')
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, tab.id, 'spawnTabPty: rAF done, calling startPty')
   await tab.startPty()
-  // 异步刷新 lastTs（首次出现就重渲染）
   void refreshSessionMeta(tab)
 }
 
-// 每帧只处理一小批标签的 PTY，批内并发发起、批与批之间让出一帧主线程。
-// 目的：避免"N 个标签同步初始化 + 串行等 IPC"堆成一个长任务把 UI 线程占满
-// （表现为恢复多标签时掉帧、鼠标拖动卡顿）。
+// 每帧只起一小批 PTY，批间让出一帧，避免恢复多标签时长任务卡死 UI 线程。
 const RESTORE_BATCH = 2
 async function spawnTabsBatched(tabs: TerminalTab[]): Promise<void> {
   for (let i = 0; i < tabs.length; i += RESTORE_BATCH) {
@@ -580,7 +522,6 @@ async function refreshSessionMeta(tab: TerminalTab): Promise<void> {
   }
 }
 
-// ─── 分组 / 标签 增删改 ───────────────────────────────────────────
 function ensureGroup(opts: { name: string; cwd: string }): Group {
   const g: Group = {
     id: uid('g_'),
@@ -617,7 +558,6 @@ export async function newGroup(): Promise<void> {
       activeTabId = tab.id
       activateUI(tab.id)
       await spawnTabPty(tab)
-      // 记住这次选的路径作为下次预填
       if (cwd && cwd !== settings.lastUsedCwd) {
         settings = { ...settings, lastUsedCwd: cwd }
         void window.term.saveSettings(settings)
@@ -628,14 +568,9 @@ export async function newGroup(): Promise<void> {
   })
 }
 
-// 右键菜单"在此处打开 Claude Terminal"入口：直接建 tab，不弹 modal。
-// - 同 cwd 已有 live 分组 → 直接往里新建 tab（tab 名为分组内下一个字母）
-// - 否则 ensureGroup(name=basename(path))；若 savedGroups 里有同 name+cwd 的已保存分组，
-//   把它的 srcId 绑到新建的 live 分组 —— 这样 isGroupDirty 因为新 tab.id 不在快照里 → 分组头
-//   会显示黄色 dirty，用户手动"保存分组"就把新 tab 并进去。
-// autoLaunchCC 走设置默认值。
+// 右键"在此处打开"：同 cwd 的 live 分组直接加 tab，否则新建并重绑已保存分组的 srcId（触发 dirty 提示保存）。
 function basenameOfPath(p: string): string {
-  // 磁盘根（D:\ / D: / D:/）没有"最后一段"，美化成「D 盘」而不是裸盘符 "D:"
+  // 磁盘根（D:\ 等）没有"最后一段"，美化成「D 盘」
   const drive = /^([a-zA-Z]):[\\/]?$/.exec(p.trim())
   if (drive) return t('{0} 盘', drive[1].toUpperCase())
   const segs = p.split(/[\\/]+/).filter(Boolean)
@@ -645,7 +580,6 @@ function basenameOfPath(p: string): string {
 async function openHereWithPath(rawPath: string): Promise<void> {
   const p = (rawPath || '').trim()
   if (!p) return
-  // 先校验路径存在，避免右键选中一个已重命名/删除的目录时静默 spawn 失败
   const exists = await window.term.pathExists(p)
   if (!exists) {
     toast(t('路径不存在：{0}', p))
@@ -653,11 +587,9 @@ async function openHereWithPath(rawPath: string): Promise<void> {
   }
   const bn = basenameOfPath(p) || p
   const cc = settings.defaults.autoLaunchCC
-  // 找现成 live 分组（同 cwd 优先复用；无则新建）
   let g = groups.find((x) => x.cwd === p)
   if (!g) {
     g = ensureGroup({ name: bn, cwd: p })
-    // 已保存同 name+cwd 的分组自动绑 srcId → 新 tab 让 group 显 dirty
     const saved = savedGroups.find((s) => s.name === g!.name && s.cwd === g!.cwd)
     if (saved) saved.srcId = g.id
   }
@@ -669,7 +601,6 @@ async function openHereWithPath(rawPath: string): Promise<void> {
   activateUI(tab.id)
   await spawnTabPty(tab)
   scheduleSave()
-  // 把这次选的路径也记成 lastUsedCwd
   if (p !== settings.lastUsedCwd) {
     settings = { ...settings, lastUsedCwd: p }
     void window.term.saveSettings(settings)
@@ -707,9 +638,7 @@ function activateUI(tabId: string): void {
   refreshUI()
 }
 
-// 管理弹窗里对"已保存分组"直接新增标签：命名窗压在管理弹窗上层，确认后在
-// 弹窗后面打开该分组（复用已开实例或按保存记录新建）+ 新标签页 —— 与恢复标签页
-// 同一交互；新标签立即写回保存快照（在已保存分组下新建的标签必然"已保存"，不留脏）。
+// 管理弹窗里对"已保存分组"新增标签：确认后打开该分组 + 新标签，并立即写回保存快照（不留脏）。
 export function addTabToSavedGroup(savedId: string): void {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -723,8 +652,7 @@ export function addTabToSavedGroup(savedId: string): void {
     ccChecked: settings.defaults.autoLaunchCC,
     okLabel: t('创建'),
     onOk: async (v) => {
-      // 复用已打开的同分组实例（srcId → name+cwd 兜底），否则按保存记录新建；
-      // 并把保存记录的 srcId 重绑到 live 分组，isGroupDirty / autoSync 才认得
+      // 复用已打开实例（srcId → name+cwd 兜底），并重绑 srcId 供 isGroupDirty/autoSync 命中
       let g = groups.find((x) => x.id === s.srcId)
         || groups.find((x) => x.name === s.name && x.cwd === s.cwd)
       if (!g) g = ensureGroup({ name: s.name, cwd: s.cwd })
@@ -734,7 +662,6 @@ export function addTabToSavedGroup(savedId: string): void {
       activeTabId = tab.id
       activateUI(tab.id)
       await spawnTabPty(tab)
-      // 自动保存：新标签立即写入该分组的保存快照
       const savedAt = new Date().toISOString()
       s.snapshot.tabs.push(snapshotTabFromLive(tab, savedAt))
       s.savedAt = savedAt
@@ -746,13 +673,8 @@ export function addTabToSavedGroup(savedId: string): void {
   })
 }
 
-// 查看降级：用户切到 done 的标签后，停留 settings.statusDowngradeSec 秒才把状态降回 idle。
-// 用意：误点切走时绿点仍保留；真正"我看过了"才消失。
-// attention（待决策）不参与降级：决策没做完前该信号一直成立，只能由 cc 发新状态
-// （用户回答后 busy→done）或手动"标记为已查看"来清，倒计时无权把它抹成 idle。
-//
-// 焦点门：用户切到该标签但主窗口在后台（在别的 app 上工作）→ 不应该算"看过了"，
-// 不启动倒计时；倒计时进行中失去焦点 → 暂停；回到焦点 → 重新走完整 N 秒。
+// 查看降级：切到 done 标签且主窗口有焦点，停留 N 秒后降回 idle；失焦暂停、回焦重新计满 N 秒。
+// attention 不参与降级：只能由 cc 发新状态或手动"标记为已查看"清除。
 let downgradeTimer: number | null = null
 let downgradeTabId: string | null = null
 let downgradeFromStatus: TerminalTab['status'] | null = null
@@ -785,7 +707,6 @@ function maybeStartDowngrade(tabId: string, st: TerminalTab['status']): void {
   }, settings.statusDowngradeSec * 1000)
 }
 
-// 焦点回到主窗口：如果当前激活的 tab 正好处于 done，按完整 N 秒重启倒计时（attention 不降级）
 function resumeDowngradeIfNeeded(): void {
   if (!activeTabId) return
   const ctx = findTab(activeTabId)
@@ -799,7 +720,6 @@ export function activateTab(tabId: string): void {
   if (!ctx) return
   if (window.__termDebug) console.log(`[term] +${performance.now().toFixed(1)}ms`, `activateTab ${activeTabId} -> ${tabId}`)
   activeTabId = tabId
-  // 切走旧 tab → 取消其降级倒计时（保留绿点，下次再切回来重新计时）
   clearDowngradeTimer()
   maybeStartDowngrade(tabId, ctx.tab.status)
   activateUI(tabId)
@@ -821,9 +741,8 @@ function disposeTabInternal(group: Group, tab: TerminalTab): void {
   }
 }
 
-// 副窗口空了（手动关掉最后一个标签/分组）→ 自动关窗（Chrome 同款）。
-// 拖走迁空的场景由主进程迁移流程负责关窗，这里只管用户手动关闭的路径——
-// 此路径 tabRelease 先于 winClose 发出（IPC 保序），主进程 close handler 查表时已无标签，直接放行。
+// 副窗口手动关空 → 自动关窗；拖走迁空由主进程迁移流程负责。
+// tabRelease 先于 winClose（IPC 保序），主进程查表已无标签直接放行。
 function maybeCloseEmptySecondary(): void {
   if (isSecondary && groups.length === 0) window.term.winClose()
 }
@@ -843,8 +762,7 @@ export function closeTab(tabId: string): void {
     refreshUI()
     scheduleSave()
   }
-  // 纯 pwsh 标签且不是分组的最后一个 → 关掉无任何损失，跳过确认
-  // （是最后一个仍弹确认，因为会顺带关闭整个分组——这是一个更"重"的操作）
+  // 纯 pwsh 标签且非分组最后一个 → 跳过确认；最后一个会连带关分组，仍确认
   if (isTabExpendable(tab) && !isLast) {
     finalize()
     return
@@ -885,7 +803,6 @@ export function toggleGroupCollapse(groupId: string): void {
   scheduleSave()
 }
 
-// 一键把工作区里全部分组设为收起/展开：全收起只剩分组维度，全展开露出所有标签
 export function setAllGroupsCollapsed(collapsed: boolean): void {
   if (groups.length === 0) return
   let changed = false
@@ -900,8 +817,6 @@ export function setAllGroupsCollapsed(collapsed: boolean): void {
   scheduleSave()
 }
 
-// 反向定位（类似 IDEA 的 Select Opened File）：在侧边栏里定位当前活动标签。
-// 所在分组若收起则只展开这一个分组，其余分组保持原状；随后滚动到该行并闪烁提示。
 export function locateActiveTab(): void {
   const ctx = activeContext()
   if (!ctx) {
@@ -913,8 +828,7 @@ export function locateActiveTab(): void {
     refreshUI()
     scheduleSave()
   }
-  // React 渲染是异步的：刚展开的分组要等下一次 commit 后行元素才存在，
-  // 因此 DOM 查询与闪烁动画延迟到 rAF 里执行（原实现是同步 render 可直接查）。
+  // React 渲染异步：刚展开分组的行元素要等下次 commit 才存在，DOM 查询延迟到 rAF
   requestAnimationFrame(() => {
     const row = document.querySelector<HTMLElement>(
       `#groupList .tab-row[data-t="${CSS.escape(ctx.tab.id)}"]`
@@ -940,7 +854,6 @@ function renameGroup(groupId: string): void {
     okLabel: t('保存'),
     onOk: (v) => {
       g.name = v.name
-      // 分组元信息变了 → isGroupDirty 会通过 name 与 saved.snapshot.name 不一致自然为 true
       refreshUI()
       scheduleSave()
       toast(t('已重命名分组'))
@@ -959,8 +872,7 @@ function snapshotTabFromLive(t: TerminalTab, savedAt: string): SavedTab {
   }
 }
 
-// 自动同步：tab 内部会话栈变化时（/clear、/new、栈内删除），如果其分组已保存，
-// 静默把该 tab 在 saved 快照里也覆盖一遍。外部看（分组/标签数）没变就不该 dirty。
+// 自动同步：tab 会话栈变化时若分组已保存，静默覆盖 saved 快照——外观没变就不打 dirty。
 function autoSyncTabToSaved(tab: TerminalTab, group: Group): void {
   const saved = savedGroups.find((s) => s.srcId === group.id)
   if (!saved) return
@@ -981,8 +893,7 @@ function mergeTabsIntoSnapshot(snapTabs: SavedTab[], liveTabs: TerminalTab[], sa
   return out
 }
 
-// 已保存条目之间按 tab.id 去重合并：用户操作期不应出现冲突 id；
-// 真有撞 id（早期跨设备数据），保留 savedAt 更新的那条。
+// 按 tab.id 去重合并；撞 id 时保留 savedAt 更新的那条。
 function mergeSavedTabLists(a: SavedTab[], b: SavedTab[]): SavedTab[] {
   const map = new Map<string, SavedTab>()
   for (const t of a) map.set(t.id, t)
@@ -993,8 +904,7 @@ function mergeSavedTabLists(a: SavedTab[], b: SavedTab[]): SavedTab[] {
   return [...map.values()]
 }
 
-// 同名同路径合并：用户语义上就是一个分组。每次 saveGroup / 启动加载后调用，
-// 把重复的 saved 条目并到第一条，避免侧栏出现多个长得一模一样的卡片。
+// 同名同路径的 saved 条目合并为一条（saveGroup / 启动加载后调用）。
 function dedupSavedByNameCwd(): void {
   const byKey = new Map<string, SavedGroup>()
   const out: SavedGroup[] = []
@@ -1020,8 +930,7 @@ function dedupSavedByNameCwd(): void {
   savedGroups.splice(0, savedGroups.length, ...out)
 }
 
-// 查找用作"merge 目标"的已存在 saved 条目：先按 srcId 命中（已经绑过的最优），
-// 再按 name+cwd 命中（用户改名后又重新保存，或两个 live 分组撞同名）。
+// 查找 merge 目标：先按 srcId，再按 name+cwd 兜底。
 function findSavedForGroup(g: Group): SavedGroup | undefined {
   const bySrc = savedGroups.find((s) => s.srcId === g.id)
   if (bySrc) return bySrc
@@ -1085,7 +994,6 @@ function saveTab(tabId: string): void {
   }
   saved.snapshot.tabs = mergeTabsIntoSnapshot(saved.snapshot.tabs, [tab], savedAt)
   saved.savedAt = savedAt
-  // 同步 saved 的 group 元信息（如果与 live 不一致）
   saved.name = g.name
   saved.cwd = g.cwd
   saved.snapshot.name = g.name
@@ -1123,8 +1031,7 @@ function closeGroup(groupId: string): void {
     scheduleSave()
     toast(t('已关闭分组「{0}」', g.name))
   }
-  // 纯 pwsh 分组 + 无 busy → 直接关闭（保护的是 cc 会话数据，纯 pwsh 没数据可丢）。
-  // 其余情况一律二次确认（不再提供关闭确认的开关）。
+  // 纯 pwsh 分组 + 无 busy → 直接关闭；其余一律二次确认
   if (pureNonCc && busyCount === 0) {
     doClose()
     return
@@ -1141,20 +1048,15 @@ function closeGroup(groupId: string): void {
   })
 }
 
-// "勾选恢复" 弹窗里追加的特殊操作项：恢复结束顺手新开一个空白标签。
 const PICK_ACTION_NEW_BLANK = '__new_blank__'
 
-// 真正的恢复：按 tabIds 把保存里的标签实例化进 live 分组。
-// 已经在 live 分组里（按 id 命中）的标签会被跳过。
-// 若 ids 里含 PICK_ACTION_NEW_BLANK，恢复完再 makeTab 一个新空标签，并立刻
-// autoSync 到 saved snapshot —— 用户希望"在恢复弹窗里勾的新标签，默认就是已保存"。
+// 按 tabIds 把保存的标签实例化进 live 分组（已在 live 的跳过）；含 NEW_BLANK 则再建空白标签并同步进快照。
 export async function restoreSavedTabs(
   savedId: string,
   tabIds: string[],
   blankName?: string,
   blankAutoLaunchCC?: boolean,
-  // 会话级恢复(语义 B)：tabId → 指定的活跃会话 sessionId。恢复时覆盖该标签的默认 activeSessionId，
-  // 会话栈(sessions[])整份照带；没指定的标签按原 activeSessionId 恢复。
+  // 会话级恢复：tabId → 指定的活跃会话；会话栈整份照带
   sessionOverride?: Map<string, string>
 ): Promise<void> {
   const s = savedGroups.find((x) => x.id === savedId)
@@ -1183,7 +1085,6 @@ export async function restoreSavedTabs(
     })
     created.push(tab)
   }
-  // 新建空白标签：优先用用户输入名，没输入就用字母自动起（与 promptNewTabInGroup 一致）
   let blank: TerminalTab | null = null
   if (addBlank) {
     const nm = blankName?.trim() || String.fromCharCode(65 + g.tabs.length)
@@ -1194,14 +1095,10 @@ export async function restoreSavedTabs(
       dirty: false
     })
     created.push(blank)
-    // 立刻写入 saved snapshot，保持分组"已保存"状态（用户期望：在恢复里新建的默认就保存）
     autoSyncTabToSaved(blank, g)
   }
-  // 真正带进来了标签（恢复或新建空白）才算"动过"→ 记恢复时间，把卡片顶到侧边栏最前。
-  // 纯 no-op（点恢复但都已打开）不改时间，避免无谓重排。
+  // 真正带进标签才记恢复时间（卡片顶到侧边栏最前），no-op 不改时间
   if (created.length > 0) s.lastRestoredAt = new Date().toISOString()
-  // 恢复后焦点切到刚 created 的第一个 —— 用户语义就是"打开这个保存的分组进去看看"。
-  // created 为空（点恢复但所有 tab 已在 live 里）才回退到原有 active / 组内首个。
   const firstCreated = created[0]
   if (firstCreated) {
     activeTabId = firstCreated.id
@@ -1213,7 +1110,6 @@ export async function restoreSavedTabs(
   if (activeTabId) activateUI(activeTabId)
   await spawnTabsBatched(created)
   scheduleSave()
-  // toast 文案区分：纯新建 / 恢复+新建 / 纯恢复
   const restoredN = created.length - (addBlank ? 1 : 0)
   if (created.length === 0) toast(t('分组「{0}」已经打开', s.name))
   else if (restoredN === 0 && addBlank) toast(t('在「{0}」新建了 1 个空白标签', s.name))
@@ -1227,7 +1123,6 @@ export function restoreSavedAll(savedId: string): void {
   void restoreSavedTabs(savedId, s.snapshot.tabs.map((t) => t.id))
 }
 
-// 卡片点击 → 弹"选择恢复"对话框（外面的"恢复"默认走这里）
 export function openRestoreSelect(savedId: string): void {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -1237,8 +1132,7 @@ export function openRestoreSelect(savedId: string): void {
   }
   const live = s.srcId ? findGroup(s.srcId) : undefined
   const liveIds = new Set(live?.tabs.map((t) => t.id) ?? [])
-  // 会话级恢复(入口①·语义 B)：tabId → 指定的活跃会话。点某标签的会话数选一条即写入这里，
-  // 取消勾选/选"用默认"则移除；点底部「恢复」时连同勾选一起传给 restoreSavedTabs。
+  // 会话级恢复：tabId → 指定的活跃会话，点「恢复」时连同勾选传给 restoreSavedTabs
   const overrides = new Map<string, string>()
   const items: PickItem[] = s.snapshot.tabs.map((st) => {
     const inLive = liveIds.has(st.id)
@@ -1248,11 +1142,9 @@ export function openRestoreSelect(savedId: string): void {
       label: st.name,
       meta: inLive ? t('已在当前分组中') : t('{0} 个会话', st.sessions.length),
       disabled: inLive,
-      // 默认不勾 —— 用户语义是"看一下要恢复哪些"，避免直接全恢复
       defaultChecked: false,
       deleteTitle: t('从保存里删除此标签'),
       onDelete: () => deleteSavedTabFromPicker(savedId, st.id, st.name),
-      // 已在 live 里的标签不提供会话选择（会被跳过）
       sessionPick: inLive
         ? undefined
         : {
@@ -1273,9 +1165,6 @@ export function openRestoreSelect(savedId: string): void {
           }
     }
   })
-  // 末尾追加"新建空白标签"操作项：用户可能只想恢复分组同时顺手开一个空标签。
-  // inputPlaceholder 让那行渲染成可输入框，用户可直接打字命名；不输入则用默认字母。
-  // sideToggle 控制新标签是否自动启动 CC，默认取设置里的值。
   items.push({
     id: PICK_ACTION_NEW_BLANK,
     label: '',
@@ -1303,8 +1192,7 @@ export function openRestoreSelect(savedId: string): void {
   })
 }
 
-// pick 弹窗里点单个标签的小垃圾桶 → 二次确认 → 从快照里抽掉。
-// 删空也保留分组卡片（用户语义：只删标签，不动分组本身；要删整组走右键菜单）。
+// pick 弹窗里删单个标签：二次确认后从快照抽掉；删空也保留分组卡片。
 function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: string): void {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -1319,7 +1207,6 @@ function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: strin
       refreshUI()
       scheduleSave()
       if (s.snapshot.tabs.length === 0) {
-        // 没标签可选了，pick 弹窗也没意义了；分组卡片留着
         closePickTabs()
         toast(t('「{0}」已没有保存的标签', s.name))
         return
@@ -1330,7 +1217,7 @@ function deleteSavedTabFromPicker(savedId: string, tabId: string, tabName: strin
   })
 }
 
-// （原 main.ts 中未接线的入口，随移植保留并导出，防止后续组件需要）
+// 未接线的备用入口，保留导出
 export function deleteSaved(savedId: string): void {
   const idx = savedGroups.findIndex((s) => s.id === savedId)
   if (idx < 0) return
@@ -1341,7 +1228,6 @@ export function deleteSaved(savedId: string): void {
     okLabel: t('删除'),
     onOk: () => {
       savedGroups.splice(idx, 1)
-      // 对应 live 分组没有保存记录时 isGroupDirty 天然为 true
       refreshUI()
       scheduleSave()
       toast(t('已删除保存的分组'))
@@ -1349,7 +1235,7 @@ export function deleteSaved(savedId: string): void {
   })
 }
 
-// （原 main.ts 中未接线的入口，随移植保留并导出，防止后续组件需要）
+// 未接线的备用入口，保留导出
 export function renameSaved(savedId: string): void {
   const s = savedGroups.find((x) => x.id === savedId)
   if (!s) return
@@ -1369,10 +1255,7 @@ export function renameSaved(savedId: string): void {
   })
 }
 
-// 在新标签页中恢复该会话：同组 makeTab，把这条 session 记录挪进去当栈顶，
-// autoLaunchCC 触发 launchCC → 走 --resume 分支。原标签的栈记录保留不动，
-// 由用户自己判断是否要在原处删除；两处同时激活同一 sessionId 可能造成
-// jsonl 双写，属于已知边界，不主动拦。
+// 在新标签恢复该会话（--resume）；原标签栈记录保留，两处同开同一 sessionId 可能 jsonl 双写，已知边界不拦。
 async function openSessionInNewTab(sessionId: string): Promise<void> {
   const ctx = activeContext()
   if (!ctx) return
@@ -1485,7 +1368,6 @@ async function deleteSession(sessionId: string): Promise<void> {
   })
 }
 
-// ─── 切换历史会话（栈下拉） ────────────────────────────────────────
 export async function switchSession(sessionId: string): Promise<void> {
   const ctx = activeContext()
   if (!ctx) return
@@ -1493,13 +1375,11 @@ export async function switchSession(sessionId: string): Promise<void> {
   if (!tab.sessions.some((s) => s.sessionId === sessionId)) return
   tab.activeSessionId = sessionId
   scheduleSave()
-  // 重启 PTY + launchCC（onPtyStarted 会触发 launchCC，自动走 resume 分支）
   await tab.restartPty()
   refreshUI()
   busEmit('sessionInfo:nudge')
 }
 
-// ─── 右键菜单 ──────────────────────────────────────────────────────
 export function openGroupCtx(groupId: string, x: number, y: number): void {
   const g = findGroup(groupId)
   if (!g) return
@@ -1517,21 +1397,18 @@ export function openGroupCtx(groupId: string, x: number, y: number): void {
   )
 }
 
-// 把标签手动标成 done（绿点），不启动倒计时；下次"切回"该 tab 才走 maybeStartDowngrade。
-// 已经在该 tab 上时不会自动切走，所以也不会起倒计时 —— 绿点一直留着直到你"再次进入"。
+// 手动标成 done（绿点）：不启动倒计时，下次切回该 tab 才开始降级计时。
 export function markTabPending(tabId: string): void {
   const ctx = findTab(tabId)
   if (!ctx) return
   ctx.tab.status = 'done'
   ctx.tab.note = undefined
-  // 若该 tab 上恰有一个倒计时正在跑（之前已 active），先取消；按用户语义"再次进入才计时"
   if (downgradeTabId === tabId) clearDowngradeTimer()
   refreshUI()
   scheduleSave()
 }
 
-// "标记为已查看"：手动清掉侧栏点（done/attention/error → idle），不用切走 tab 再等降级。
-// busy 不清 —— 那是 cc 真在跑，跟"看过没"两回事；idle 本来就没点，直接短路。
+// "标记为已查看"：手动清点（done/attention/error → idle）；busy 不清——cc 真在跑。
 export function markTabViewed(tabId: string): void {
   const ctx = findTab(tabId)
   if (!ctx) return
@@ -1547,10 +1424,7 @@ export function markTabViewed(tabId: string): void {
 export function openTabCtx(tabId: string, x: number, y: number): void {
   const ctx = findTab(tabId)
   if (!ctx) return
-  // 按当前状态语义化切换：
-  //   idle → 允许"标记为待查看"（留自己看的标签）
-  //   done/attention/error → 允许"标记为已查看"（清点降噪）
-  //   busy → 都不给：cc 正在跑，改状态只会掩盖真实进度
+  // idle → 可标"待查看"；done/attention/error → 可标"已查看"；busy 都不给
   const s = ctx.tab.status ?? 'idle'
   const items: CtxItem[] = []
   if (s === 'idle') {
@@ -1578,8 +1452,7 @@ export function openTabCtx(tabId: string, x: number, y: number): void {
         }
       },
       { label: t('在本组新建标签'), icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
-      // 不依赖拖拽手势的可靠入口。刻意不传坐标：主进程对带坐标的请求做「落点在现有窗口
-      // 内 → 视为拖到空白处误触发」的拦截，右键场景菜单必然在窗口内，传坐标会被误拦。
+      // 刻意不传坐标：主进程会把「落点在现有窗口内」的带坐标请求当误触发拦掉
       { label: t('移到新窗口'), icon: icon('external-link'), act: () => void moveTabToNewWindow(tabId) },
       { sep: true },
       { label: t('关闭标签'), icon: icon('close'), danger: true, act: () => closeTab(tabId) }
@@ -1589,12 +1462,10 @@ export function openTabCtx(tabId: string, x: number, y: number): void {
   )
 }
 
-// ─── 保存/恢复整个工作区（当前 groups+activeTabId 打包） ────────────
 function nextWorkspaceDefaultName(): string {
-  // 默认名 "工作区N"：找当前 savedWorkspaces 里最大数字 + 1
   let max = 0
   for (const w of savedWorkspaces) {
-    // 兼容中英两种默认名形态：「工作区N」/「Workspace N」都参与取最大序号
+    // 中英两种默认名「工作区N」/「Workspace N」都参与取最大序号
     const m = /^(?:工作区|Workspace\s*)(\d+)$/.exec(w.name)
     if (m) max = Math.max(max, parseInt(m[1], 10))
   }
@@ -1645,23 +1516,18 @@ function saveCurrentAsWorkspace(name: string): void {
   toast(t('已保存工作区「{0}」（{1} 个分组）', name, snapshotGroups.length))
 }
 
-// 把快照分组追加恢复到当前工作区（工作区整体恢复 / 单分组恢复共用）。
-// 返回新建标签数。已打开的同分组不覆盖，只补齐缺失的标签。
+// 把快照分组追加恢复到当前工作区（整体/单分组共用）；已打开的只补齐缺失标签。返回新建数。
 async function restoreSnapshotGroups(
   sgs: SavedWorkspaceSnapshotGroup[],
   preferActiveTabId: string | null
 ): Promise<number> {
-  // 1) 先把分组建好、收集待恢复的标签规格（此步很轻，不创建 xterm 实例）。
-  //    把重活（new Terminal + mount + startPty）留到后面分批做，避免一次性堆成长任务。
+  // 先建分组、收集标签规格；xterm/PTY 重活分批做
   const pending: { group: Group; spec: Parameters<typeof makeTab>[1] }[] = []
   for (const sg of sgs) {
-    // 用已存在的同 id/同名同 cwd 分组，否则新建（与 restoreSavedTabs 逻辑保持一致）
     let g = findGroup(sg.id)
       || groups.find((x) => x.name === sg.name && x.cwd === sg.cwd)
     if (!g) g = ensureGroup({ name: sg.name, cwd: sg.cwd })
-    // 该分组若有单分组保存记录，把 srcId 重绑到本次的 live 分组 ——
-    // isGroupDirty / autoSyncTabToSaved 都只按 srcId 找记录，不重绑的话
-    // "明明已保存的分组"恢复出来就会因 srcId 对不上被标脏（黄点）。
+    // 有单分组保存记录则重绑 srcId，否则已保存分组恢复出来会因 srcId 对不上被误标脏
     const saved = findSavedForGroup(g)
     if (saved) saved.srcId = g.id
     const liveIds = new Set(g.tabs.map((t) => t.id))
@@ -1680,20 +1546,15 @@ async function restoreSnapshotGroups(
       })
     }
   }
-  // 分组结构先渲染出来，标签随后分批冒出（配合"全部收起"就只先看到分组维度）
   refreshUI()
   if (pending.length === 0) return 0
 
-  // 2) 提前算好前台目标：快照里存的 active tab（若确实在待恢复集合里），否则第一个。
-  //    严格按快照顺序创建标签，保证组内标签顺序不乱；等目标标签所在那一批建好即激活它，
-  //    既让前台尽快可见、又不会"先激活错的再跳"闪烁。
+  // 前台目标：快照的 active tab 或第一个；其所在批建好即激活，避免"先激活错的再跳"闪烁
   const targetActiveId =
     preferActiveTabId && pending.some((p) => p.spec.id === preferActiveTabId)
       ? preferActiveTabId
       : pending[0].spec.id
 
-  // 3) 分批创建 + 拉起 PTY：每批只建 RESTORE_BATCH 个 xterm，批与批之间让出一帧，
-  //    主线程始终有余量处理鼠标/绘制，不再因 N 个标签同步初始化整屏掉帧。
   let activated = false
   for (let i = 0; i < pending.length; i += RESTORE_BATCH) {
     if (i > 0) await new Promise<void>((r) => requestAnimationFrame(() => r()))
@@ -1725,7 +1586,6 @@ export async function restoreSavedWorkspace(wsId: string): Promise<void> {
     danger: false,
     onOk: async () => {
       const n = await restoreSnapshotGroups(w.snapshot.groups, w.snapshot.activeTabId)
-      // 确认恢复即算"动过"（哪怕都已打开、n=0），把该工作区顶到侧边栏最前
       w.lastRestoredAt = new Date().toISOString()
       refreshUI()
       scheduleSave()
@@ -1793,7 +1653,6 @@ export function openWorkspacePaneCtx(x: number, y: number): void {
   )
 }
 
-// ─── 视图数据 getter（原 Sidebar hooks） ──────────────────────────
 export function getGroupViews(): GroupView[] {
   return groups.map((g) => ({
     id: g.id,
@@ -1805,9 +1664,7 @@ export function getGroupViews(): GroupView[] {
   }))
 }
 
-// 侧边栏渲染：按名称排序（中文拼音 + 数字自然），与管理弹窗保持一致
-// 侧边栏快捷区：按「最近一次动过的时间」倒序（恢复优先，没恢复过就用保存时间）。
-// 管理页仍走 naturalNameCompare，两处刻意不同。
+// 侧边栏快捷区按「最近动过」倒序；管理页按名称排序，两处刻意不同。
 export function getSavedViews(): SavedView[] {
   return [...savedGroups]
     .sort((a, b) => recencyDesc(a.lastRestoredAt ?? a.savedAt, b.lastRestoredAt ?? b.savedAt))
@@ -1832,7 +1689,6 @@ export function getSavedWorkspaceViews(): SavedWorkspaceView[] {
     }))
 }
 
-// 分组拖拽排序（原 Sidebar hooks 里的内联实现）
 export function reorderGroups(ids: string[]): void {
   const map = new Map(groups.map((g) => [g.id, g]))
   const next: Group[] = []
@@ -1845,9 +1701,7 @@ export function reorderGroups(ids: string[]): void {
   refreshUI()
 }
 
-// ─── 外部切模型/思考强度（B 方案） ────────────────────────────────
-// 往当前活跃 tab 的 cc 注入斜杠命令。
-// 前置校验：无活跃会话、或 cc 正忙（busy=正回复会排队，attention=有权限弹窗会误答）都拒绝。
+// 外部切模型/思考强度：往活跃 tab 的 cc 注入斜杠命令；无活跃会话或 cc 正忙（busy/attention）拒绝。
 function activeCcTabForInject(): TerminalTab | null {
   const ctx = activeContext()
   if (!ctx) return null
@@ -1870,8 +1724,7 @@ function injectSlash(tab: TerminalTab, line: string): void {
   busEmit('sessionInfo:nudge') // 模型/effort 由 cc statusline 秒级回报，催一次让状态栏早点回显
 }
 
-// /model 带参 → 直接切、不弹选择器；cc 会把它存成新会话默认，故切一次即持久，无需改 launchCC。
-// arg 为 alias（最新）或完整 model id（钉版本，退役会在终端报错）。
+// /model 带参直接切；cc 会存成新会话默认，切一次即持久。
 export function switchActiveModel(arg: string, label: string): void {
   const tab = activeCcTabForInject()
   if (!tab) return
@@ -1887,10 +1740,7 @@ export function switchActiveEffort(level: string): void {
   toast(t('已切换思考强度 → {0}', level))
 }
 
-// ─── 全局键（Ctrl+S 兜底保存） ────────────────────────────────────
-// Ctrl+S：把当前活动标签所在的脏分组保存到"已保存分组"。
-// 终端聚焦时由 TerminalTab 的 attachCustomKeyEventHandler 调这里（并拦掉 XOFF）；
-// 焦点在别处（侧边栏/弹窗）时走 window keydown 兜底（initApp 里注册）。
+// Ctrl+S 保存当前脏分组：终端聚焦时由 TerminalTab 键处理器调（拦掉 XOFF），其余走 window keydown 兜底。
 export function saveActiveDirtyGroup(): void {
   const g = groups.find((x) => x.tabs.some((t) => t.id === activeTabId))
   if (!g) return
@@ -1901,7 +1751,6 @@ export function saveActiveDirtyGroup(): void {
   saveGroup(g.id)
 }
 
-// ─── SavedManager（管理弹窗）数据与回调 ───────────────────────────
 function lastTsOf(t: SavedTab): string | undefined {
   let best: string | undefined
   for (const s of t.sessions) {
@@ -1911,8 +1760,6 @@ function lastTsOf(t: SavedTab): string | undefined {
   return best
 }
 
-// 管理弹窗渲染：按名称排序（与侧边栏一致）。底层 savedGroups 数组顺序不动 ——
-// 排序在展示层做，已经不依赖手动拖动了。
 export function getManageGroupViews(): ManageGroupView[] {
   return [...savedGroups]
     .sort((a, b) => naturalNameCompare(a.name, b.name))
@@ -1959,7 +1806,6 @@ export function getManageWorkspaceViews(): ManageWorkspaceView[] {
     }))
 }
 
-// 以下四个是原 new SavedManager 时内联在 hooks 里的实现，提成具名函数
 function manageRenameSaved(id: string, name: string): void {
   const s = savedGroups.find((x) => x.id === id)
   if (!s) return
@@ -2021,7 +1867,6 @@ function restoreSavedTabAtSession(savedId: string, tabId: string, sessionId: str
   void restoreSavedTabs(savedId, [tabId], undefined, undefined, new Map([[tabId, sessionId]]))
 }
 
-// SavedManager 组件的回调集合：键名与原 SavedManagerHooks 完全一致
 export const savedManagerApi = {
   onRename: manageRenameSaved,
   onDelete: manageDeleteSaved,
@@ -2039,23 +1884,17 @@ export const savedManagerApi = {
   onDeleteWorkspaceGroup: deleteWorkspaceGroup
 }
 
-// ─── 标签历史恢复 ────────────────────────────────────────────────
 export async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
-  // 优先复用已存在的同 cwd 分组（用户语义上：标签回到原分组），找不到就新建一个
   let g = groups.find((x) => x.cwd === entry.cwd)
   if (!g) g = ensureGroup({ name: entry.groupName || entry.cwd, cwd: entry.cwd })
-  // tabId 已在 live：直接激活即可，不重复打开
   if (g.tabs.some((t) => t.id === entry.tabId)) {
     activeTabId = entry.tabId
     activateUI(entry.tabId)
     toast(t('已切到「{0}」', entry.tabName))
     return
   }
-  // 该分组已保存 且 该 tabId 在保存快照里就有：视为"回到已保存的位置"，不打脏。
-  // 后续 spawn/会话事件走 autoSyncTabToSaved 把 saved snapshot 拉齐，保持"已保存"状态。
-  // 关键：saved 匹配走 findSavedForGroup（按 srcId 或 name+cwd），因为恢复时 g 可能是
-  // 通过 ensureGroup 新建的 —— 新 id 跟老 saved.srcId 对不上，必须用 name+cwd 兜底命中。
-  // 命中后把 srcId 重绑到当前 live group，isGroupDirty / autoSync 后续才能找到它。
+  // tabId 已在保存快照里：视为"回到已保存位置"，不打脏，由 autoSync 拉齐快照。
+  // saved 匹配必须走 findSavedForGroup（name+cwd 兜底）并重绑 srcId，否则新建分组的 srcId 对不上。
   const saved = findSavedForGroup(g)
   if (saved) saved.srcId = g.id
   const knownInSaved = !!saved?.snapshot.tabs.some((t) => t.id === entry.tabId)
@@ -2076,14 +1915,10 @@ export async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
   toast(t('已从历史恢复「{0}」', entry.tabName))
 }
 
-// ─── 启动 ────────────────────────────────────────────────────────
-// preBoot：React 挂载前跑（main.tsx 里 await），settings/语言/平台类要在首帧渲染前就绪。
 // ─── 跨窗口标签迁移（拖出成独立窗口 / 拖回合并） ─────────────────
-// 迁移原语无方向性：拖出、拖回、移到第三个窗口都是「tabId 从窗口 A 迁到窗口 B」。
-// 主进程是协调者（windows.ts）；本窗口只实现两端：export（打包+detach）与 import（重建+adopt）。
+// 主进程（windows.ts）协调；本窗口实现两端：export（打包+detach）与 import（重建+adopt）。
 
-// 是否副窗口（标签拖出形成的窗口）：URL 带 ?secondary=1。副窗口不消费 open-here、
-// 不管理悬浮窗开关（计数照报，主进程聚合），迁空后自动关闭。
+// 副窗口（URL 带 ?secondary=1）：不消费 open-here、不管悬浮窗开关，迁空后自动关闭。
 export const isSecondary = new URLSearchParams(location.search).has('secondary')
 
 let myWindowId = -1
@@ -2099,8 +1934,7 @@ async function exportTabForTransfer(tabId: string): Promise<TabTransferPayload |
   const { group, tab } = ctx
   if (tab.ptyId != null) {
     try { await window.term.ptyHold(tab.ptyId) } catch {}
-    // hold 已让主进程停发，但 IPC 管道里可能还有在途的 pty:data（宏任务）。
-    // 等一个宏任务让它们先落进 xterm，serialize 的快照才与暂存队列严格衔接。
+    // hold 后 IPC 在途的 pty:data 还要先落进 xterm，等一个宏任务再 serialize
     await new Promise<void>((r) => setTimeout(r, 0))
   }
   const payload: TabTransferPayload = {
@@ -2136,14 +1970,11 @@ async function exportTabForTransfer(tabId: string): Promise<TabTransferPayload |
   }
   refreshUI()
   scheduleSave()
-  // 注意：副窗口迁空的「自动关窗」由主进程迁移流程负责（windows.ts）——此刻路由表还没
-  // release 本 tab，渲染层发 winClose 会被 close handler 的 wcHasTabs 检查误拦；且渲染层
-  // 自关可能抢在 export 回包送达之前销毁进程，丢掉迁移数据。
+  // 迁空自动关窗由主进程负责：此刻路由表未 release，渲染层自关会被误拦且可能丢迁移数据
   return payload
 }
 
-// 目标端：重建分组归属（同 id → 同名同 cwd → 新建，保留原分组 id 让「拖回」精确并回原组）、
-// 重建 xterm、写回序列化画面、接管 PTY，最后通知主进程切路由并回放暂存队列。
+// 目标端：重建分组（同 id → 同名同 cwd → 新建）、重建 xterm、写回画面、接管 PTY，再切路由回放队列。
 function importTransferredTab(p: TabTransferPayload): void {
   let g = findGroup(p.group.id)
     || groups.find((x) => x.name === p.group.name && x.cwd === p.group.cwd)
@@ -2181,8 +2012,7 @@ function importTransferredTab(p: TabTransferPayload): void {
   if (p.ptyId == null) void spawnTabPty(tab)
 }
 
-// UI 入口①：拖出窗口外松手 / 右键「移到新窗口」。主进程会校验松手点：落在任一
-// 现有窗口内说明只是拖到了空白处（没有 drop 目标接住），静默忽略不开新窗。
+// UI 入口①：拖出窗口外松手 / 右键「移到新窗口」。松手点落在现有窗口内时主进程静默忽略。
 export async function moveTabToNewWindow(tabId: string, screenX?: number, screenY?: number): Promise<void> {
   try {
     const res = await window.term.tabMoveToWindow({ tabId, screenX, screenY })
@@ -2202,9 +2032,7 @@ export async function moveTabHere(tabId: string): Promise<void> {
   } catch {}
 }
 
-// ─── 标签拖拽手势工具（Sidebar 标签行 / Toolbar 标签条共用） ──────
-// Electron 同 app 多窗口间 HTML5 拖拽原生互通：源窗口 dragstart 塞自定义 MIME，
-// 目标窗口 dragover/drop 能读到 → 拖回/跨窗合并；谁都没接住（dropEffect none）→ 拖出成新窗。
+// 标签拖拽（Sidebar/Toolbar 共用）：Electron 同 app 多窗口 HTML5 拖拽互通，自定义 MIME 传 tabId；没人接住（dropEffect none）→ 拖出成新窗。
 export const TAB_DND_MIME = 'application/x-claude-tab'
 
 interface DragEventLike {
@@ -2219,8 +2047,7 @@ export function setTabDragData(e: DragEventLike, tabId: string): void {
   e.dataTransfer.setData(TAB_DND_MIME, JSON.stringify({ tabId, windowId: myWindowId }))
 }
 
-// dragend（源窗口触发）：没有任何 drop 目标接住 → 视为拖出窗口外，请求在松手处开新窗。
-// 主进程再校验：松手点落在任一现有窗口内（只是拖到了窗口空白处）→ 静默忽略。
+// dragend：没有 drop 目标接住 → 视为拖出窗口外，请求在松手处开新窗（主进程再校验）。
 export function handleTabDragEnd(e: DragEventLike, tabId: string): void {
   if (e.dataTransfer?.dropEffect === 'none') {
     void moveTabToNewWindow(tabId, e.screenX, e.screenY)
@@ -2234,8 +2061,7 @@ export function isTabDragOver(dt: DataTransfer | null): boolean {
   return true
 }
 
-// 同分组内标签拖动排序（Sidebar 标签行 / Toolbar 标签条共用）。
-// 跨分组不支持：标签的 cwd 跟随分组，挪组会让 PTY 工作目录与分组语义脱节。
+// 同分组内标签拖动排序；跨分组不支持（标签 cwd 跟随分组）。
 export function moveTabWithinGroup(tabId: string, targetTabId: string, before: boolean): void {
   if (tabId === targetTabId) return
   const src = findTab(tabId)
@@ -2278,15 +2104,13 @@ function applyExternalSettings(s: Settings): void {
 export async function preBoot(): Promise<void> {
   settings = await window.term.loadSettings()
   try { myWindowId = await window.term.windowId() } catch {}
-  // 语言尽早定死：后续所有动态渲染（组件/弹窗）里的 t() 都依赖它。
+  // 语言尽早定死：后续动态渲染的 t() 都依赖它
   setLanguage(settings.language)
-  // 平台标记：macOS 用系统红绿灯（frame hiddenInset），CSS 据 body.platform-mac
-  // 隐藏自绘的右侧窗口按钮并给标题栏左侧留出红绿灯位置。
+  // macOS 红绿灯 / 自绘窗口按钮的显隐由 body.platform-* 的 CSS 适配
   document.body.classList.add(window.term.platform === 'darwin' ? 'platform-mac' : 'platform-win')
 }
 
-// savedGroups/savedWorkspaces 从磁盘整载进内存（覆盖式）。启动时用，其他窗口落盘广播
-// 'workspace:changed' 后也用它刷新本窗口副本——多窗口下保持各副本基本一致。
+// saved 数据从磁盘整载（覆盖式）：启动时用，其他窗口落盘广播后也用它刷新本窗口副本。
 async function hydrateSavedFromDisk(): Promise<void> {
   const ws = await window.term.loadWorkspace()
   savedGroups.splice(0, savedGroups.length)
@@ -2346,9 +2170,7 @@ async function hydrateSavedFromDisk(): Promise<void> {
   }
 }
 
-// initApp：组件树挂载后跑一次。等 hosts 容器就绪 → 注册全局事件/IPC 路由 → 加载 workspace。
-// 轻量模式：只读 savedGroups/savedWorkspaces，groups/activeTabId 一律不恢复。
-// 启动即空状态，等用户点「新建分组」或从已保存的分组恢复。
+// initApp：组件树挂载后跑一次。只读 saved 数据，live 分组不恢复——启动即空状态。
 export async function initApp(): Promise<void> {
   await hostsReady
 
@@ -2361,8 +2183,7 @@ export async function initApp(): Promise<void> {
   })
 
   // ─── 会话事件压栈 ───────────────────────────────────────────────
-  // resume 会让旧 sessionId 再次发 SessionStart，按 sessionId 全栈去重，
-  // 命中已有条目时只切激活，不重复 push。
+  // resume 会让旧 sessionId 再发 SessionStart：按 sessionId 去重，命中只切激活
   const offSession = window.term.onSessionEvent((ev) => {
     const ctx = findTab(ev.tabId)
     if (!ctx) return
@@ -2382,8 +2203,7 @@ export async function initApp(): Promise<void> {
     if (existedIdx >= 0) {
       const [existed] = tab.sessions.splice(existedIdx, 1)
       if (ev.ts && (!existed.lastTs || ev.ts > existed.lastTs)) existed.lastTs = ev.ts
-      // resume 旧会话 → 把它挪到数组末尾（toolbar 倒序展示时即栈顶），
-      // 反映"最近活跃"次序；之前只切 activeSessionId 不重排，导致栈顶永远是最后新建的那条。
+      // resume 旧会话挪到数组末尾（栈顶），反映"最近活跃"次序
       tab.sessions.push(existed)
       tab.activeSessionId = ev.sessionId
       autoSyncTabToSaved(tab, ctx.group)
@@ -2403,7 +2223,6 @@ export async function initApp(): Promise<void> {
     scheduleSave()
     refreshUI()
     void refreshSessionMeta(tab)
-    // 会话栈变了立刻落历史：force=true 确保即便刚刚才落过也再写一次新的 sessions
     recordTabHistory(tab, ctx.group.name, true)
   })
 
@@ -2411,10 +2230,8 @@ export async function initApp(): Promise<void> {
   const offState = window.term.onStateEvent((ev) => {
     const ctx = findTab(ev.tabId)
     if (!ctx) return
-    // 外部 hook 不允许把 done/attention 降级回 idle —— 这两个态承载"有事/已完成未查看"的信号，
-    // 降级是渲染层倒计时（用户切到该 tab 看过后才降）的独占权。
-    // 历史上 idle_prompt → idle 的 hook 就在这里翻车：cc Stop 60s 没人理会发 idle_prompt，
-    // 把绿点静默盖成灰点。hook 那条已删，这里再补一道闸防回归。
+    // 外部 hook 不许把 done/attention 盖成 idle——降级是渲染层倒计时的独占权；
+    // 否则 cc 的 idle_prompt 会把绿点静默盖成灰点（历史翻过车，此闸防回归）
     if (ev.state === 'idle' && (ctx.tab.status === 'done' || ctx.tab.status === 'attention')) {
       return
     }
@@ -2431,14 +2248,12 @@ export async function initApp(): Promise<void> {
   window.addEventListener('blur', clearDowngradeTimer)
   window.addEventListener('focus', resumeDowngradeIfNeeded)
 
-  // ─── 全局键 ─────────────────────────────────────────────────────
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      // ESC 关闭可能打开的搜索浮层
       closeSearchOverlay()
     }
     if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
-      // 输入框 / 行内改名里不抢 Ctrl+S（虽然它们也用不上，但别打断输入心流）
+      // 输入框 / 行内改名里不抢 Ctrl+S
       const t = e.target as HTMLElement
       if (!(t instanceof HTMLInputElement) && !t.closest?.('[contenteditable="true"]')) {
         e.preventDefault()
@@ -2463,8 +2278,6 @@ export async function initApp(): Promise<void> {
     for (const g of groups) for (const t of g.tabs) t.dispose()
   })
 
-  // ─── 关闭 app 时确认（兜底：任何情况都弹一次） ───────────────────
-  // 有脏分组时展示分组明细；其他情况仍弹一个通用确认，防止误关。
   window.term.onWindowCloseRequest(() => {
     if (isConfirmOpen()) return // 已有确认弹窗在显示，忽略重复触发
     const dirtyGroups = groups.filter((g) => isGroupDirty(g) && g.tabs.length > 0)
@@ -2482,7 +2295,6 @@ export async function initApp(): Promise<void> {
       return
     }
     confirmDialog({
-      // 副窗口关的只是自己：文案区分「此窗口」与「整个 app」
       title: isSecondary ? t('确认关闭此窗口？') : t('确认关闭 Claude Terminal？'),
       message: isSecondary
         ? t('关闭后该窗口内的终端会话将被终止。确认继续？')
@@ -2509,27 +2321,22 @@ export async function initApp(): Promise<void> {
   await hydrateSavedFromDisk()
   refreshUI()
   if (isSecondary) {
-    // 副窗口：悬浮窗开关/open-here 都归主窗口管；只上报 ready，主进程随即开始向本窗口 import
+    // 副窗口只上报 ready，主进程随即开始向本窗口 import
     window.term.secondaryReady()
     return
   }
-  // 启动时按当前设置同步悬浮窗（主进程也会按自己读到的设置拉起；这里再保一道，
-  // 万一用户在 setting 文件里手改了也能立即生效）
   window.term.floaterSetEnabled(settings.showFloater)
   if (settings.showFloater) pushFloaterCounts()
-  // 悬浮窗里通过右键菜单"隐藏"时，主进程已经销毁窗口并落盘 showFloater=false，
-  // 这里同步刷新内存里的 settings 副本，避免设置面板还显示开。
+  // 悬浮窗右键"隐藏"后主进程已落盘 showFloater=false，这里同步内存副本
   window.term.onFloaterHidden(() => {
     if (!settings.showFloater) return
     settings = { ...settings, showFloater: false }
   })
-  // 右键菜单唤起：主进程解析 argv 后推 path 过来（second-instance 场景）。
-  // 放在这里注册是等 settings/savedGroups 都加载好，openHereWithPath 才能正确读默认值。
+  // second-instance 的 open-here：主进程解析 argv 后推 path 过来
   window.term.onOpenHere((p) => {
     void openHereWithPath(p)
   })
-  // 首次启动 argv 带 --open-here：主动拉一次待消费队列。之前用 send 从主进程推
-  // 会在 onOpenHere 监听器注册前送达（IPC 消息被丢弃），改用 invoke 主动拉不会漏。
+  // 首次启动的 --open-here 用 invoke 主动拉：send 推送会在监听器注册前送达被丢
   try {
     const pending = await window.term.consumePendingOpenHere()
     for (const p of pending) void openHereWithPath(p)

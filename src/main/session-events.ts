@@ -19,11 +19,8 @@ interface FileState {
   debounce: NodeJS.Timeout | null
 }
 
-// 从文件按字节区间 [start, end) 读出，再 utf8 解码。
-// 关键：offset/size 来自 statSync().size，是「字节」偏移；hook 每次 append 整行
-// （行尾是 ASCII 换行），故区间端点必落在字符边界上，按字节切是安全的。
-// 切勿先 readFile('utf8') 再用字节下标 slice 字符串——含中文 cwd 时字节数>字符数，
-// offset 会逐渐漂移，导致新会话事件被静默丢弃。
+// 按字节区间读取再 utf8 解码。offset 是字节偏移且 hook 整行 append，按字节切安全；
+// 切勿 readFile('utf8') 后用字节下标 slice 字符串——含中文时 offset 会漂移丢事件。
 function readByteRange(path: string, start: number, end: number): string {
   const len = end - start
   if (len <= 0) return ''

@@ -1,21 +1,7 @@
 import { clipboard } from 'electron'
 
-/*
- * 剪贴板读取协议
- * ───────────────────────────────────────────────────────────────
- * Windows 资源管理器复制文件后剪贴板里是 CF_HDROP（DROPFILES 头 + 路径串列表）。
- * 优先识别这个格式，把文件路径解析出来；解析不到再回退到纯文本。
- *
- * DROPFILES 内存布局：
- *   byte  0:  pFiles  uint32 LE  — 字符串列表相对结构起点的字节偏移
- *   byte  4:  pt.x    int32      — 不使用
- *   byte  8:  pt.y    int32      — 不使用
- *   byte 12:  fNC     uint32     — 不使用
- *   byte 16:  fWide   uint32     — 0=ANSI  1=UTF-16LE
- *   byte 20+: payload — 一段以 NUL 分隔、整体以双 NUL 终止的字符串列表
- *
- * 返回值用 discriminated union，renderer 直接 switch(kind) 处理三种情形。
- */
+// 剪贴板读取：Windows 复制文件后是 CF_HDROP（DROPFILES 头：offset@0、fWide@16、
+// payload@20 为 NUL 分隔双 NUL 终止的路径列表）。优先解析文件路径，退化为纯文本。
 
 export type ClipboardRead =
   | { kind: 'files'; files: string[] }
@@ -27,9 +13,7 @@ const OFFSET_FIELD_OFFSET = 0
 const FWIDE_FIELD_OFFSET = 16
 
 export function readClipboardSelection(): ClipboardRead {
-  // 优先 CF_HDROP（一次拿多文件）；拿不到再走 FileNameW/FileName 兜底（单文件）。
-  // 某些 Electron/Windows 组合下 readBuffer('CF_HDROP') 会返回空 buffer，
-  // 但 read('FileNameW') 这条路径稳定，能保证"复制了文件 → 粘贴出路径"。
+  // 优先 CF_HDROP（多文件）；某些 Electron/Windows 组合下它返回空 buffer，兜底 FileNameW（单文件）。
   let files = readDropFiles()
   if (files.length === 0) files = readSingleFileName()
   if (files.length > 0) return { kind: 'files', files }
@@ -38,12 +22,9 @@ export function readClipboardSelection(): ClipboardRead {
   return { kind: 'empty' }
 }
 
-// 兜底：clipboard.read('FileNameW') 返回首文件路径（宽字符串），
-// 'FileName' 是 ANSI 字符串。两个都试一遍，谁有用谁。
+// 兜底：FileNameW（UTF-16LE）直接读 buffer 自行解码避免中文乱码；再退化 ANSI FileName。
 function readSingleFileName(): string[] {
   if (process.platform !== 'win32') return []
-  // FileNameW：原生 UTF-16LE。直接读 buffer 自己解码，不走 Electron 的 read(string)
-  // 那条不确定按啥编码转码的路径，避免中文文件名乱码。
   try {
     const buf = clipboard.readBuffer('FileNameW')
     if (buf && buf.length >= 2) {
@@ -52,7 +33,6 @@ function readSingleFileName(): string[] {
       if (s) return [s]
     }
   } catch {}
-  // ANSI FileName 兜底：Electron read 对 ANSI 编码不一定正确处理，但能接 ASCII 路径
   try {
     const s = clipboard.read('FileName')
     if (s && s.trim()) {
@@ -69,15 +49,10 @@ export function writeClipboardText(text: string): boolean {
   return true
 }
 
-// ── 内部 ─────────────────────────────────────────────────────
-
 function readDropFiles(): string[] {
   if (process.platform !== 'win32') return []
   try {
-    // 不再用 availableFormats() 预筛选：Electron 在不同版本/环境下，
-    // availableFormats 可能返回 MIME 名（text/plain）而非 Win32 原生格式名（CF_HDROP），
-    // 预筛选会误把"复制了文件"判成"剪贴板里没有 files"。直接尝试 readBuffer，
-    // 失败/buffer 不合法自然回退到 readText，零代价。
+    // 不用 availableFormats() 预筛选：它可能返回 MIME 名而非 CF_HDROP，会误判；直接 readBuffer 试。
     let buf: Buffer | undefined
     try { buf = clipboard.readBuffer('CF_HDROP') } catch {}
     if (!buf || buf.length < DROPFILES_HEADER_BYTES) return []
@@ -86,9 +61,7 @@ function readDropFiles(): string[] {
     if (offset >= buf.length) return []
     const payload = buf.slice(offset)
     if (fWide) {
-      // UTF-16LE：一次性 Buffer.toString('utf16le') 解码，比循环 readUInt16LE 更可靠
-      // （正确处理 surrogate pair；payload 长度若为奇数尾字节会被自然丢弃）。
-      // 资源管理器复制文件走这条路。
+      // UTF-16LE 一次性解码（正确处理 surrogate pair）；资源管理器复制文件走这条路
       const evenLen = payload.length - (payload.length % 2)
       return payload
         .subarray(0, evenLen)
@@ -96,8 +69,7 @@ function readDropFiles(): string[] {
         .split('\0')
         .filter((s) => s.length > 0)
     }
-    // ANSI 分支（fWide=0）：现代 Windows 极少见。Node 标准库不支持 GBK，
-    // 按 latin1 退化解码——含非 ASCII 文件名会乱码，但能避免崩。
+    // ANSI 分支极少见；Node 不支持 GBK，按单字节退化解码（非 ASCII 会乱码但不崩）
     return parseNulSeparatedList(payload, 1)
   } catch {
     return []

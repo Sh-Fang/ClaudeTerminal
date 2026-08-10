@@ -4,9 +4,8 @@ import { resolve } from 'node:path'
 
 const EXTERNAL = ['electron', '@lydell/node-pty']
 
-// 仅 dev 生效：@vitejs/plugin-react 的 react-refresh 预热脚本是内联 <script>，
-// 会被 script-src 'self' 拦下导致 HMR 报错。这里在 dev server 阶段把 CSP 放宽，
-// 生产构建（apply: 'serve' 不参与 build）仍是严格 CSP。
+// 仅 dev 生效：react-refresh 的内联脚本会被 script-src 'self' 拦下导致 HMR 报错，
+// dev server 阶段放宽 CSP；生产构建仍是严格 CSP。
 const devCspRelax = {
   name: 'dev-csp-relax',
   apply: 'serve' as const,

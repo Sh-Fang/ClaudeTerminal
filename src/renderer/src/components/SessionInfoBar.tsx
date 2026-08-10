@@ -6,11 +6,8 @@ import { showCtxMenu, toast } from '../state/overlays'
 import { getSessionInfoCtx, getSettings, switchActiveModel, switchActiveEffort } from '../controller'
 import { t } from '../i18n'
 
-// 左下角模型芯片的候选：按家族分组、每组列具体版本。
-// ── 维护点 ──：模型上新 / 退役时改这里。
-//   arg = 注入给 `/model` 的实参：家族"最新"用 alias（稳，永远指向最新）；要钉具体
-//   旧版本用完整 model id（可能随退役失效 —— 选到退役版 cc 会在终端自己报错，这是刻意
-//   的兜底，不拦）。match = 用当前展示的模型名（小写）子串匹配，给当前项打勾。
+// 模型芯片候选，模型上新/退役时改这里。arg = 注入给 `/model` 的实参（alias 或完整 id）；
+// match = 用当前模型名（小写）子串匹配给当前项打勾。
 export interface ModelRow { label: string; arg: string; match: string }
 export const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
   { family: 'Opus', rows: [
@@ -30,7 +27,7 @@ export const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
   ] }
 ]
 
-// 思考强度候选。max 是 session-only；cc 仅在模型支持 effort 时上报，故芯片会自动隐藏。
+// 思考强度候选；cc 仅在模型支持 effort 时上报，芯片会自动隐藏
 const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // 与 preload SessionUsage 对齐（renderer 不跨进程 import）
@@ -45,8 +42,8 @@ interface SessionUsage {
   ctxApprox?: boolean
 }
 
-const TICK_MS = 3000 // 上下文会随对话增长，每 3s 刷新一次
-const BRANCH_EVERY = 7 // 分支变动少，约每 21s 才重查一次（切换时立即查）
+const TICK_MS = 3000 // 上下文用量每 3s 刷新一次
+const BRANCH_EVERY = 7 // 分支约每 21s 重查一次（切换时立即查）
 
 function ctxLevel(p: number): string {
   if (p >= 90) return 'lv-danger'
@@ -54,22 +51,20 @@ function ctxLevel(p: number): string {
   return 'lv-ok'
 }
 
-// 把 git/cc 来的文本做长度保护（JSX 文本节点自带转义，无需 escapeHtml）
 function clip(s: string, max = 28): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
-// 首字母大写：effort 档位展示用（low → Low）。注入命令仍用原始小写。
+// effort 档位展示用首字母大写；注入命令仍用原始小写
 function cap(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-// 一次 poll 的渲染快照：原实现是 poll 完调 paint()，这里等价为 poll 完 setSnap 触发重渲染。
+// 一次 poll 的渲染快照
 interface Snap {
-  hasActive: boolean // 有活跃会话（sessionId 非空）→ 展示 ctx / 模型骨架
+  hasActive: boolean // 有活跃会话 → 展示 ctx / 模型骨架
   usage: SessionUsage | null
-  // 上一次成功拿到的模型名。新会话/刚切换会话时 cc 还没上报 usage，用它兜底
-  // 避免状态栏空一段。cc 进程内默认模型很少切，所以基本是准确的。
+  // 上一次成功拿到的模型名，cc 还没上报 usage 时兜底
   stickyModel: string | null
   branch: string | null
 }
@@ -79,8 +74,7 @@ export function SessionInfoBar() {
   void rev
   const [snap, setSnap] = useState<Snap>({ hasActive: false, usage: null, stickyModel: null, branch: null })
 
-  // 轮询 + nudge 订阅。poll 的全部可变状态（lastKey/tick/branch/usage/并发护栏）收在
-  // effect 闭包里——生命周期与原 constructor/dispose 一一对应。
+  // 轮询 + nudge 订阅；poll 的全部可变状态收在 effect 闭包里
   useEffect(() => {
     let lastKey = ''
     let branch: string | null = null
@@ -121,7 +115,7 @@ export function SessionInfoBar() {
         // 单次失败忽略，下个 tick 再来
       }
       tick++
-      // poll 期间用户可能又切了；只在仍是同一目标时绘制，避免串台
+      // poll 期间可能又切了标签；仍是同一目标才绘制，避免串台
       const now = getSessionInfoCtx()
       if (now && `${now.sessionId ?? ''}::${now.cwd}` === key) {
         setSnap({ hasActive: !!now.sessionId, usage, stickyModel, branch })
@@ -129,8 +123,7 @@ export function SessionInfoBar() {
     }
 
     const poll = async (): Promise<void> => {
-      // 并发护栏：poll 内部 await 两个 IPC，慢仓库下可能跨过下个 tick。若不挡，
-      // 多个 poll 重叠执行会互相覆盖 branch/usage/tick，导致闪烁与陈旧数据。
+      // 并发护栏：慢 IPC 可能跨 tick，重叠执行会互相覆盖状态
       if (polling) return
       polling = true
       try {
@@ -142,7 +135,7 @@ export function SessionInfoBar() {
 
     const kick = (): void => void poll()
     const timer = window.setInterval(kick, TICK_MS)
-    // 切换标签 / 会话时 controller 会 busEmit 催一次，立即刷新（不等下个 tick）
+    // 切换标签/会话时 controller busEmit 催一次，立即刷新
     const offNudge = busOn('sessionInfo:nudge', kick)
     return () => {
       window.clearInterval(timer)
@@ -153,8 +146,7 @@ export function SessionInfoBar() {
   const openModelMenu = (anchor: HTMLElement): void => {
     const cur = (snap.usage?.modelLabel ?? snap.stickyModel ?? '').toLowerCase()
     const r = anchor.getBoundingClientRect()
-    // y 传芯片顶部；showCtxMenu 会把菜单夹在视口内，芯片贴底时自动向上弹。
-    // 各家族之间插分隔线；当前项按 match 子串命中打勾。
+    // showCtxMenu 会把菜单夹在视口内，芯片贴底时自动向上弹；各家族间插分隔线
     showCtxMenu(
       MODEL_GROUPS.flatMap((g, gi) => [
         ...(gi > 0 ? [{ sep: true }] : []),
@@ -172,7 +164,7 @@ export function SessionInfoBar() {
   const openEffortMenu = (anchor: HTMLElement): void => {
     const cur = (snap.usage?.effort ?? '').toLowerCase()
     const r = anchor.getBoundingClientRect()
-    // 菜单从上到下高→低：顶部 max、底部 low（EFFORT_OPTIONS 本身是低→高，渲染时倒序）
+    // 菜单从上到下高→低，渲染时倒序
     showCtxMenu(
       [...EFFORT_OPTIONS].reverse().map((lv) => ({
         label: cap(lv),
@@ -184,15 +176,12 @@ export function SessionInfoBar() {
     )
   }
 
-  // ── paint：由 snap（poll 产物）+ settings（rev 驱动）纯函数式生成 ──
-  // 额度显示样式联动：'ring' 时 ctx 也画成迷你圆环（尺寸缩到状态栏行高内，不撑高底栏）
+  // 额度样式为 'ring' 时 ctx 也画成迷你圆环
   const usageStyle = getSettings().usageStyle || 'bar'
   const u = snap.usage
   const parts: ReactNode[] = []
-  // 顺序：ctx（进度条）· 模型 · git 分支
-  // 只要有 active session 就展示 ctx 与模型骨架——新会话 cc 还没上报时也不能空着，
-  // ctx 默认 0%，模型用 stickyModel 兜底（同一 cc 进程默认模型通常不变），
-  // 都没有再退到占位 "Claude"。
+  // 顺序：ctx · 模型 · git 分支。有 active session 就展示骨架：ctx 默认 0%，
+  // 模型用 stickyModel 兜底，都没有退到占位 "Claude"。
   if (snap.hasActive) {
     const hasCtx = !!(u && typeof u.ctxPercent === 'number')
     const p = hasCtx ? (u!.ctxPercent as number) : 0
@@ -203,7 +192,6 @@ export function SessionInfoBar() {
           (u!.ctxApprox ? t('（窗口为估算，未读到会话快照）') : '')
         : t('新会话，等待 cc 上报上下文用量')
     if (usageStyle === 'ring') {
-      // 迷你圆环：13px 视觉尺寸贴合状态栏行高，绝不撑高底栏
       const R = 6
       const C = 2 * Math.PI * R
       const off = (C * (100 - Math.min(100, Math.max(0, p)))) / 100
@@ -243,7 +231,7 @@ export function SessionInfoBar() {
         className="sbi-model"
         title={t('点击切换模型')}
         onClick={(e) => {
-          // stopPropagation 挡掉 overlays 里"点空白关菜单"的 document handler，否则刚开就被关。
+          // stopPropagation 挡掉"点空白关菜单"的 document handler，否则刚开就被关
           e.stopPropagation()
           openModelMenu(e.currentTarget)
         }}
@@ -251,7 +239,7 @@ export function SessionInfoBar() {
         {model}
       </span>
     )
-    // effort 芯片：仅在 cc 上报了 effort（模型支持思考强度）时展示，夹在模型与 git 分支之间。
+    // effort 芯片：仅在 cc 上报了 effort 时展示
     const eff = u?.effort
     if (eff) {
       parts.push(
@@ -272,7 +260,6 @@ export function SessionInfoBar() {
   if (snap.branch) {
     parts.push(
       <span key="branch" className="sbi-branch" title={snap.branch}>
-        {/* lucide git-branch 图标，比 ⎇ 字符更直观 */}
         <svg
           className="sbi-branch-ic"
           width="12"
@@ -305,7 +292,7 @@ export function SessionInfoBar() {
     children.push(p)
   })
 
-  // 底部路径：跟随当前激活分组的 cwd（rev 驱动，同原 toolbar.render 的时机）
+  // 底部路径：跟随当前激活分组的 cwd（rev 驱动）
   const cwd = getSessionInfoCtx()?.cwd ?? ''
 
   return (
@@ -313,8 +300,7 @@ export function SessionInfoBar() {
       <span id="sbSession" className="sb-session" hidden={children.length === 0}>
         {children}
       </span>
-      {/* 双击底部路径 → 用系统资源管理器打开该目录。双击同时会选中一个词，属预期，
-          不阻止；用户仍可拖选复制路径。 */}
+      {/* 双击底部路径用资源管理器打开该目录 */}
       <span
         id="sbCwd"
         title={cwd ? `${cwd}\n${t('双击用资源管理器打开')}` : ''}

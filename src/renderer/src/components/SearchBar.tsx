@@ -9,24 +9,21 @@ const SEARCH_DECOR = {
   matchBackground: '#3a3a00',
   matchBorder: '#e5e510',
   matchOverviewRuler: '#e5e510',
-  // 当前匹配：换成高饱和亮橙 + 白色描边，跟普通匹配的黄色系拉开对比度，
-  // 上下切匹配时一眼能看到"我现在停在哪里"。原方案两者同为黄色系深浅差，肉眼几乎分不出。
+  // 当前匹配：亮橙 + 白描边，与普通匹配拉开对比度
   activeMatchBackground: '#ff8800',
   activeMatchBorder: '#ffffff',
   activeMatchColorOverviewRuler: '#ff8800'
 }
 
-// 终端内搜索浮层（原 main.ts 的 Search popover 段原样移植）。
-// 开合状态在 overlays store（searchOpen），Ctrl+F 等入口由 controller 调 openSearchOverlay()。
+// 终端内搜索浮层：开合状态在 overlays store，Ctrl+F 等入口由 controller 调 openSearchOverlay()
 export function SearchBar() {
   const open = useOverlays((s) => s.searchOpen)
-  // 计数显示 n/m（原 searchCount.textContent）
   const [count, setCount] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  // 结果计数回调绑定的目标 tab：切 tab 后旧回调据此自行失效
+  // 计数回调绑定的目标 tab：切 tab 后旧回调据此自行失效
   const boundRef = useRef<TerminalTab | null>(null)
   const lastQueryRef = useRef('')
-  // 每个 tab 只订阅一次 onDidChangeResults（SearchAddon 不提供解绑句柄，用 WeakSet 防重复）
+  // SearchAddon 不提供解绑句柄，用 WeakSet 保证每 tab 只订阅一次
   const subsRef = useRef(new WeakSet<TerminalTab>())
 
   const rebindSearch = (tab: TerminalTab): void => {
@@ -59,7 +56,7 @@ export function SearchBar() {
     else ctx.tab.search.findPrevious(q, opts)
   }
 
-  // 显式关闭（Esc / 关闭按钮）：清高亮 + 清选区 + 焦点还给终端（原 closeSearch）
+  // 显式关闭：清高亮 + 清选区 + 焦点还给终端
   const doClose = (): void => {
     closeSearchOverlay()
     const ctx = activeContext()
@@ -68,12 +65,11 @@ export function SearchBar() {
     ctx?.tab.term.focus()
   }
 
-  // 打开时：绑定当前 tab 的结果回调，聚焦并全选输入框（原 openSearch）
+  // 打开时：绑定当前 tab 的结果回调，聚焦并全选输入框；无活动标签直接回退关闭
   useEffect(() => {
     if (!open) return
     const ctx = activeContext()
     if (!ctx) {
-      // 原 openSearch 在没有活动标签时不弹——这里同语义，直接回退关闭
       closeSearchOverlay()
       return
     }
@@ -83,9 +79,7 @@ export function SearchBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // 全局 Esc 兜底（原 main.ts window keydown："ESC 关闭可能打开的浮层"）：
-  // 焦点不在输入框（如终端里按 Esc 冒泡上来）时也能收起浮层；
-  // 与原实现一致，这条路径只收起、不清高亮。
+  // 全局 Esc 兜底：焦点不在输入框时也能收起浮层；这条路径只收起、不清高亮
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {

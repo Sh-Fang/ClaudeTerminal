@@ -1,6 +1,4 @@
-// 浮层宿主：ctx 右键菜单 / modal 新建（重命名）弹窗 / pickTabs 勾选恢复弹窗 / confirm 确认弹窗
-// / 会话选择浮层。DOM 结构、id、class 与原 index.html + ui-helpers.ts 动态生成的完全一致，
-// z 序全靠 styles.css 的既有规则（#scrim 85 / #pickScrim 85 / #confirmScrim 90 / .ctx 90 / .sesspick 2000）。
+// 浮层宿主：ctx 右键菜单 / modal 弹窗 / pickTabs 勾选弹窗 / confirm 弹窗 / 会话选择浮层，z 序由 styles.css 保证。
 // ToastHost 单独导出：.toast 是 position:absolute（相对 .main），必须由 App 放进 .main 层级。
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as RKeyboardEvent, MouseEvent as RMouseEvent } from 'react'
@@ -21,10 +19,7 @@ import { escapeHtml, formatTs, srcLabel } from '../lib/format'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
 
-// ─── 公共小件 ────────────────────────────────────────────────────
-
-// scrim 关闭手势：仅当 mousedown 与 click 都落在 scrim 自身时才触发关闭。
-// 防止用户在 modal 里按住选文字 → 拖到外部释放被误判为"点外部"（对齐原 bindScrimDismiss）。
+// scrim 关闭手势：mousedown 与 click 都落在 scrim 自身才关闭，防止 modal 内选文字拖出被误判
 function useScrimDismiss(onDismiss: () => void): {
   onMouseDown: (e: RMouseEvent<HTMLDivElement>) => void
   onClick: (e: RMouseEvent<HTMLDivElement>) => void
@@ -41,13 +36,10 @@ function useScrimDismiss(onDismiss: () => void): {
   }
 }
 
-// ─── ctx 右键菜单 ────────────────────────────────────────────────
-
 function CtxMenu() {
   const ctx = useOverlays((s) => s.ctx)
   const ref = useRef<HTMLDivElement>(null)
 
-  // 点击 .ctx 之外任意处即关闭（原实现是 document 级常驻 click 监听）
   useEffect(() => {
     const onDocClick = (e: globalThis.MouseEvent): void => {
       if (!(e.target as HTMLElement).closest('.ctx')) closeCtxMenu()
@@ -56,7 +48,7 @@ function CtxMenu() {
     return () => document.removeEventListener('click', onDocClick)
   }, [])
 
-  // 先显示以测尺寸，再夹进屏幕（防溢出，pad 8px）——对齐原 showCtxMenu 的定位逻辑
+  // 先显示以测尺寸，再夹进屏幕防溢出
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || !ctx) return
@@ -76,7 +68,6 @@ function CtxMenu() {
       className={'ctx' + (ctx ? ' open' : '')}
       id="ctx"
       ref={ref}
-      // minWidth 在渲染期生效，useLayoutEffect 量宽夹视口时已含它
       style={ctx?.minWidth != null ? { minWidth: ctx.minWidth } : undefined}
     >
       {ctx?.items.map((it, i) => {
@@ -91,7 +82,6 @@ function CtxMenu() {
               it.act?.()
             }}
           >
-            {/* icon 是 svg-icons.icon() 返回的 SVG 字符串 */}
             <span className="ic" dangerouslySetInnerHTML={{ __html: it.icon ?? '' }} />
             <span>{it.label ?? ''}</span>
             {it.metaHtml != null && (
@@ -104,10 +94,7 @@ function CtxMenu() {
   )
 }
 
-// ─── modal 新建/重命名弹窗 ───────────────────────────────────────
-
-// 取路径最后一段作为默认分组名：D:\Document\工单处理\理科工单 → "理科工单"
-// 兼容正反斜杠和末尾斜杠；磁盘根（D:\ 等）没有最后一段，美化成「D 盘」；取不到时回退空串
+// 取路径最后一段作为默认分组名；磁盘根美化成「D 盘」，取不到回退空串
 function basenameOfPath(p: string): string {
   const drive = /^([a-zA-Z]):[\\/]?$/.exec(p.trim())
   if (drive) return t('{0} 盘', drive[1].toUpperCase())
@@ -116,8 +103,7 @@ function basenameOfPath(p: string): string {
 }
 
 function ModalBody({ cfg }: { cfg: ModalOpts }) {
-  // 自动按 cwd 末段填 name：首次打开就 sync 一次；后续按 cwd 变化继续 sync，
-  // 直到用户手动改了 name 为止。
+  // 自动按 cwd 末段填 name，直到用户手动改过 name 为止
   const [name, setName] = useState(() => {
     if (cfg.autoNameFromCwd && cfg.cwd) {
       const base = basenameOfPath(cfg.cwd)
@@ -129,11 +115,9 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
   const [tabName, setTabName] = useState(cfg.tabName ?? 'A')
   const [cc, setCc] = useState(cfg.ccChecked ?? true)
   const [picking, setPicking] = useState(false)
-  // 用户在 name 字段动了任意一下 → 标记为已编辑，后续 cwd 变化不再覆盖
   const nameUserEditedRef = useRef(false)
   const nameRef = useRef<HTMLInputElement>(null)
 
-  // 打开后初始 focus + select（对齐原实现的 setTimeout(0)）
   useEffect(() => {
     const id = window.setTimeout(() => {
       nameRef.current?.focus()
@@ -217,7 +201,6 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
             spellCheck={false}
             value={cwd}
             onChange={(e) => {
-              // cwd 无论"打字"还是"粘贴"都触发 name 同步
               setCwd(e.target.value)
               maybeSyncNameFromCwd(e.target.value)
             }}
@@ -239,8 +222,7 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
           </button>
         </div>
       </div>
-      {/* 首个标签名与 CC 开关相互独立：新建分组必然要建首个标签（不管启不启 CC），
-          字段是否出现只由调用方的 showTabName 决定。 */}
+      {/* 首个标签名与 CC 开关相互独立，字段是否出现由调用方 showTabName 决定 */}
       <div className="field" id="modal-tabname-field" style={cfg.showTabName ? undefined : { display: 'none' }}>
         <label>{t('首个标签名')}</label>
         <input
@@ -280,16 +262,13 @@ function ModalDialog() {
   const dismiss = useScrimDismiss(closeModal)
   return (
     <div id="scrim" className="scrim" hidden={!modal} {...dismiss}>
-      {/* key=seq：每次 openModal 重置内部输入态（原实现每次 open 都重写各 input.value） */}
+      {/* key=seq：每次 openModal 重置内部输入态 */}
       {modal ? <ModalBody key={seq} cfg={modal} /> : null}
     </div>
   )
 }
 
-// ─── pickTabs 勾选恢复弹窗 ───────────────────────────────────────
-
-// action 行（id 以 '__' 开头，如"+ 新建空白标签"）：不参与"全选/计数/进度判定"，
-// 用户仍可单独勾选或通过输入文字自动勾上 —— 最终提交时照常归入 selectedIds。
+// action 行（id 以 '__' 开头）：不参与全选/计数，提交时照常归入 selectedIds
 function pkIsAction(it: PickItem): boolean {
   return it.id.startsWith('__')
 }
@@ -306,7 +285,7 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
     for (const it of cfg.items) if (it.sideToggle) m[it.id] = it.sideToggle.defaultChecked
     return m
   })
-  // 入口①：每行已指定的会话（id → {sessionId, 展示标题}）。开弹窗时清空（key=seq 重挂即清）。
+  // 每行已指定的会话（id → {sessionId, 展示标题}），key=seq 重挂即清空
   const [sessChosen, setSessChosen] = useState<Record<string, { sid: string; title: string }>>({})
 
   const selectedIds = cfg.items.filter((it) => !it.disabled && checked[it.id]).map((it) => it.id)
@@ -315,8 +294,7 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
   const curAll = selectedIds.length // ok 启用看的是总选中数（含 action 行）
 
   const toggleAll = (): void => {
-    // 全选 / 取消的判定只看"实条目"；action 行不参与。
-    // 注意：程序化改勾选不清 sessChosen（对齐原实现——programmatic .checked 不触发 change）
+    // 全选判定只看实条目；程序化改勾选不清 sessChosen
     const target = curReal < totalReal
     setChecked((prev) => {
       const n = { ...prev }
@@ -336,7 +314,6 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
 
   const ok = (): void => {
     if (selectedIds.length === 0) return
-    // 把含 inputPlaceholder 的行的输入值收集起来一并回调
     const inputsOut: Record<string, string> = {}
     const togglesOut: Record<string, boolean> = {}
     for (const it of cfg.items) {
@@ -350,13 +327,11 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
 
   const renderRow = (it: PickItem) => {
     const chosen = sessChosen[it.id]
-    // meta：会话可点(sessionPick 且有≥1条重命名会话)时渲染成徽标按钮，否则普通静态文本。
-    // entries 已在上游过滤为"重命名过的会话"，配合选择器里的"用默认会话恢复"即可选择。
+    // meta：会话可点时渲染成徽标按钮，否则普通静态文本；entries 上游已过滤为重命名过的会话
     const canPickSess = !!it.sessionPick && it.sessionPick.entries.length >= 1
 
     const onCheckChange = (nowChecked: boolean): void => {
       setChecked((prev) => ({ ...prev, [it.id]: nowChecked }))
-      // 手动取消勾选该行 → 一并清除已指定的会话
       if (!nowChecked && canPickSess && sessChosen[it.id]) {
         setSessChosen((prev) => {
           const n = { ...prev }
@@ -394,7 +369,6 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
       })
     }
 
-    // 标题可能很长会撑爆整行：截断显示 + 完整放 title，末尾保留 ▾ 标记
     const chosenFull = chosen?.title ?? ''
     const chosenShort = chosenFull.length > 14 ? chosenFull.slice(0, 14) + '…' : chosenFull
 
@@ -417,7 +391,6 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
             spellCheck={false}
             value={inputs[it.id] ?? ''}
             onChange={(e) => {
-              // 文本输入框：非空时自动勾上同行 checkbox，省去用户两步操作
               const v = e.target.value
               setInputs((prev) => ({ ...prev, [it.id]: v }))
               setChecked((prev) => ({ ...prev, [it.id]: v.trim().length > 0 }))
@@ -440,9 +413,7 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
           <span className="pk-meta">{it.meta}</span>
         ) : null}
         {it.sideToggle ? (
-          // 行内 sideToggle 自带 label，正常 click 就 toggle 自己的 checkbox；
-          // 但外层若是 <label>（无 inputPlaceholder 的行），点这里会同时触发外层
-          // 主 checkbox 的隐式 toggle —— 阻止冒泡，让 sideToggle 独立。
+          // 阻止冒泡：外层 <label> 会对主 checkbox 做隐式 toggle
           <label className="pk-side-toggle" title={it.sideToggle.title ?? ''} onClick={(e) => e.stopPropagation()}>
             <input
               type="checkbox"
@@ -477,8 +448,7 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
 
     const rowClass = 'pk-row' + (it.disabled ? ' is-disabled' : '')
     const rowAction = pkIsAction(it) ? '1' : undefined
-    // 含 inputPlaceholder 的行不能用 <label>（点 input 会触发 label 的隐式 toggle，
-    // 干扰光标定位）。改用 <div>，自己在 checkbox 上绑 change。
+    // 含 inputPlaceholder 的行用 <div> 而非 <label>：点 input 会触发 label 隐式 toggle 干扰光标
     return it.inputPlaceholder ? (
       <div key={it.id} className={rowClass} data-row-action={rowAction}>
         {rowInner}
@@ -497,7 +467,6 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
         {cfg.sub ?? ''}
       </p>
       <div className="pk-toolbar">
-        {/* 合并按钮：实条目全选 → "取消全选"；否则 → "全选"。无可选实条目时禁用。 */}
         <button id="pk-toggle-all" type="button" className="link-btn" disabled={totalReal === 0} onClick={toggleAll}>
           {totalReal > 0 && curReal === totalReal ? t('取消全选') : t('全选')}
         </button>
@@ -530,13 +499,11 @@ function PickDialog() {
   })
   return (
     <div id="pickScrim" className="scrim" hidden={!pick} {...dismiss}>
-      {/* key=seq：openPickTabs 重复调用就地刷新（scrim 不摘 hidden → 不闪；内部勾选态重置） */}
+      {/* key=seq：openPickTabs 重复调用就地刷新并重置勾选态 */}
       {pick ? <PickBody key={seq} cfg={pick} /> : null}
     </div>
   )
 }
-
-// ─── confirm 确认弹窗 ────────────────────────────────────────────
 
 function ConfirmDialog() {
   const cf = useOverlays((s) => s.confirm)
@@ -545,7 +512,7 @@ function ConfirmDialog() {
     <div id="confirmScrim" className="scrim" hidden={!cf} {...dismiss}>
       <div className="modal modal-confirm">
         <h2 id="cf-title">{cf?.title ?? ''}</h2>
-        {/* message 是调用方拼好的 HTML（含 <b> 等），调用方自己负责转义 */}
+        {/* message 是调用方拼好的 HTML，调用方负责转义 */}
         <div className="cf-body" id="cf-msg" dangerouslySetInnerHTML={{ __html: cf?.message ?? '' }} />
         <div className="actions">
           <button id="cf-cancel" className="btn btn-secondary" onClick={() => resolveConfirm(false)}>
@@ -564,17 +531,12 @@ function ConfirmDialog() {
   )
 }
 
-// ─── 会话选择浮层 ────────────────────────────────────────────────
-// 点「N 会话」徽标弹出的小列表。两个恢复入口共用：
-//   · 管理页(入口②)：选一条 = 直接恢复标签页并以该会话为活跃会话；
-//   · 勾选弹窗(入口①)：选一条 = 指定该标签用此会话恢复，selectedId 高亮已选，onClear 提供"用默认"。
-// 锚定在被点击的徽标下方，越界自动上翻/内收；外部点击 / Esc / 滚动即关闭。
-
+// 会话选择浮层：点「N 会话」徽标弹出的小列表，管理页与勾选弹窗两个恢复入口共用。
+// 锚定在徽标下方，越界自动上翻/内收；外部点击 / Esc / 滚动即关闭。
 function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // 定位：锚点下方左对齐。上下空间都放不下时，选空间更大的一侧并把高度收进该侧可用高度，
-  // 避免被顶到标题栏（top=8）盖住窗口控制按钮，变成贴顶的一整列。
+  // 定位：锚点下方左对齐；放不下时选空间更大的一侧并把高度收进该侧可用高度
   useLayoutEffect(() => {
     const host = ref.current
     if (!host) return
@@ -587,7 +549,6 @@ function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
     const spaceBelow = vh - r.bottom - GAP - MARGIN
     const spaceAbove = r.top - GAP - MARGIN - SAFE_TOP
     const placeBelow = spaceBelow >= spaceAbove
-    // 把浮层最大高度限制在所选一侧的可用高度内（内部已有 overflow-y 滚动）
     const avail = Math.max(Math.floor(placeBelow ? spaceBelow : spaceAbove), 120)
     host.style.maxHeight = `${avail}px`
     const pw = host.offsetWidth
@@ -614,13 +575,12 @@ function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
       }
     }
     const onGone = (): void => closeSessionPicker()
-    // 滚动关闭仅针对浮层"外部"的滚动（底层列表滚动会让锚点移位）；
-    // 在浮层自身内部滚动不该把它关掉。
+    // 仅浮层外部滚动才关闭（外部滚动会让锚点移位）
     const onScroll = (e: Event): void => {
       if (host.contains(e.target as Node)) return
       closeSessionPicker()
     }
-    // 延后挂 mousedown，避免"打开这一次点击"立即把它关掉
+    // 延后挂 mousedown，避免打开的这次点击立即关掉它
     const timer = window.setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0)
     document.addEventListener('keydown', onKey, true)
     window.addEventListener('resize', onGone, true)
@@ -639,7 +599,6 @@ function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
       {opts.title ? <div className="sesspick-head">{opts.title}</div> : null}
       {opts.entries.map((e) => {
         const sel = !!opts.selectedId && e.sessionId === opts.selectedId
-        // meta 行含 <span class="src">/<span class="cur"> 结构，沿用原 HTML 拼接
         const meta = `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
         return (
           <div
@@ -682,10 +641,7 @@ function SessionPicker() {
   return sp ? <SessionPickerBody opts={sp} /> : null
 }
 
-// ─── 导出 ────────────────────────────────────────────────────────
-
-// toast：.toast 是 position:absolute（相对 .main），由 App 放进 .main。
-// 隐藏时保留文字，让淡出动画期间内容不消失（对齐原实现只摘 .show 类）。
+// toast：隐藏时保留文字，让淡出动画期间内容不消失
 export function ToastHost() {
   const msg = useOverlays((s) => s.toastMsg)
   const show = useOverlays((s) => s.toastShow)
@@ -696,9 +652,6 @@ export function ToastHost() {
   )
 }
 
-// 浮层宿主：App 挂在 body 直下层级（#root 直下）。
-// DOM 顺序对齐原 index.html：ctx → #scrim → #pickScrim → #confirmScrim；
-// 会话选择浮层原是动态 append 到 body 末尾，这里放最后（z 序由 CSS 保证）。
 export function OverlayHost() {
   return (
     <>

@@ -1,6 +1,4 @@
-# 生成应用图标：与 titlebar 左上角 SVG 同款 ——
-# 圆角 ink 黑背景 + 白色「>」+ 下划线（不画终端外框）。
-# 输出 resources/icon.png（256x256）与 resources/icon.ico（多尺寸 16/32/48/64/128/256）。
+# 生成应用图标（与 titlebar SVG 同款）：输出 resources/icon.png 与多尺寸 icon.ico。
 # 用法：pwsh -NoProfile -File scripts/generate-icon.ps1
 
 param(
@@ -27,8 +25,7 @@ function New-IconBitmap {
   $ink = [System.Drawing.Color]::FromArgb(255, 23, 23, 23)        # #171717 (DESIGN ink)
   $white = [System.Drawing.Color]::FromArgb(255, 255, 255, 255)
 
-  # ── 1. 圆角 ink 黑背景：与 titlebar SVG 同款 (1,2)-(22,20) rx=5.5
-  # 上下 2px、左右 1px 的留白来自 titlebar 视觉妥协（接近边但不贴），icon 尺寸下肉眼难辨。
+  # 圆角 ink 黑背景：与 titlebar SVG 同款 (1,2)-(22,20) rx=5.5
   $bgPath = New-Object System.Drawing.Drawing2D.GraphicsPath
   $bgX = 1.0 * $scale
   $bgY = 2.0 * $scale
@@ -45,17 +42,15 @@ function New-IconBitmap {
   $bgBrush.Dispose()
   $bgPath.Dispose()
 
-  # ── 2. 白色「>」+ 下划线（与 titlebar SVG 一致：stroke-width 2.4）
+  # 白色「>」+ 下划线（stroke-width 2.4）
   $strokeWidth = [Math]::Max($Size / 24.0 * 2.4, 1.2)
   $stroke = New-Object System.Drawing.Pen $white, $strokeWidth
   $stroke.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
   $stroke.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $stroke.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
 
-  # > 提示符 polyline：(6.5, 9) - (10, 12) - (6.5, 15)
   $g.DrawLine($stroke, (6.5 * $scale), (9 * $scale), (10 * $scale), (12 * $scale))
   $g.DrawLine($stroke, (10 * $scale), (12 * $scale), (6.5 * $scale), (15 * $scale))
-  # 下划线 line：(12.5, 15) - (17.5, 15)
   $g.DrawLine($stroke, (12.5 * $scale), (15 * $scale), (17.5 * $scale), (15 * $scale))
 
   $stroke.Dispose()
@@ -63,13 +58,12 @@ function New-IconBitmap {
   return $bmp
 }
 
-# 主 PNG（256）
 $mainBmp = New-IconBitmap -Size $Master
 $pngPath = Join-Path $resDir 'icon.png'
 $mainBmp.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Host "wrote $pngPath"
 
-# 多尺寸 ICO：16/32/48/64/128/256，每张作为 PNG 压缩塞进 ICO
+# 多尺寸 ICO：每张作为 PNG 压缩塞进 ICO
 $sizes = @(16, 32, 48, 64, 128, 256)
 $bitmaps = @()
 foreach ($s in $sizes) {

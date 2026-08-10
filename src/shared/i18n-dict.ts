@@ -1,14 +1,13 @@
-// 界面多语言词典：中文原文即 key（可含 {0} {1} 占位符），值为 English 译文。
-// 缺词条时 t() 回退中文原文，所以漏翻不会白屏，只会显示中文。
-// 主进程与渲染进程共用本文件（两个 tsconfig 的 include 都带 src/shared）。
+// 界面多语言词典：中文原文即 key（可含 {0} {1} 占位符），值为 English 译文；缺词条时 t() 回退中文。
+// 主进程与渲染进程共用本文件。
 export const I18N_EN: Record<string, string> = {
-  // ─── 标题栏 / 窗口 ───────────────────────────────────────────
+  // 标题栏 / 窗口
   '窗口控制': 'Window controls',
   '最小化': 'Minimize',
   '最大化': 'Maximize',
   '关闭': 'Close',
 
-  // ─── 侧边栏 ─────────────────────────────────────────────────
+  // 侧边栏
   '工作区': 'Workspace',
   '工作区||列表': 'Workspaces',
   '新建分组': 'New Group',
@@ -26,7 +25,7 @@ export const I18N_EN: Record<string, string> = {
   '拖动调整宽度': 'Drag to resize',
   '展开侧边栏（hover 预览）': 'Expand sidebar (hover to preview)',
 
-  // ─── 顶栏 / 工具栏 ───────────────────────────────────────────
+  // 顶栏 / 工具栏
   '在当前分组新建标签': 'New tab in current group',
   '新建标签': 'New Tab',
   '启动 CC': 'Start CC',
@@ -35,11 +34,11 @@ export const I18N_EN: Record<string, string> = {
   '分组 / 工作区管理': 'Group / workspace manager',
   '设置': 'Settings',
   '本标签的会话（栈顶 = 当前）': 'Sessions of this tab (top = current)',
-  // 下面两条是被 <code>/clear</code> 拆开的前后半句（JSX 里两个文本节点分别包 t()）
+  // 下面两条是被 <code>/clear</code> 拆开的前后半句
   '终端里': 'In the terminal,',
   '会自动在此新增一条会话': 'automatically adds a session here',
 
-  // ─── 空状态 / 搜索 / 状态栏 ──────────────────────────────────
+  // 空状态 / 搜索 / 状态栏
   '没有打开的会话': 'No open sessions',
   '左侧点「新建分组」开始，或从「已保存的分组」恢复': 'Click "New Group" on the left to start, or restore a saved group',
   '终端内搜索': 'Search in terminal',
@@ -47,7 +46,7 @@ export const I18N_EN: Record<string, string> = {
   '关闭 (Esc)': 'Close (Esc)',
   '关闭搜索': 'Close search',
 
-  // ─── 新建/恢复弹窗 ───────────────────────────────────────────
+  // 新建/恢复弹窗
   '一个标签 = 一个 pwsh 会话。': 'One tab = one pwsh session.',
   '名称': 'Name',
   '路径 (cwd)': 'Path (cwd)',
@@ -65,7 +64,7 @@ export const I18N_EN: Record<string, string> = {
   '恢复': 'Restore',
   '恢复||来源': 'Resumed',
 
-  // ─── 分组/工作区管理弹窗 ─────────────────────────────────────
+  // 分组/工作区管理弹窗
   '分组/工作区管理': 'Groups / Workspaces',
   '按名称自动排序。右键名称可重命名，展开可管理标签。': 'Sorted by name. Right-click a name to rename; expand to manage tabs.',
   '搜索：分组名 / 路径 / 标签名（支持模糊匹配）': 'Search: group / path / tab name (fuzzy)',
@@ -75,7 +74,7 @@ export const I18N_EN: Record<string, string> = {
   '还没有已保存的分组。': 'No saved groups yet.',
   '右键打开的分组「保存分组」就会出现在这里。': 'Right-click an open group and choose "Save group" to add it here.',
 
-  // ─── 标签历史弹窗 ────────────────────────────────────────────
+  // 标签历史弹窗
   '最近 7 天内打开过的标签，按最近使用时间排序。': 'Tabs opened in the last 7 days, sorted by recent use.',
   '按时间分组': 'Grouped by time',
   '7 天内没有打开过标签的记录。': 'No tabs opened in the last 7 days.',
@@ -83,7 +82,7 @@ export const I18N_EN: Record<string, string> = {
   '清空全部历史': 'Clear all history',
   '确认': 'Confirm',
 
-  // ─── 设置面板（静态） ────────────────────────────────────────
+  // 设置面板（静态）
   '设置分区': 'Settings sections',
   '外观': 'Appearance',
   '通用': 'General',
@@ -136,7 +135,7 @@ export const I18N_EN: Record<string, string> = {
   '版本': 'Version',
   '检查更新': 'Check for Updates',
 
-  // ─── 设置面板（动态，settings-panel.ts） ─────────────────────
+  // 设置面板（动态）
   '跟随 cc 默认': 'Follow cc default',
   '恢复默认设置': 'Reset Settings',
   '确定把所有设置恢复到默认？<br>字体 / 光标 / 主题 / 镜像 等都会被重置。<br>此操作不可撤销。': 'Reset all settings to defaults?<br>Font / cursor / theme / registry etc. will be reset.<br>This cannot be undone.',
@@ -184,25 +183,25 @@ export const I18N_EN: Record<string, string> = {
   '稍后': 'Later',
   '语言切换将在重启应用后生效': 'Language change takes effect after restart',
 
-  // ─── 主进程（托盘 / 原生对话框） ─────────────────────────────
+  // 主进程（托盘 / 原生对话框）
   '打开 Claude Terminal': 'Open Claude Terminal',
   '退出（终止所有会话）': 'Quit (terminate all sessions)',
   '确认关闭': 'Confirm Close',
   '确认关闭 Claude Terminal？': 'Close Claude Terminal?',
   '关闭后所有终端会话将被终止。': 'All terminal sessions will be terminated.',
 
-  // ─── 多窗口 / 标签拖出拖回 ──────────────────────────────────
+  // 多窗口 / 标签拖出拖回
   '确认关闭此窗口？': 'Close this window?',
   '关闭后该窗口内的终端会话将被终止。确认继续？': 'Terminal sessions in this window will be terminated. Continue?',
   '移到新窗口': 'Move to new window',
   '已移入标签「{0}」': 'Tab "{0}" moved in',
   '移动标签失败：{0}': 'Failed to move tab: {0}',
 
-  // ─── 悬浮窗 ─────────────────────────────────────────────────
+  // 悬浮窗
   '打开主窗口': 'Open main window',
   '隐藏悬浮窗': 'Hide floating widget',
 
-  // ─── 终端标签（terminal-tab.ts） ─────────────────────────────
+  // 终端标签
   '连接中断，回复可能未完成': 'Connection interrupted; the response may be incomplete',
   '接口连接异常': 'API connection error',
   '接口请求超时': 'API request timed out',
@@ -213,7 +212,7 @@ export const I18N_EN: Record<string, string> = {
   '[pwsh 已退出 · 退出码 {0}]': '[pwsh exited · exit code {0}]',
   '按任意键重启 shell…': 'Press any key to restart the shell…',
 
-  // ─── 主进程经 IPC 回传的常见错误串（渲染层 t() 兜底翻译） ────
+  // 主进程经 IPC 回传的常见错误串（渲染层 t() 兜底翻译）
   '选择路径': 'Choose a folder',
   '未找到 npm，请检查 Node.js 安装': 'npm not found. Please check your Node.js installation',
   '未找到 npm': 'npm not found',
@@ -236,7 +235,7 @@ export const I18N_EN: Record<string, string> = {
   '返回里没有用量字段': 'No usage fields in the response',
   'usage API 冷却中': 'Usage API cooling down',
 
-  // ─── 主界面（main.ts） ───────────────────────────────────────
+  // 主界面
   '[claude 路径不存在：{0}，跳过自动启动]': '[claude path not found: {0}, skipping auto-launch]',
   '请到设置 → Claude Code 中重新选择 claude 可执行文件。': 'Go to Settings → Claude Code to re-select the claude executable.',
   '[claude 未在 PATH 中，跳过自动启动 Claude Code]': '[claude not found in PATH, skipping Claude Code auto-launch]',
@@ -328,7 +327,7 @@ export const I18N_EN: Record<string, string> = {
   '已切到「{0}」': 'Switched to "{0}"',
   '已从历史恢复「{0}」': 'Restored "{0}" from history',
 
-  // ─── 通用小部件 / 选择弹窗（ui-helpers.ts） ──────────────────
+  // 通用小部件 / 选择弹窗
   '{0} 盘': 'Drive {0}',
   '已选 {0} / {1}': '{0} / {1} selected',
   '从保存里删除': 'Remove from saved',
@@ -352,14 +351,14 @@ export const I18N_EN: Record<string, string> = {
   '清除指定，按标签原活跃会话': "Clear override; use the tab's last active session",
   '默认': 'Default',
 
-  // ─── 会话信息条（session-info.ts） ───────────────────────────
+  // 会话信息条
   '上下文 {0} / {1} tokens': 'Context {0} / {1} tokens',
   '（窗口为估算，未读到会话快照）': ' (window size estimated; session snapshot unavailable)',
   '新会话，等待 cc 上报上下文用量': 'New session — waiting for cc to report context usage',
   '点击切换模型': 'Click to switch model',
   '点击切换思考强度 (effort)': 'Click to change thinking effort',
 
-  // ─── 标签历史（history-manager.ts） ──────────────────────────
+  // 标签历史
   '今天': 'Today',
   '昨天': 'Yesterday',
   '更早': 'Earlier',
@@ -380,7 +379,7 @@ export const I18N_EN: Record<string, string> = {
   '将清空<b>{0}</b>的 <b>{1}</b> 条历史记录，已打开的标签不受影响。': 'This clears <b>{1}</b> history entries from <b>{0}</b>. Open tabs are not affected.',
   '清空': 'Clear',
 
-  // ─── 已保存管理 / 侧边栏 / 顶栏（saved-manager / sidebar / toolbar） ─
+  // 已保存管理 / 侧边栏 / 顶栏（saved-manager / sidebar / toolbar）
   '整份工作区快照：点击展开分组，右键可重命名 / 恢复 / 删除。': 'Full workspace snapshots: click to expand groups; right-click to rename / restore / delete.',
   '搜索：工作区名（支持模糊匹配）': 'Search workspaces (fuzzy match)',
   '按名称自动排序。点击展开标签，右键可重命名 / 恢复 / 删除。': 'Sorted by name. Click to expand tabs; right-click to rename / restore / delete.',
@@ -439,7 +438,7 @@ export const I18N_EN: Record<string, string> = {
   '没有会话记录。激活标签后 cc 会自动创建首个会话。': 'No session records. cc will create the first session automatically once the tab is activated.',
   '当前': 'Current',
 
-  // ─── 额度指示（usage-indicator.ts） ──────────────────────────
+  // 额度指示
   '即将重置': 'Resetting soon',
   'Claude 用量…': 'Claude usage…',
   'Claude 用量 ✕': 'Claude usage ✕',

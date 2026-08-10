@@ -16,9 +16,8 @@ export interface HookPaths {
   bashProfile: string     // macOS: bash shell-integration
 }
 
-// cc 每 ~300ms 调一次 statusLine 命令并从 stdin 喂 JSON（含 context_window / model）。
-// 用 node（启动快，pwsh 太慢扛不住这个频率）读 stdin、把会话快照按 session_id 落盘，
-// stdout 输出空串 → cc TUI 那行留空。数据由 app 底部状态栏展示。
+// statusline 探针：cc 每 ~300ms 调一次并从 stdin 喂 JSON。用 node（pwsh 冷启动太慢扛不住此频率）
+// 把会话快照按 session_id 落盘；stdout 留空 → cc TUI 该行为空。
 const STATUSLINE_JS = `// Claude Terminal · statusline 探针
 const fs = require('fs'); const path = require('path');
 const dir = process.argv[2];
@@ -79,7 +78,8 @@ process.stdin.on('end', () => {
 });
 `
 
-// 解析 node 可执行路径（cc 的 statusline shell 不一定有 PATH，尽量用绝对路径）
+// 解析 node 绝对路径（cc 的 statusline shell 不一定有 PATH）；
+// macOS GUI 进程 PATH 极简，需借登录+交互 shell 解析。
 function detectNodePath(): string {
   if (process.platform === 'win32') {
     try {
@@ -88,35 +88,24 @@ function detectNodePath(): string {
         .map((s) => s.trim())
         .filter(Boolean)
       if (out[0]) return out[0]
-    } catch {
-      // 退回 PATH
-    }
+    } catch {}
     return 'node'
   }
-  // macOS/类 Unix：GUI 拉起的主进程 PATH 极简（拿不到 nvm/homebrew 的 node）。
-  // 用登录+交互 shell 解析真实 node 绝对路径；-i 让 ~/.zshrc 里的 PATH 也生效。
   try {
     const shell = process.env.SHELL || '/bin/zsh'
     const lines = execFileSync(shell, ['-lic', 'command -v node'], { encoding: 'utf8' })
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean)
-    // 交互 shell 可能先吐别的内容 → 从末尾找第一条绝对路径行
+    // 交互 shell 可能先吐别的内容 → 从末尾找绝对路径行
     const line = lines.reverse().find((l) => l.startsWith('/'))
     if (line) return line
-  } catch {
-    // 退回 PATH
-  }
+  } catch {}
   return 'node'
 }
 
-// SessionStart hook（node）。原来用 pwsh，cc 偶尔报 "SessionStart:resume hook error / Failed
-// with non-blocking status code: No stderr output" —— 推测是 PS 冷启动慢 + Add-Content 在并发
-// IO 下抛了非终止异常 + $ErrorActionPreference 兜不住 → 非零退出 → cc 当 hook 失败 → .jsonl
-// 那行根本没写出去 → watcher 拿不到 → 渲染层栈不更新（"resume 后栈里没新会话"）。
-// 换 node：启动快、stdin 读法稳、appendFileSync 走 OS 原生 append 不会被 PS 那套 shareMode 卡。
-// 出错路径全部 swallow + 始终 exit 0 —— hook 失败不影响 cc 主流程。
-// dir 走 argv[2] 而不是 env：减少 1 条 env 依赖，少一个漂移点。
+// SessionStart hook（node）。必须用 node 而非 pwsh：PS 冷启动慢 + 并发 IO 异常会导致
+// 非零退出、jsonl 丢行。出错路径全部 swallow + 始终 exit 0，hook 失败不影响 cc 主流程。
 const SESSION_PROBE_JS = `// Claude Terminal · SessionStart hook
 const fs = require('fs'); const path = require('path');
 const dir = process.argv[2];
@@ -144,8 +133,7 @@ process.stdin.on('end', () => {
 });
 `
 
-// 状态 hook（node）。state 走 argv[3]（busy/done/attention/idle），dir 走 argv[2]。
-// 原子写：先写 .tmp 再 rename，避免 watcher 读到半截 JSON。
+// 状态 hook（node）：state 走 argv[3]，dir 走 argv[2]；先写 .tmp 再 rename 避免 watcher 读到半截 JSON。
 const STATE_PROBE_JS = `// Claude Terminal · 状态 hook
 const fs = require('fs'); const path = require('path');
 const dir = process.argv[2];
@@ -175,16 +163,8 @@ process.stdin.on('end', () => {
 });
 `
 
-// pwsh shell-integration profile：给非 cc 命令做「运行态」检测。
-// 借鉴 VS Code 的 shell integration，输出 OSC 133;A/B/C/D 和 OSC 633;E 序列。
-// renderer 侧用 xterm parser.registerOscHandler 接住:
-//   E;<cmd> → 记下即将执行的命令行（用于过滤是不是 cc）
-//   C       → 标记 shell-busy=true（蓝点）
-//   A / D   → 回到 prompt，shell-busy=false（灰点）
-// 只对 autoLaunchCC=false 的 tab 生效；cc 的状态仍由 hooks 主导，避免重复标注。
-// 用 [Console]::Write 直写 stdout，绕开 pwsh 输出流的 buffering，保证 OSC 立即到达 PTY。
-// 复用 pwsh 内建的 $function:prompt 和 PSReadLine 的 AddToHistoryHandler / PSConsoleHostReadLine，
-// 不改写用户已有的 profile，只在会话内追加钩子；env 变量 __TERMINAL_SHELL_INTEG 防止重复注入。
+// pwsh shell-integration：仿 VS Code 输出 OSC 133;A/B/C/D 与 633;E，渲染层据此做非 cc 命令的
+// 运行态检测（cc 状态仍由 hooks 主导）。[Console]::Write 直写绕开 pwsh buffering；不改用户 profile。
 const PWSH_PROFILE_PS1 = `# Claude Terminal · pwsh shell integration
 if ($env:__TERMINAL_SHELL_INTEG -ne '1') {
     $env:__TERMINAL_SHELL_INTEG = '1'
@@ -262,9 +242,7 @@ function Global:cct {
 }
 `
 
-// cct（POSIX 函数，zsh / bash 通用）：手动启动一次能被 app 接管的 cc 会话。
-// 与 pwsh 版语义一致：复用 pty:create 注入的 TERMINAL_* env；无参 = 新会话
-// （--session-id 新 uuid --name <tab>），-r/--resume = cc 自己弹历史选择器。
+// cct（POSIX 版，zsh/bash 通用）：手动启动可被 app 接管的 cc 会话，语义与 pwsh 版一致。
 const CCT_SH = `cct() {
   if [ -z "$TERMINAL_TAB_ID" ]; then
     printf '%s\\n' "cct: 需要在 Claude Terminal 的 tab 里运行"; return 1
@@ -292,11 +270,7 @@ const CCT_SH = `cct() {
 }
 `
 
-// zsh shell-integration：给非 cc 命令做「运行态」检测（对齐渲染层消费的 OSC 子集）。
-//   preexec → 发 OSC 633;E;<cmd>（命令行原文，供过滤 cc）+ OSC 133;C（命令开始=busy）
-//   precmd  → 命令结束发 OSC 133;D;<code>，再发 133;A（回到 prompt=idle）
-// 用 zsh 内建 preexec/precmd hook；__terminal_osc 把 ESC/BEL 收敛到一处，减少转义面。
-// __TERMINAL_SHELL_INTEG 防重复注入（export 后子 shell 也不会重复挂）。
+// zsh shell-integration：preexec/precmd hook 发同一套 OSC 序列；__TERMINAL_SHELL_INTEG 防重复注入。
 const ZSH_PROFILE = `# Claude Terminal · zsh shell integration
 if [ -z "$__TERMINAL_SHELL_INTEG" ]; then
   export __TERMINAL_SHELL_INTEG=1
@@ -328,10 +302,7 @@ fi
 
 ${CCT_SH}`
 
-// bash shell-integration：bash 无内建 preexec/precmd，用 DEBUG trap 近似 preexec、
-// PROMPT_COMMAND 近似 precmd（bash-preexec 的精简版，best-effort）。
-//   DEBUG trap：每条命令执行前触发，__terminal_preexec_done 保证一条命令只发一次
-//   PROMPT_COMMAND：先跑用户原有的，再发命令结束/回到 prompt 序列
+// bash shell-integration：无内建 preexec/precmd，用 DEBUG trap + PROMPT_COMMAND 近似（best-effort）。
 const BASH_PROFILE = `# Claude Terminal · bash shell integration (best-effort)
 if [ -z "$__TERMINAL_SHELL_INTEG" ] && [[ "$-" == *i* ]]; then
   export __TERMINAL_SHELL_INTEG=1
@@ -418,9 +389,7 @@ export function ensureHookAssets(): HookPaths {
       Notification: [
         { matcher: 'permission_prompt', hooks: [{ type: 'command', command: stateCmd('attention') }] },
         { matcher: 'elicitation_dialog', hooks: [{ type: 'command', command: stateCmd('attention') }] }
-        // 不挂 idle_prompt：cc Stop 后 ~60s 没人理就发 idle_prompt，若映射成 idle 会把
-        // 绿点（done）静默盖回灰点（idle），表现为"明明完成了但没绿点"。
-        // idle 只该由 renderer 的降级倒计时产生（用户切到 done tab 看过后才降）。
+        // 不挂 idle_prompt：它会把绿点（done）静默盖回灰点；idle 只由 renderer 降级倒计时产生
       ]
     }
   }

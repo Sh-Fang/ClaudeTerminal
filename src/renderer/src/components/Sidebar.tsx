@@ -1,6 +1,4 @@
-// 侧边栏：工作区分组列表 + 已保存分组/工作区快捷区 + 用量面板 + 宽度拉条 + 收起把手。
-// 由原 sidebar.ts（分组/已保存区渲染）与 main.ts 的
-// sidebarResizer/savedResizer/sidebarCollapseBtn/sidebarHandle/savedToggle 逻辑合并迁移而来。
+// 侧边栏：工作区分组列表 + 已保存快捷区 + 用量面板 + 拉条与收起把手。
 // 数据全部来自 controller 的 getter，靠 useAppStore 的 rev 驱动重渲染。
 import { useRef, useState } from 'react'
 import type {
@@ -69,16 +67,15 @@ export function Sidebar() {
   const groups = getGroupViews()
   const activeTabId = getActiveTabId()
 
-  // 底部区当前展示：已保存分组 / 已保存工作区（分开展示，头部小切换；不持久化）
+  // 底部区当前展示：已保存分组 / 已保存工作区（不持久化）
   const [savedView, setSavedView] = useState<'groups' | 'workspaces'>('groups')
-  // 行内重命名中的 tabId（原实现直接把 .trow-name 置为 contenteditable）
+  // 行内重命名中的 tabId
   const [renamingTab, setRenamingTab] = useState<string | null>(null)
-  // 分组拖动排序状态：正在拖的分组 id + 当前落点标记（before/after）
+  // 分组拖动排序：正在拖的分组 id + 落点标记
   const [dragGroupId, setDragGroupId] = useState<string | null>(null)
   const [dropMark, setDropMark] = useState<{ id: string; before: boolean } | null>(null)
   const dragIdRef = useRef<string | null>(null)
-  // 标签行拖动排序（同分组内）：ref 记录拖动中的标签与其分组，dragover 据此判定可否插位。
-  // 跨窗口拖入的标签 ref 为 null（dragstart 不在本窗口）→ 自然落到容器级的迁移 drop。
+  // 同分组内标签拖动排序；跨窗口拖入的标签 ref 为 null，自然落到容器级的迁移 drop
   const dragTabRef = useRef<{ tabId: string; groupId: string } | null>(null)
   const [dragTabId, setDragTabId] = useState<string | null>(null)
   const [tabDropMark, setTabDropMark] = useState<{ id: string; before: boolean } | null>(null)
@@ -88,12 +85,11 @@ export function Sidebar() {
   const sidebarResizerRef = useRef<HTMLDivElement | null>(null)
   const savedResizerRef = useRef<HTMLDivElement | null>(null)
 
-  // 重命名会话期的临时值：旧名 / 是否已提交（防 Enter 后 blur 二次提交）/ 已初始化的编辑元素
+  // 重命名会话期临时值：旧名 / 是否已提交（防 Enter 后 blur 二次提交）
   const renameOldRef = useRef('')
   const renameDoneRef = useRef(true)
   const renameElRef = useRef<HTMLSpanElement | null>(null)
 
-  // ─── 行内重命名 ───────────────────────────────────────────────
   const startRename = (tabId: string, name: string): void => {
     renameOldRef.current = name
     renameDoneRef.current = false
@@ -106,13 +102,12 @@ export function Sidebar() {
     renameDoneRef.current = true
     const v = (el.textContent || '').trim()
     setRenamingTab(null)
-    // 取消 / 空值 / 没改动：直接丢弃（编辑 span 靠 key 整体重挂，旧文本自然还原）
+    // 取消/空值/没改动直接丢弃：编辑 span 靠 key 整体重挂，旧文本自然还原
     if (!cancel && v && v !== renameOldRef.current) renameTab(tabId, v)
   }
 
-  // ─── 分组拖动排序 ─────────────────────────────────────────────
   const onGroupDragStart = (e: RDragEvent<HTMLDivElement>, g: GroupView): void => {
-    // 编辑中的标签名优先：不抢拖动
+    // 编辑中的标签名不抢拖动
     if ((e.target as HTMLElement).closest('[contenteditable="true"]')) {
       e.preventDefault()
       return
@@ -166,7 +161,7 @@ export function Sidebar() {
     setDropMark(null)
   }
 
-  // ─── Sidebar 宽度拉条（竖向拉条，横向拖动） ─────────────────────
+  // Sidebar 宽度拉条
   const onSidebarResizerDown = (e: RMouseEvent<HTMLDivElement>): void => {
     const s = getSettings()
     if (s.sidebarCollapsed) return
@@ -179,7 +174,7 @@ export function Sidebar() {
     const onMove = (ev: MouseEvent): void => {
       const w = Math.max(180, Math.min(520, startW + (ev.clientX - startX)))
       patchSettingsLive({ sidebarWidth: w })
-      // 拖动过程直接写 CSS 变量即时反馈，不走整体重渲染；拖完再落盘
+      // 拖动中直接写 CSS 变量即时反馈，拖完再落盘
       document.documentElement.style.setProperty('--sidebar-w', `${w}px`)
     }
     const onUp = (): void => {
@@ -194,7 +189,7 @@ export function Sidebar() {
     window.addEventListener('mouseup', onUp)
   }
 
-  // 已保存 ↔ 打开 之间的水平拉条：调 .side-saved 高度，剩余给 .side-open（flex:1 自动吃满）
+  // 已保存 ↔ 打开 之间的水平拉条：调 .side-saved 高度
   const onSavedResizerDown = (e: RMouseEvent<HTMLDivElement>): void => {
     const s = getSettings()
     if (s.savedCollapsed || s.sidebarCollapsed) return
@@ -205,11 +200,10 @@ export function Sidebar() {
     const startY = e.clientY
     const startH = savedSectionRef.current?.getBoundingClientRect().height ?? 0
     const sidebarH = sidebarRef.current?.getBoundingClientRect().height ?? 0
-    // 留 100px 给「打开的分组」最少空间，避免被挤没
+    // 留 100px 给「打开的分组」，避免被挤没
     const minH = 80
     const maxH = Math.max(minH, sidebarH - 100)
     const onMove = (ev: MouseEvent): void => {
-      // 向上拖（clientY 变小）= 已保存区变大
       const dy = startY - ev.clientY
       const h = Math.max(minH, Math.min(maxH, Math.round(startH + dy)))
       patchSettingsLive({ sidebarSavedHeight: h })
@@ -226,20 +220,17 @@ export function Sidebar() {
     window.addEventListener('mouseup', onUp)
   }
 
-  // ─── 展开/收起全部（同一个按钮：全收起时变「展开全部」） ───────────
+  // 展开/收起全部共用一个按钮
   const allCollapsed = groups.length > 0 && groups.every((g) => g.collapsed)
   const toggleAllLabel = allCollapsed ? t('展开全部分组') : t('收起全部分组')
 
-  // ─── 标签行 ──────────────────────────────────────────────────
   const renderTabRow = (tab: TerminalTab, active: boolean, groupId: string) => {
     const st = (tab.status ?? 'idle') as TabStatus
     const isIdle = st === 'idle'
     const badgeText = isIdle ? t('{0}会话', tab.sessions.length) : statusShort(st)
     const badgeCls = isIdle ? '' : ` bs-${st}`
     const dotTitle = tab.note ? t('{0}：{1}', statusLabel(st), tab.note) : statusLabel(st)
-    // dirty 点：跟 isGroupDirty 的过滤条件对齐——纯 pwsh tab 即便 dirty=true 也不显示
-    // （纯 pwsh 没数据可保存，显示无意义）。承载 cc 的 tab 有未保存改动时在名字末尾贴一个
-    // 黄点，跟分组头 folder-filled 用同一色系表达"dirty"语义。
+    // dirty 点与 isGroupDirty 过滤条件对齐：纯 pwsh tab 没数据可保存，不显示
     const showDirty = tab.dirty && (tab.autoLaunchCC || tab.sessions.length > 0)
     const renaming = renamingTab === tab.id
     return (
@@ -252,8 +243,7 @@ export function Sidebar() {
           (tabDropMark?.id === tab.id ? (tabDropMark.before ? ' drop-before' : ' drop-after') : '')
         }
         data-t={tab.id}
-        // 跨窗口拖拽：拖出窗口外成新窗 / 拖到另一窗口合并。stopPropagation 挡住
-        // 冒泡到 .group 的分组重排 dragstart（否则拖标签会连分组一起标记 dragging）
+        // 跨窗口拖拽：拖出成新窗/拖到另一窗合并；stopPropagation 挡住冒泡到 .group 的分组重排
         draggable={!renaming}
         onDragStart={(e) => {
           e.stopPropagation()
@@ -268,8 +258,7 @@ export function Sidebar() {
           setTabDropMark(null)
           handleTabDragEnd(e, tab.id)
         }}
-        // 同分组内拖动排序：本窗口拖动中且同组才接住并画插位线；
-        // 跨分组/跨窗口不 preventDefault，冒泡给容器（容器只处理跨窗口迁移）
+        // 本窗口同组拖动才接住画插位线；跨分组/跨窗口冒泡给容器处理迁移
         onDragOver={(e) => {
           const d = dragTabRef.current
           if (!d || d.tabId === tab.id || d.groupId !== groupId) return
@@ -310,8 +299,7 @@ export function Sidebar() {
       >
         <span className={`st-dot st-${st}`} title={dotTitle}></span>
         {renaming ? (
-          // 编辑态用独立 key 强制重挂：无论提交还是取消，用户敲进去的文本节点
-          // 都随元素一起丢弃，不会污染 React 管理的静态名字节点
+          // 编辑态用独立 key 强制重挂，手输文本节点随元素丢弃，不污染 React 静态节点
           <span
             key="rename"
             className="trow-name"
@@ -322,7 +310,7 @@ export function Sidebar() {
               renameElRef.current = el
               el.textContent = renameOldRef.current
               el.focus()
-              // 不全选：光标 collapse 到末尾，视觉上就是在原始文字上继续改
+              // 光标 collapse 到末尾（不全选）
               const range = document.createRange()
               range.selectNodeContents(el)
               range.collapse(false)
@@ -364,7 +352,6 @@ export function Sidebar() {
     )
   }
 
-  // ─── 分组 ────────────────────────────────────────────────────
   const renderGroup = (g: GroupView) => {
     const gs = groupStatus(g)
     const cwdTitle = g.cwd ? g.cwd : t('使用用户主目录')
@@ -445,14 +432,13 @@ export function Sidebar() {
     )
   }
 
-  // ─── 已保存区（分组 / 工作区 分开展示） ─────────────────────────
   const renderSavedList = () => {
     if (savedView === 'workspaces') {
       const workspaces = getSavedWorkspaceViews()
       if (workspaces.length === 0) {
         return <div className="side-empty">{t('上方「工作区」区空白处右键「保存该工作区」。')}</div>
       }
-      // saved 行不再有右键菜单 —— 左键即恢复（分组弹选择窗，工作区弹确认窗）
+      // saved 行无右键菜单，左键即恢复
       return workspaces.map((w) => (
         <div
           key={w.id}
@@ -498,12 +484,10 @@ export function Sidebar() {
   return (
     <>
       <aside className={'sidebar' + (settings.sidebarCollapsed ? ' collapsed' : '')} id="sidebar" ref={sidebarRef}>
-        {/* 工作区（当前打开的分组集合）：占满剩余高度，超长时在本区内部滚动 */}
         <section
           className="side-section side-open"
           onContextMenu={(e) => {
-            // 「工作区」区的右键：命中分组头/标签行时交给行级菜单，
-            // 其余（空白、区标题）弹「保存该工作区」
+            // 右键命中分组头/标签行时交给行级菜单，其余弹「保存该工作区」
             const tgt = e.target as HTMLElement
             if (tgt.closest('[data-t]') || tgt.closest('[data-g]')) return
             e.preventDefault()
@@ -559,7 +543,6 @@ export function Sidebar() {
                 <circle cx="12" cy="12" r="2" />
               </svg>
             </button>
-            {/* 展开/收起全部合一：图标与行为随分组状态切换 */}
             <button
               id="toggleAllBtn"
               className="side-head-btn"
@@ -628,7 +611,7 @@ export function Sidebar() {
           </div>
           <div
             className="side-open-scroll"
-            // 跨窗口标签拖入（拖回/合并）：整个工作区滚动区都是 drop 目标
+            // 跨窗口标签拖入：整个工作区滚动区都是 drop 目标
             onDragOver={(e) => {
               if (isTabDragOver(e.dataTransfer)) e.preventDefault()
             }}
@@ -648,8 +631,7 @@ export function Sidebar() {
           </div>
         </section>
 
-        {/* 横向拉条：调整「已保存」区高度（即同时调整「打开」区剩余高度的占比）。
-            折叠态下拉条没意义：.disabled 隐藏并禁用 pointer，避免误拖 */}
+        {/* 横向拉条调整「已保存」区高度；折叠态 .disabled 禁用避免误拖 */}
         <div
           id="savedResizer"
           ref={savedResizerRef}
@@ -659,7 +641,7 @@ export function Sidebar() {
           onMouseDown={onSavedResizerDown}
         ></div>
 
-        {/* 分组/工作区管理：底部区，已保存分组与工作区混排（图标区分），管理入口进弹窗 */}
+        {/* 已保存区：分组与工作区分开展示，管理入口进弹窗 */}
         <section
           className={'side-section side-saved' + (settings.savedCollapsed ? ' collapsed' : '')}
           id="savedSection"
@@ -689,7 +671,6 @@ export function Sidebar() {
                 </svg>
               </span>
             </button>
-            {/* 视图切换：已保存分组 / 已保存工作区 分开展示 */}
             <span className="saved-view-switch" id="savedViewSwitch" role="tablist">
               <button
                 className={'sv-item' + (savedView === 'groups' ? ' active' : '')}
@@ -740,7 +721,6 @@ export function Sidebar() {
           </div>
         </section>
 
-        {/* Claude 账号用量：固定在侧边栏最底部 */}
         <UsagePanel />
 
         <div

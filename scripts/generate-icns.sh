@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# 从 resources/icon.png 生成 resources/icon.icns（仅 macOS，依赖系统自带 sips + iconutil）。
-# 现有 icon.png 是 256x256，脚本会把 512/1024 档位放大生成——画质会略糊，属预期取舍。
+# 从 resources/icon.png 生成 icon.icns（仅 macOS，依赖 sips + iconutil）；512/1024 档由 256 放大，略糊属预期。
 # 用法：在项目根目录执行  bash scripts/generate-icns.sh
 set -euo pipefail
 

@@ -1,9 +1,8 @@
-// 跨模块共享的视图类型：原分散在 sidebar.ts / saved-manager.ts / history-manager.ts，
-// React 迁移后旧 UI 类文件将被删除，视图类型集中到这里，controller 与各组件统一从此导入。
+// 跨模块共享的视图类型，controller 与各组件统一从此导入
 
 import type { TerminalTab, SessionRecord } from './terminal-tab'
 
-// ─── 侧边栏视图（原 sidebar.ts） ──────────────────────────────────
+// 侧边栏视图
 export interface GroupView {
   id: string
   name: string
@@ -29,7 +28,7 @@ export interface SavedWorkspaceView {
   tabCount: number
 }
 
-// ─── 管理弹窗视图（原 saved-manager.ts） ──────────────────────────
+// 管理弹窗视图
 export interface ManageSessionView {
   sessionId: string
   title: string
@@ -71,7 +70,7 @@ export interface ManageWorkspaceView {
   groups: ManageWorkspaceGroupView[]
 }
 
-// ─── 标签历史条目（原 history-manager.ts） ────────────────────────
+// 标签历史条目
 export interface HistoryEntry {
   tabId: string
   tabName: string

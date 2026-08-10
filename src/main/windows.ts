@@ -1,11 +1,6 @@
-// 多窗口管理：副窗口（标签拖出形成的独立窗口）创建 + 跨窗口标签迁移协调。
-// 副窗口加载同一份 index.html（?secondary=1），渲染层是完整 app，只是启动分支不同。
-// 迁移协议（无论拖出新窗还是拖回已有窗口，都是同一条流水线）：
-//   1. 目标窗口就绪（新窗等 'window:secondary-ready'；已有窗口直接用）
-//   2. holdPty：该 tab 的 PTY 输出进暂存队列（快照与实时流无缝衔接的关键）
-//   3. 源窗口 export：serialize xterm 缓冲 + 打包 tab 元数据 + detach（不杀 PTY）
-//   4. 目标窗口 import：重建 xterm、写回缓冲、adopt PTY
-//   5. flushPty：路由切到目标窗口并回放暂存队列
+// 多窗口管理：副窗口创建（同一份 index.html?secondary=1）+ 跨窗口标签迁移协调。
+// 迁移流水线：目标窗口就绪 → holdPty 暂存输出 → 源窗口 export（serialize + detach，
+// 不杀 PTY）→ 目标窗口 import → flushPty 切路由并回放暂存队列。
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
 import { killPty } from './pty-manager'
@@ -39,7 +34,7 @@ function readyGate(winId: number): Promise<void> {
 
 export function createSecondaryWindow(at?: { x: number; y: number }): BrowserWindow {
   const isMac = process.platform === 'darwin'
-  // 落点：以鼠标松手处为窗口左上角基准，夹回工作区内，避免半个窗口飞出屏幕
+  // 落点以鼠标松手处为基准，夹回工作区内
   let bounds: { x?: number; y?: number } = {}
   if (at) {
     const disp = screen.getDisplayNearestPoint({ x: Math.round(at.x), y: Math.round(at.y) })
@@ -78,11 +73,10 @@ export function createSecondaryWindow(at?: { x: number; y: number }): BrowserWin
   win.on('maximize', () => sendState(true))
   win.on('unmaximize', () => sendState(false))
 
-  // 副窗口关闭语义：里面还有标签 → 让渲染层弹确认（复用主窗口同一套 close-request 流程，
-  // 渲染层按 isSecondary 换文案）；已经空了 → 静默放行销毁。
+  // 副窗口关闭：还有标签 → 渲染层弹确认（复用 close-request 流程）；空了 → 静默放行
   win.on('close', (e) => {
     if (win.isDestroyed()) return
-    if (!wcHasTabs(win.webContents)) return // 空窗直接关
+    if (!wcHasTabs(win.webContents)) return
     e.preventDefault()
     try { win.webContents.send('window:close-request') } catch {}
   })
@@ -94,7 +88,7 @@ export function createSecondaryWindow(at?: { x: number; y: number }): BrowserWin
     secondaryReady.delete(win.id)
   })
 
-  // 渲染进程销毁（destroy/崩溃）：路由表清账 + 杀掉它名下的 PTY，不留孤儿 pwsh
+  // 渲染进程销毁：清路由表 + 杀名下 PTY，不留孤儿 pwsh
   win.webContents.on('destroyed', () => {
     for (const ptyId of dropWc(win.webContents)) {
       try { killPty(ptyId) } catch {}
@@ -178,8 +172,7 @@ export function registerWindowIpc(): void {
     const srcWc = tabOwnerWc(tabId) ?? getMainWindow()?.webContents ?? null
     if (!srcWc || srcWc.isDestroyed()) return { ok: false, error: 'source gone' }
 
-    // 拖出成新窗时：松手点若落在本 app 任意现有窗口内，说明只是拖到了窗口空白处
-    // （没有 drop 目标接住），不应该误开新窗——静默忽略。
+    // 拖出成新窗时：松手点落在本 app 现有窗口内 = 拖到窗口空白处，不误开新窗
     let targetWin: BrowserWindow | null = null
     if (raw?.targetWindowId != null) {
       targetWin = BrowserWindow.getAllWindows().find((w) => w.id === raw.targetWindowId) ?? null
@@ -206,7 +199,7 @@ export function registerWindowIpc(): void {
             ? { x: Number(raw.screenX), y: Number(raw.screenY) }
             : undefined
         )
-        // 等副窗口渲染层 initApp 完成（超时兜底 15s：dev 首次编译可能慢）
+        // 等副窗口渲染层就绪（15s 兜底：dev 首次编译可能慢）
         await Promise.race([
           readyGate(targetWin.id),
           new Promise<void>((r) => setTimeout(r, 15000))
@@ -214,14 +207,14 @@ export function registerWindowIpc(): void {
         if (targetWin.isDestroyed()) return { ok: false, error: 'target gone' }
       }
 
-      // 源窗口导出（渲染层内部会先 invoke pty:hold 再 serialize，保证不丢字节）
+      // 源窗口导出（渲染层先 invoke pty:hold 再 serialize，保证不丢字节）
       const payload = await requestExport(srcWc, tabId)
       if (!payload) return { ok: false, error: 'export failed' }
 
       releaseTab(tabId)
       const targetWc = targetWin.webContents
       if (targetWc.isDestroyed()) {
-        // 目标没了：PTY 暂存队列还挂着——回放给源？源已 detach，只能杀掉避免悬挂
+        // 目标没了且源已 detach，只能杀 PTY 避免悬挂
         const ptyId = payload.ptyId
         if (typeof ptyId === 'number') { try { killPty(ptyId) } catch {} }
         return { ok: false, error: 'target gone' }
@@ -229,13 +222,13 @@ export function registerWindowIpc(): void {
       try { targetWc.send('tab:import', payload) } catch {
         return { ok: false, error: 'import send failed' }
       }
-      // 源是副窗口且最后一个标签被迁走 → 自动关窗（Chrome 同款）。必须在这里做而非
-      // 渲染层：此刻 export 回包已收到（数据安全）、releaseTab 已执行（路由表准确）。
+      // 副窗口最后一个标签迁走 → 自动关窗。必须在主进程此处做：export 回包已收到、
+      // releaseTab 已执行，时序才安全。
       const srcWin = BrowserWindow.fromWebContents(srcWc)
       if (srcWin && !srcWin.isDestroyed() && isSecondaryWindow(srcWin) && !wcHasTabs(srcWc)) {
         try { srcWin.destroy() } catch {}
       }
-      // import 完成由目标窗口回 'tab:import-done'（含 claim + flushPty），这里不再等待
+      // import 完成由目标窗口回 'tab:import-done'，这里不等待
       return { ok: true }
     } finally {
       migrating.delete(tabId)

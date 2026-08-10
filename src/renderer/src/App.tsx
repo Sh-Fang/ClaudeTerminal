@@ -17,8 +17,7 @@ export function App() {
   void rev
   const s = getSettings()
 
-  // React 根之外的节点（<html>）统一在这里管：应用主题 data 属性 + 侧边栏尺寸 CSS 变量。
-  // 拖拽过程中 Sidebar 会直接 setProperty 做即时反馈，这里在每次 rev 变化后兜底对齐。
+  // <html> 上的主题 data 属性与侧边栏尺寸 CSS 变量统一在此维护，每次 rev 变化后兜底对齐。
   useEffect(() => {
     if (s.appTheme === 'dark') document.documentElement.dataset.appTheme = 'dark'
     else delete document.documentElement.dataset.appTheme

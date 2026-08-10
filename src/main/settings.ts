@@ -25,12 +25,11 @@ export interface Settings {
     scrollback: number
     theme: ThemePreset
   }
-  appTheme: AppTheme  // 应用（chrome）主题：浅色 / 深色，与终端主题相互独立
+  appTheme: AppTheme  // 应用主题，与终端主题相互独立
   defaults: {
     cwd: string
     autoLaunchCC: boolean
-    // model = cc `--model <arg>` 实参：alias（'fable'/'haiku'）或完整 id（'claude-opus-4-8'）；
-    // 空串 = 不带 --model，跟随 cc 默认。只在新建会话（非 --resume）时生效。
+    // cc `--model` 实参；空串 = 不带 --model。仅新建会话（非 --resume）生效
     model: string
   }
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径（多版本切换写这里）
@@ -102,9 +101,8 @@ function clampNum(v: unknown, min: number, max: number, fallback: number): numbe
   if (!Number.isFinite(n)) return fallback
   return Math.min(max, Math.max(min, n))
 }
-// 悬浮窗坐标：null = 未持久化（走默认位）。必须允许负值 —— 副屏在主屏左/上时，
-// Windows 虚拟屏坐标 x/y 为负，旧的 [-1,100000] clamp 会把它夹成 -1 丢掉位置。
-// 兼容旧版哨兵 -1：历史数据用 -1 表示"未持久化"，归一成 null；真实窗口坐标几乎不可能恰为 -1。
+// 悬浮窗坐标：null = 未持久化。必须允许负值（副屏在主屏左/上时 Windows 虚拟屏坐标为负）；
+// 旧版哨兵 -1 归一成 null。
 function coord(v: unknown): number | null {
   if (v === null || v === undefined) return null
   const n = typeof v === 'number' ? v : Number(v)
@@ -132,14 +130,14 @@ function normalize(raw: unknown): Settings {
     },
     terminal: {
       scrollback: clampNum(term.scrollback, 100, 100000, DEFAULT_SETTINGS.terminal.scrollback),
-      // 老配置里的 one-light 已下线（cc 深色渲染在浅色终端下不可读）→ 迁移到 one-dark
+      // 已下线的 one-light 迁移到 one-dark
       theme: pick(term.theme === 'one-light' ? 'one-dark' : term.theme, THEMES, DEFAULT_SETTINGS.terminal.theme)
     },
     appTheme: pick(r.appTheme, APP_THEMES, DEFAULT_SETTINGS.appTheme),
     defaults: {
       cwd: typeof def.cwd === 'string' ? def.cwd : DEFAULT_SETTINGS.defaults.cwd,
       autoLaunchCC: typeof def.autoLaunchCC === 'boolean' ? def.autoLaunchCC : DEFAULT_SETTINGS.defaults.autoLaunchCC,
-      // 只收字母数字/-/./_，防止用户手改 settings.json 时把奇怪字符注入到 spawn 命令
+      // 白名单字符，防手改 settings.json 注入 spawn 命令
       model:
         typeof def.model === 'string' && /^[A-Za-z0-9._-]*$/.test(def.model)
           ? def.model

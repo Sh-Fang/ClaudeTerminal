@@ -1,6 +1,5 @@
-// 在 Electron 主进程的 ABI 下验证 @lydell/node-pty 预编译二进制能加载并驱动 pwsh。
-// Windows 上 Electron 的 console 不一定回显到终端，所以把结果写到文件再由外部读取。
-// 运行：electron scripts/electron-smoke.js  （结果写到项目根 .smoke-electron.json）
+// 在 Electron ABI 下验证 @lydell/node-pty 预编译二进制能加载并驱动 pwsh。
+// 运行：electron scripts/electron-smoke.js（Windows 下 Electron console 不一定回显，结果写 .smoke-electron.json）
 const { app } = require('electron');
 const os = require('os');
 const fs = require('fs');
@@ -21,7 +20,7 @@ app.whenReady().then(() => {
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,
-    napi: process.versions.napi,        // N-API 版本，存在即 N-API 运行时
+    napi: process.versions.napi,
     modules: process.versions.modules,  // V8 module ABI（Electron 与 Node 不同）
     platform: process.platform,
     arch: process.arch,
@@ -29,7 +28,7 @@ app.whenReady().then(() => {
 
   let pty;
   try {
-    pty = require('@lydell/node-pty');   // 关键：在 Electron ABI 下加载原生二进制
+    pty = require('@lydell/node-pty');   // 在 Electron ABI 下加载原生二进制
   } catch (e) {
     return finish({ ok: false, stage: 'require', error: String(e && e.stack || e), info });
   }
@@ -61,5 +60,5 @@ app.whenReady().then(() => {
   }, 600);
 });
 
-// 不开窗口；不要因 window-all-closed 提前退出（本就没开窗，事件不会触发，这里仅兜底）
+// 不开窗口；兜底防 window-all-closed 提前退出
 app.on('window-all-closed', () => {});

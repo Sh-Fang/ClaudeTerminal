@@ -29,7 +29,7 @@ p.onExit(({ exitCode }) => {
   process.exit(ok && exitCode === 0 ? 0 : 1);
 });
 
-// 设 UTF-8（防中文乱码），再让 pwsh 算一个值回显，最后退出
+// 设 UTF-8 防中文乱码，让 pwsh 算一个值回显后退出
 setTimeout(() => {
   p.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r');
   p.write('"PTY-OK-$((6*7))  中文OK"\r');

@@ -1,7 +1,6 @@
-// 多窗口路由表：tabId / ptyId → 承载它的渲染进程（WebContents）。
-// 单窗口时代 PTY 数据与 hook 事件都无脑发主窗口；标签可以被拖到副窗口后，
-// 所有按 tabId / ptyId 寻址的推送都要先经这里解析目标。
-// 找不到路由时回退主窗口（由 index.ts 注入 getter）——启动早期 / 兜底场景仍然可用。
+// 多窗口路由表：tabId / ptyId → 承载它的 WebContents。标签可被拖到副窗口，
+// 所有按 tabId/ptyId 寻址的推送都要先经这里解析目标；找不到路由回退主窗口。
+// 迁移窗口期 PTY 输出经 holdPty/flushPty 暂存回放，保证快照与实时流无缝衔接。
 import type { WebContents } from 'electron'
 
 let getFallbackWc: () => WebContents | null = () => null
@@ -13,9 +12,7 @@ export function setFallbackWcGetter(fn: () => WebContents | null): void {
 const tabRoutes = new Map<string, WebContents>()
 const ptyRoutes = new Map<number, WebContents>()
 
-// 迁移中的 PTY：输出暂存进队列，目标窗口 adopt 完成后一次性回放。
-// 这样「serialize 快照 → 路由切换」之间到达的字节一个不丢。
-// 队列元素带 channel：pty:data 与 pty:exit 都可能在迁移窗口期到达。
+// 迁移中的 PTY 输出暂存队列（带 channel：pty:data / pty:exit 都可能在迁移窗口期到达）
 const heldPty = new Map<number, { channel: string; payload: unknown }[]>()
 
 function alive(wc: WebContents | undefined | null): WebContents | null {

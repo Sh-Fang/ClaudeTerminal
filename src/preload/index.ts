@@ -7,7 +7,7 @@ export interface SessionRecord {
   sessionId: string
   source: SessionSource
   createdAt: string
-  userTitle?: string  // 用户手动重命名，空则显示默认名「会话 N」（N 按 createdAt 排序）
+  userTitle?: string  // 用户手动重命名；空则显示默认名「会话 N」
   lastTs?: string
 }
 
@@ -257,39 +257,37 @@ export interface TermBridge {
   onFloaterCounts(cb: (c: FloaterCounts) => void): () => void
   floaterFocusMain(): void
   floaterHide(): void
-  // 悬浮窗右键弹菜单时，菜单可能比卡片宽 → 让主进程临时把窗口放大，关菜单再缩回
   floaterSetFocusable(on: boolean): void
   floaterMoveTo(x: number, y: number): void
   floaterDragState(on: boolean): void
-  // 主窗口侧：悬浮窗被右键菜单关掉时通知一下，刷新内存里的 settings 副本
+  // 悬浮窗被右键菜单关掉时通知主窗口刷新内存 settings
   onFloaterHidden(cb: () => void): () => void
-  // 右键菜单"在此处打开 Claude Terminal"：主进程 argv 里解析出 path 后推给 renderer
+  // 右键菜单"在此处打开"：主进程从 argv 解析 path 后推给 renderer
   onOpenHere(cb: (path: string) => void): () => void
-  // renderer 启动完成后主动拉一次：把首次启动 argv 里的 path（如果有）取走。
-  // 避免"send 时 renderer 监听器还没注册"导致的丢消息。
+  // renderer 启动完成后主动拉取首次启动 argv 里的 path（避免 send 早于监听器注册而丢消息）
   consumePendingOpenHere(): Promise<string[]>
-  // 语言切换等需要整体重启的场景：app.relaunch + 清理后正常退出
+  // 需要整体重启的场景（如语言切换）
   relaunchApp(): void
 
-  // ── 多窗口 / 标签跨窗口迁移 ─────────────────────────────────
+  // 多窗口 / 标签跨窗口迁移
   windowId(): Promise<number>
   // 渲染层认领/释放 tabId：主进程按此路由 PTY 数据与 hook 事件
   tabClaim(tabId: string): void
   tabRelease(tabId: string): void
-  // 迁移入口：targetWindowId 有值 = 迁到该窗口（拖回）；无值 = 在屏幕坐标处开新窗（拖出）
+  // targetWindowId 有值 = 迁到该窗口（拖回）；无值 = 在屏幕坐标处开新窗（拖出）
   tabMoveToWindow(opts: {
     tabId: string
     targetWindowId?: number
     screenX?: number
     screenY?: number
   }): Promise<{ ok: boolean; error?: string }>
-  // 源窗口 serialize 前调：让该 PTY 的输出进入主进程暂存队列（迁移期间不丢字节）
+  // 源窗口 serialize 前调：PTY 输出进主进程暂存队列（迁移期间不丢字节）
   ptyHold(ptyId: number): Promise<void>
   onTabExportRequest(cb: (req: { reqId: string; tabId: string }) => void): () => void
   tabExportReply(reqId: string, payload: TabTransferPayload | null): void
   onTabImport(cb: (payload: TabTransferPayload) => void): () => void
   tabImportDone(tabId: string, ptyId: number | null): void
-  // 副窗口渲染层 initApp 完成后上报（主进程据此开始向它 import）
+  // 副窗口渲染层就绪上报，主进程据此开始 import
   secondaryReady(): void
   // 其他窗口落盘引发的跨窗口同步
   onSettingsChanged(cb: (s: Settings) => void): () => void
@@ -420,7 +418,7 @@ const api: TermBridge = {
   consumePendingOpenHere: () => ipcRenderer.invoke('app:consumePendingOpenHere'),
   relaunchApp: () => ipcRenderer.send('app:relaunch'),
 
-  // ── 多窗口 / 标签跨窗口迁移 ─────────────────────────────────
+  // 多窗口 / 标签跨窗口迁移
   windowId: () => ipcRenderer.invoke('window:id'),
   tabClaim: (tabId) => ipcRenderer.send('tab:claim', tabId),
   tabRelease: (tabId) => ipcRenderer.send('tab:release', tabId),

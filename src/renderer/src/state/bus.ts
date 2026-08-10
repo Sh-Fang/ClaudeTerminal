@@ -1,5 +1,4 @@
-// 极简事件总线：controller（非 React 世界）向组件推一次性信号用。
-// 目前只有会话信息条的 nudge（原 sessionInfo.nudge()），有新事件往 BusEvent 联合里加。
+// 极简事件总线：controller（非 React 世界）向组件推一次性信号；新事件往 BusEvent 联合里加
 export type BusEvent = 'sessionInfo:nudge'
 
 const listeners = new Map<BusEvent, Set<() => void>>()

@@ -1,19 +1,14 @@
-// 纯工具函数集：从原 ui-helpers.ts 原样搬入（排序/时间/路径/转义/模糊搜索/会话标题等）。
-// 本文件不做任何 DOM 渲染；bindScrimDismiss 是唯一的 DOM 事件小工具（多个 scrim 组件复用）。
+// 纯工具函数集（排序/时间/路径/转义/模糊搜索/会话标题等），不做 DOM 渲染。
 
-// 名称自然比较：参照 Windows 资源管理器的"按名称排序"。
-//  · 中文先转拼音（toneless）再比较 —— 否则 zh-Hans-CN collator 会把 latin 字符整体
-//    排到 CJK 后面（ICU 的 base 顺序），"Claude" 会跑到所有汉字之后。先转拼音让
-//    汉字也变成 latin 字符，再按 zh-Hans-CN 比较 → "Claude/c" 跟 "单/d" 按字母混排。
-//  · numeric:true 让 "1xx / 2xx / 10xx" 按数值大小排，而不是字典序 "1 / 10 / 2"。
-//  · sensitivity:base 大小写不敏感，与系统直觉一致。
+// 名称自然比较（参照资源管理器）：中文先转拼音再比 —— 否则 zh collator 把 latin 整体排到
+// CJK 后面；numeric:true 按数值排；sensitivity:base 大小写不敏感。
 import { pinyin } from 'pinyin-pro'
 import { t } from '../i18n'
 import type { SessionRecord } from '../terminal-tab'
 
 const NAME_COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 function nameSortKey(s: string): string {
-  // toneType:'none' 去声调；type:'string' 返回空格连接的字符串。原串作为 tiebreak 后缀。
+  // 去声调拼音串 + 原串作 tiebreak 后缀
   const py = pinyin(s, { toneType: 'none', type: 'string', nonZh: 'consecutive' })
   return `${py.toLowerCase()}|${s.toLowerCase()}`
 }
@@ -21,21 +16,19 @@ export function naturalNameCompare(a: string, b: string): number {
   return NAME_COLLATOR.compare(nameSortKey(a), nameSortKey(b))
 }
 
-// 两个 ISO 时间串的「新→旧」比较。ISO 串字典序即时序，直接比即可。
+// ISO 时间串「新→旧」比较（字典序即时序）
 export function recencyDesc(a: string, b: string): number {
   return a < b ? 1 : a > b ? -1 : 0
 }
 
-// 名称的拼音首字母（a-z），非字母开头（数字/符号）归到 '#'。
-// 与 naturalNameCompare 同一套拼音转换，保证 A~Z 跳转条和排序结果对得上。
+// 拼音首字母（a-z），非字母归 '#'；与 naturalNameCompare 同一套转换，保证跳转条与排序一致
 export function nameInitial(s: string): string {
   const py = pinyin(s.trim(), { toneType: 'none', type: 'string', nonZh: 'consecutive' })
   const ch = py.trim().charAt(0).toLowerCase()
   return /[a-z]/.test(ch) ? ch : '#'
 }
 
-// 仅当 mousedown 与 mouseup（click）都落在 scrim 自身时触发关闭。
-// 防止用户在 modal 里按住选文字 → 拖到外部释放被误判为"点外部"。
+// 仅当 mousedown 与 click 都落在 scrim 自身才关闭：防 modal 内选字拖到外部释放被误判"点外部"
 export function bindScrimDismiss(scrim: HTMLElement, onDismiss: () => void): void {
   let downOnScrim = false
   scrim.addEventListener('mousedown', (e) => {
@@ -47,19 +40,14 @@ export function bindScrimDismiss(scrim: HTMLElement, onDismiss: () => void): voi
   })
 }
 
-// ─── 模糊搜索：评分 + 空格分词(AND) + 拼音(中文) + 命中高亮 ──────────────
-// fuzzySearch(query, fields) 返回命中分数与每个 field 的高亮区间；不命中返回 null。
-//  · 空格把 query 拆成多个词，每个词都必须命中某个 field（AND）。
-//  · 每个词优先「连续子串」命中（高分），退而求「子序列」命中（低分）；词首/字段首加权。
-//  · 中文字段额外按拼音建索引：输入 "lkgd" 能命中「理科工单」，命中回映到原字符做高亮。
-//  · 结果分数供调用方倒序排列；高亮区间供 highlightRanges 渲染。
+// 模糊搜索：空格分词(AND) + 连续子串优先/子序列次之 + 中文按拼音建索引（"lkgd" 命中「理科工单」），
+// 返回分数与各字段高亮区间，不命中返回 null。
 export type Range = [number, number] // [start, end) 原始字符下标
 
 const SEP_RE = /[\s\-_/\\.,:：·|]/
 const CJK_RE = /[一-鿿]/
 
-// 一个字段的检索索引：raw = 小写原串（下标即原下标）；pyFlat = 拼音展开串，pyMap 把
-// pyFlat 下标映射回原字符下标。无中文时 pyFlat 置空，避免和 raw 重复匹配。
+// 字段检索索引：raw = 小写原串；pyFlat = 拼音展开串（无中文时置空），pyMap 映射回原下标
 interface Hay {
   raw: string
   pyFlat: string
@@ -84,7 +72,7 @@ function buildHay(text: string): Hay {
     }
   }
   const hay: Hay = { raw: text.toLowerCase(), pyFlat: hasCJK ? pyFlat : '', pyMap }
-  if (hayCache.size > 2000) hayCache.clear() // 简单封顶，防长会话无限增长
+  if (hayCache.size > 2000) hayCache.clear() // 封顶防无限增长
   hayCache.set(text, hay)
   return hay
 }
@@ -93,10 +81,10 @@ function isBoundary(flat: string, pos: number): boolean {
   return pos === 0 || SEP_RE.test(flat[pos - 1])
 }
 
-// 单个词在一条 flat 串里的最佳命中，返回 { score, positions(flat 下标) } 或 null。
+// 单个词在一条 flat 串里的最佳命中
 function matchInFlat(term: string, flat: string): { score: number; positions: number[] } | null {
   if (!term) return { score: 0, positions: [] }
-  // 1) 连续子串：质量最高，取「词首加权 + 越靠前越好」的最佳一处
+  // 1) 连续子串：词首加权 + 越靠前越好
   let best: { score: number; positions: number[] } | null = null
   for (let idx = flat.indexOf(term); idx >= 0; idx = flat.indexOf(term, idx + 1)) {
     let score = 1000 + (isBoundary(flat, idx) ? 200 : 0) - idx
@@ -106,7 +94,7 @@ function matchInFlat(term: string, flat: string): { score: number; positions: nu
     }
   }
   if (best) return best
-  // 2) 子序列：字符按序出现即可（跨分隔符也算），分数低
+  // 2) 子序列：字符按序出现即可，分数低
   const positions: number[] = []
   let i = 0
   for (let k = 0; k < flat.length && i < term.length; k++) {
@@ -140,13 +128,13 @@ function mergeRanges(ranges: Range[]): Range[] {
   return out
 }
 
-// 一个词命中一个字段：raw 与 pinyin 两条索引都试，取高分；命中位置回映成原字符区间。
+// 一个词命中一个字段：raw 与拼音两条索引取高分，命中位置回映成原字符区间
 function matchTermInField(term: string, hay: Hay): { score: number; ranges: Range[] } | null {
   const rawM = matchInFlat(term, hay.raw)
   let best = rawM ? { score: rawM.score, positions: rawM.positions, map: null as number[] | null } : null
   if (hay.pyFlat) {
     const pyM = matchInFlat(term, hay.pyFlat)
-    // 拼音命中略降权，等分时优先直接命中
+    // 拼音命中略降权，优先直接命中
     if (pyM && (!best || pyM.score - 50 > best.score)) {
       best = { score: pyM.score - 50, positions: pyM.positions, map: hay.pyMap }
     }
@@ -161,8 +149,7 @@ export interface FuzzyResult {
   highlights: Range[][] // 与 fields 等长，每项是该字段的高亮区间
 }
 
-// query 命中 fields（任一词命中任一字段即为该词命中；所有词都命中才算整体命中）。
-// weights 可给字段加权（如分组名 > 路径）。空 query → 命中且 score=0（调用方保持原序）。
+// 所有词都命中（任一字段）才算整体命中；weights 给字段加权；空 query → 命中且 score=0
 export function fuzzySearch(query: string, fields: string[], weights?: number[]): FuzzyResult | null {
   const highlights: Range[][] = fields.map(() => [])
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -180,20 +167,20 @@ export function fuzzySearch(query: string, fields: string[], weights?: number[])
       const s = m.score * (weights?.[fi] ?? 1)
       if (s > bestScore) { bestScore = s; bestIdx = fi; bestRanges = m.ranges }
     }
-    if (bestIdx < 0) return null // 有词一个字段都没命中 → 整体失败
+    if (bestIdx < 0) return null // 有词未命中任何字段 → 整体失败
     total += bestScore
     highlights[bestIdx] = mergeRanges([...highlights[bestIdx], ...bestRanges])
   }
   return { score: total, highlights }
 }
 
-// 兼容旧调用：只要不要分数/高亮的布尔判断。
+// 兼容旧调用：不要分数/高亮的布尔判断
 export function fuzzyMatch(needle: string, haystacks: string | string[]): boolean {
   const list = Array.isArray(haystacks) ? haystacks : [haystacks]
   return fuzzySearch(needle, list) !== null
 }
 
-// 按区间把 text 包上 <mark class="hl">，其余转义。ranges 为原字符下标 [start,end)。
+// 按区间把 text 包上 <mark class="hl">，其余转义
 export function highlightRanges(text: string, ranges?: Range[]): string {
   if (!ranges || ranges.length === 0) return escapeHtml(text)
   const sorted = mergeRanges(ranges)
@@ -238,7 +225,7 @@ export function formatTs(iso?: string): string {
 }
 
 export function srcLabel(s: string): string {
-  // resume 用 '恢复||来源' 消歧：'恢复' 这个 key 已被按钮（Restore）占用，此处应译 Resumed
+  // resume 用 '恢复||来源' 消歧：'恢复' 已被按钮（Restore）占用，此处应译 Resumed
   const v = ({ clear: '/clear 后', startup: '初始', compact: 'compact', resume: '恢复||来源' } as Record<string, string>)[s]
   return v ? t(v) : s
 }
@@ -254,8 +241,8 @@ export function statusShort(s?: string): string {
   return v ? t(v) : ''
 }
 
-// 会话默认名「会话 N」：N 按 createdAt 排序位置算，不用栈位置。
-// resume 会把旧条目挪到栈顶（main.ts:1552），用栈位置的话「会话 1」会跟着移动 → 反直觉。
+// 会话默认名「会话 N」：N 按 createdAt 排序算，不用栈位置（resume 会把旧条目挪到栈顶，
+// 用栈位置「会话 1」会跟着移动，反直觉）。
 export function defaultSessionTitle(sess: SessionRecord, sessions: SessionRecord[]): string {
   const sorted = [...sessions].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
   const idx = sorted.findIndex((s) => s.sessionId === sess.sessionId)

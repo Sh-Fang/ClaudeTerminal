@@ -17,23 +17,19 @@ import {
   setMainWindowGetter, registerWindowIpc, isSecondaryWindow, destroyAllSecondary
 } from './windows'
 
-// 界面语言在进程启动时定死（loadSettings 是同步读文件，ready 前即可用）；
-// 切换语言走 app:relaunch 重启生效，运行中不做热切换。
+// 界面语言启动时定死，切换走 app:relaunch 重启生效
 try { setLanguage(loadSettings().language) } catch {}
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
 let tray: Tray | null = null
 
-// ─── 常驻托盘 ────────────────────────────────────────────────────
-// 托盘图标在 app 运行期间一直可见（不论窗口是否显示），随时可点开 / 退出。
-// closeBehavior='tray' 时点关闭：不弹确认，窗口 hide，会话进程全部保留，从托盘唤回。
+// 常驻托盘：closeBehavior='tray' 时点关闭不弹确认，窗口 hide、会话保留，从托盘唤回。
 function destroyTray(): void {
   try { tray?.destroy() } catch {}
   tray = null
 }
 
-// 显示并聚焦主窗口（不销毁托盘 —— 托盘常驻）
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -41,10 +37,9 @@ function showMainWindow(): void {
   mainWindow.focus()
 }
 
-// 幂等地创建常驻托盘；启动后即调用一次，之后一直存在到退出。
+// 幂等创建常驻托盘
 function ensureTray(): void {
   if (tray) return
-  // Windows 托盘用 ico（小尺寸清晰），其余平台用 png
   const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
   tray = new Tray(join(__dirname, '../../resources', iconFile))
   tray.setToolTip('Claude Terminal')
@@ -65,12 +60,11 @@ function ensureTray(): void {
 
 function hideToTray(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  ensureTray() // 常驻下通常已存在，双保险
+  ensureTray()
   mainWindow.hide()
 }
 
-// 未捕获错误：越早注册越好，不用等 ready；startLogging 之前落的会因文件未开而丢，
-// 但保底能进 electron 内置 stderr。startLogging 之后的都会 JSONL 落盘。
+// 未捕获错误尽早注册；startLogging 之后的都会 JSONL 落盘
 process.on('uncaughtException', (err) => {
   try { logEvent('uncaught_exception', { message: err.message, stack: err.stack }) } catch {}
 })
@@ -84,39 +78,15 @@ process.on('unhandledRejection', (reason) => {
   } catch {}
 })
 
-// argv 里解析 `--open-here <path>`：右键菜单唤起 app 时带路径，主进程通过 IPC 通知
-// renderer 新建一个分组承载该路径。argv 首两项是 exe/asar，跳过；path 允许在 --open-here
-// 后面用等号或空格分隔。
-//
-// Chromium/Electron 会往主进程 argv 里塞自己的 flag（--allow-file-access-from-files
-// 之类）。如果 --open-here 后面刚好跟了这些 flag，parseOpenHere 会误把 flag 当成路径
-// 抛出去，renderer 看到"路径不存在：--allow-file-access-from-files"。这里做两道
-// 校验：跳过 - / / 打头（明显是 flag）、跳过不含冒号/斜杠（不像 Windows 绝对路径）。
+// 解析 `--open-here <path>`（右键菜单唤起带路径）。Chromium 会往 argv 塞自己的 flag，
+// 必须校验 token "像路径"才收，否则会把注入 flag 误当路径。
 function looksLikePath(s: string): boolean {
   if (!s) return false
   if (s.startsWith('-')) return false
-  // Windows 盘符 D:\、UNC \\server、或 forward slash 都算
   return /^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('\\\\') || s.startsWith('/')
 }
-// 两条唤起路径拿到的 argv 形态不同：
-//   · 首次启动：process.argv 未被 Chromium 加工，形如 [exe, --open-here, D:\path]，
-//     路径紧跟 --open-here。
-//   · second-instance：Electron 传进来的 argv 是 Chromium CommandLine 重排过的——
-//     switch（--xxx）被排到前面、注入自己的 flag（如 --allow-file-access-from-files），
-//     裸路径（positional 参数）被挪到 argv 末尾。于是 --open-here 后面紧跟的不再是
-//     路径而是注入的 flag，路径掉到最后。实测（Electron 42）：
-//       [exe, --open-here, --allow-file-access-from-files, <main脚本>, D:\path]
-// 所以不能只看 --open-here 的下一个 token。三级识别：
-//   1) 等号形式 --open-here=path：Chromium 把它当整体 switch 保留、不拆散，最稳；
-//   2) 裸 flag 紧邻路径：首次启动 process.argv 命中；
-//   3) 兜底：只要出现过 --open-here，就从末尾往前找第一个"像路径"的 token
-//      （second-instance 场景路径被挪到末尾）。
-// 清洗 argv 里取出的路径 token。核心是磁盘根：右键"在此处打开"时 %V 展开成 D:\，
-// 命令行 "D:\" 里的 \" 会被 Windows 当转义引号，盘符路径丢掉斜杠、留下一个字面引号，
-// argv 里实测（CommandLineToArgvW）拿到的是 D:" 。这是 Windows 命令行固有行为，NSIS
-// 命令行层面无法同时兼容磁盘根与普通目录（VSCode 的 "%V" 同样坏成 D:"），只能在此清洗：
-//   · Windows 路径本就不允许含 " —— 去掉所有引号；
-//   · 清洗后若是纯盘符 D: —— 补回根斜杠成 D:\ 。
+// 清洗路径 token：磁盘根 "D:\" 经 Windows 命令行转义会变成 D:"（固有行为），
+// 去掉所有引号后若是纯盘符再补回根斜杠。
 function normalizeArgPath(s: string): string {
   const v = s.replace(/"/g, '').trim()
   return /^[a-zA-Z]:$/.test(v) ? v + '\\' : v
@@ -127,14 +97,14 @@ function parseOpenHere(argv: string[]): string | null {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a) continue
-    // 1) 等号形式：路径绑在 switch 值里，不会被重排拆散
+    // 等号形式最稳：Chromium 不会拆散整体 switch
     if (a.startsWith('--open-here=')) {
       const stripped = normalizeArgPath(a.slice('--open-here='.length))
       if (looksLikePath(stripped)) return stripped
       sawFlag = true
       continue
     }
-    // 2) 裸 flag：首次启动时路径紧跟其后
+    // 裸 flag：首次启动时路径紧跟其后
     if (a === '--open-here' || a === '/open-here') {
       sawFlag = true
       const v = argv[i + 1]
@@ -144,11 +114,8 @@ function parseOpenHere(argv: string[]): string | null {
       }
     }
   }
-  // 3) 兜底：second-instance 场景路径被 Chromium 挪到 argv 末尾，倒序捞第一个像路径的。
-  //    倒序是关键——dev 下 argv 里还夹着 main 脚本路径（也 looksLikePath），但它排在
-  //    真实路径之前，从末尾扫描先命中真实的 %V 路径。生产打包 argv 里只有唯一裸路径。
-  //    到 i>=1 为止：argv[0] 永远是 exe/electron 自身路径（也 looksLikePath），万一带了
-  //    --open-here 却没有真实路径，不能把 exe 路径误当目标抛出去。
+  // 兜底：second-instance 时 Chromium 会把裸路径重排到 argv 末尾，倒序捞第一个像路径的；
+  // 跳过 argv[0]（exe 自身路径也 looksLikePath）。
   if (sawFlag) {
     for (let i = argv.length - 1; i >= 1; i--) {
       const v = normalizeArgPath(argv[i] || '')
@@ -158,12 +125,8 @@ function parseOpenHere(argv: string[]): string | null {
   return null
 }
 
-// 待消费的 open-here 路径队列。用队列而非单值是因为极端情况可能连续两次触发。
-// - 首次启动：process.argv 里 parse 出的 path 直接 push
-// - second-instance：无论 renderer ready 与否都 push；如果已 ready 顺带 send 一次触发消费
-// renderer 启动 IIFE 完成后会 invoke 'app:consumePendingOpenHere' 主动拉走队列——
-// 之前用 send + did-finish-load 会在 renderer 的 onOpenHere 监听器注册前送达而被丢弃，
-// 现在改成主动拉取，只要监听器就位就一定能拿到。
+// 待消费的 open-here 路径队列；renderer 就绪后 invoke 'app:consumePendingOpenHere' 主动拉取
+// （被动 send 可能在监听器注册前送达而丢失）。
 const pendingOpenHere: string[] = []
 {
   const initial = parseOpenHere(process.argv)
@@ -171,7 +134,7 @@ const pendingOpenHere: string[] = []
 }
 
 function safeSendOpenHere(path: string): void {
-  // send 只是"顺手催一下"（second-instance 场景 renderer 已 ready）；主要落盘还是靠 pendingOpenHere
+  // send 只是催一下消费；主要靠 pendingOpenHere 队列
   if (!mainWindow || mainWindow.isDestroyed()) return
   const wc = mainWindow.webContents
   if (!wc || wc.isDestroyed()) return
@@ -184,9 +147,7 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_e, argv) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
-    // 再次启动 app（含收在托盘时）→ 不开新实例，把窗口显示并拉到前台
     showMainWindow()
-    // 第二实例带 --open-here → push 到 pending 队列，并顺手 send 一次触发 renderer 消费
     const p = parseOpenHere(argv)
     if (p) {
       pendingOpenHere.push(p)
@@ -202,9 +163,7 @@ function createWindow(): void {
     height: 760,
     show: false,
     backgroundColor: '#ffffff',
-    // Windows/Linux：完全无边框，自绘标题栏 + 窗口按钮。
-    // macOS：用 hiddenInset 保留系统红绿灯（画在左侧），标题栏区仍可拖动；
-    //        渲染层据 platform 隐藏自绘的右侧窗口按钮，避免与红绿灯重复。
+    // Windows/Linux 无边框自绘标题栏；macOS 用 hiddenInset 保留系统红绿灯
     ...(isMac
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 12, y: 10 } }
       : { frame: false }),
@@ -231,7 +190,7 @@ function createWindow(): void {
     if (allowClose) return
     if (!mainWindow || mainWindow.isDestroyed()) return
     e.preventDefault()
-    // 托盘模式：跳过一切确认，直接收进托盘（会话保留，从托盘/再次启动可回来）
+    // 托盘模式：跳过确认直接收进托盘，会话保留
     try {
       if (loadSettings().closeBehavior === 'tray') {
         hideToTray()
@@ -239,15 +198,12 @@ function createWindow(): void {
       }
     } catch {}
     const wc = mainWindow.webContents
-    // renderer 还活着 → 让它弹自绘对话框，回 window:closeConfirmed。
-    // renderer 死掉了 → 走原生 messageBox 兜底，保证"任何情况都能确认关闭"。
+    // renderer 活着 → 自绘对话框回 window:closeConfirmed；死了 → 原生 messageBox 兜底
     if (wc && !wc.isDestroyed()) {
       try {
         wc.send('window:close-request')
         return
-      } catch {
-        // 落到下面的原生 dialog 兜底
-      }
+      } catch {}
     }
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: 'warning',
@@ -266,10 +222,10 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
-  // 主窗口一旦被销毁就把悬浮窗/副窗口也带走 —— 主窗口退出即整个 app 退出
+  // 主窗口销毁 = 整个 app 退出，把悬浮窗/副窗口一并带走
   mainWindow.on('closed', () => { destroyFloater(); destroyTray(); destroyAllSecondary() })
 
-  // 主窗口渲染进程销毁：路由表清账（正常退出场景 PTY 由退出流程统一回收，这里防崩溃残留）
+  // 渲染进程销毁时清路由表（防崩溃残留；正常退出 PTY 由退出流程统一回收）
   mainWindow.webContents.on('destroyed', () => {
     if (mainWindow && !fastQuitting) {
       for (const ptyId of dropWc(mainWindow.webContents)) {
@@ -278,15 +234,13 @@ function createWindow(): void {
     }
   })
 
-  // 终端输出里的链接（xterm web-links 等）触发 window.open 时，只放行 http(s)，
-  // 挡掉 file: / 自定义协议等可被恶意内容利用的 scheme。
+  // window.open 只放行 http(s)，挡掉 file:/自定义协议
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
 
-  // 禁止应用自身被导航走（始终停留在打包的 index.html / dev server）。
-  // 外部链接应走上面的 openExternal，而不是替换掉渲染进程页面。
+  // 禁止应用页面被导航走；外部链接走 openExternal
   mainWindow.webContents.on('will-navigate', (e, url) => {
     const allowed = process.env['ELECTRON_RENDERER_URL']
     if (allowed && url.startsWith(allowed)) return
@@ -310,23 +264,10 @@ function stopWatchers(): void {
   stateWatcher?.stop(); stateWatcher = null
 }
 
-// 用户确认关闭 → 走这里"快退"：不给 renderer beforeunload 机会，
-// 也不等 Chromium 回收 helper 进程；收干净日志后直接 app.exit，让 OS 成组回收进程。
-// 观测背景：beforeunload 里逐 tab 串行 TerminalTab.dispose()（xterm 6 dispose
-// + kill IPC 累加）+ Chromium renderer/helper 回收 = 关闭感知 2~3s。
-//
-// 关键：这里刻意不再调 killAll()。proc.kill() 在 Windows ConPTY 下是【同步阻塞】——
-// 每次要跑 conpty_console_list 枚举进程树 + 逐个 process.kill + 关 pseudoconsole，
-// 单个实测 300~750ms，串行 killAll 随 tab 数线性放大（8 个会话实测卡主线程 ≈ 3.9s），
-// 这正是"标签页一多、关闭就慢"的根因。而马上就要 app.exit(0)：进程退出时 OS 关闭
-// ConPTY 句柄，会自动终止挂在其上的 pwsh 及其子进程（实测无孤儿残留），无需我们逐个杀。
-// TerminateProcess 级别的立即退出：不跑 CRT/atexit 静态析构。
-// app.exit(0) 底层走 exit()，会执行 native 模块析构 —— node-pty 的 ConPTY agent
-// 线程这时可能正好回调 OnProcessExit，撞上已拆掉的 baton 表，弹出
-// "Assertion failed: remove_pty_baton(baton->id)" 断言框（conpty.cc:106）。
-// SIGKILL 在 Windows 上由 libuv 映射为 TerminateProcess：OS 直接回收进程，
-// ConPTY 句柄随之关闭、挂在其上的 pwsh 树自动终止，效果与 app.exit 一致且无竞态。
-// 注意：调用前必须已完成所有需要落盘的收尾（stopLogging 等都是同步写）。
+// 快退：刻意不调 killAll()——ConPTY 下 proc.kill() 同步阻塞（单个 300~750ms，随 tab 线性放大），
+// 而进程退出时 OS 关闭 ConPTY 句柄会自动终止挂在其上的 pwsh 树，无孤儿残留。
+// 用 SIGKILL（libuv 映射 TerminateProcess）而非 app.exit：exit() 的 native 析构会与
+// node-pty conpty 线程竞态弹断言框。调用前须完成所有同步落盘收尾。
 function hardExit(): void {
   try { process.kill(process.pid, 'SIGKILL') } catch {}
   app.exit(0) // 兜底，正常到不了这行
@@ -344,16 +285,14 @@ function fastQuit(reason: string): void {
 }
 
 app.whenReady().then(() => {
-  // logger 尽量早启动：ready 之后 electron 事件才能挂，getPath('logs') 也才可用。
-  // 上次未走 clean shutdown → sentinel 还在 → start 事件里 unclean_exit=true。
+  // logger 尽早启动（getPath('logs') 需在 ready 后）
   startLogging({
     appVersion: app.getVersion(),
     electron: process.versions.electron ?? '',
     platform: `${process.platform}-${process.arch}`
   })
 
-  // Electron 崩溃事件：render 是渲染进程（含 floater），child 是 GPU/utility/plugin。
-  // 休眠唤醒后 app 消失，最常见就是 GPU 进程崩了拖着主进程一起走。
+  // 崩溃事件落日志：休眠唤醒后 app 消失多为 GPU 进程崩溃拖垮主进程
   app.on('render-process-gone', (_e, wc, details) => {
     logEvent('render_process_gone', {
       reason: details.reason,
@@ -371,9 +310,7 @@ app.whenReady().then(() => {
     })
   })
 
-  // powerMonitor：这是诊断"睡→醒 app 没了"的核心线索。
-  // 日志停在 suspend 后 → app 是被系统在休眠期间处理掉的；
-  // 有 resume 之后再断 → 唤醒时崩的（多半 GPU/驱动）。
+  // powerMonitor 事件落日志：诊断"睡→醒后 app 消失"的时间线
   const power = ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'shutdown', 'on-ac', 'on-battery'] as const
   for (const ev of power) {
     try { powerMonitor.on(ev as never, () => logEvent('power', { kind: ev })) } catch {}
@@ -384,15 +321,14 @@ app.whenReady().then(() => {
   setMainWindowGetter(() => mainWindow)
   registerWindowIpc()
   registerPtyIpc(() => mainWindow)
-  // 主动拉取：renderer 启动 IIFE 完成后 invoke 一次，把首次启动 argv 里带来的路径取走。
+  // renderer 启动完成后 invoke 一次，取走首次启动 argv 里的路径
   ipcMain.handle('app:consumePendingOpenHere', () => {
     const out = [...pendingOpenHere]
     pendingOpenHere.length = 0
     return out
   })
-  // 语言切换等场景的显式重启。不能走 fastQuit/hardExit：SIGKILL 直接被 OS 回收，
-  // app.relaunch 注册的重启不会发生。这里先同步 killAll 把 conpty 收干净
-  // （避免 exit() 析构与 conpty 线程竞态弹断言框），再正常 app.exit。
+  // 显式重启不能走 hardExit：SIGKILL 会让 app.relaunch 失效。
+  // 先同步 killAll 收干净 conpty（避免 exit() 析构与 conpty 线程竞态），再 app.exit。
   ipcMain.on('app:relaunch', () => {
     allowClose = true
     app.relaunch()
@@ -405,16 +341,14 @@ app.whenReady().then(() => {
     app.exit(0)
   })
   ipcMain.on('window:closeConfirmed', (e) => {
-    // 副窗口确认关闭：只销毁该窗口（destroyed 监听会清路由表 + 杀它名下的 PTY），app 继续跑
+    // 副窗口：只销毁该窗口（destroyed 监听清路由表 + 杀名下 PTY），app 继续跑
     const win = BrowserWindow.fromWebContents(e.sender)
     if (win && isSecondaryWindow(win)) {
       try { win.destroy() } catch {}
       return
     }
     allowClose = true
-    // 主窗口：直接 app.exit(0)——跳过 mainWindow.close() → renderer beforeunload → Chromium
-    // helper 回收这条慢路径。原本这条路径要 2~3s（xterm 逐 tab dispose + kill IPC
-    // 串行 + Chromium 回收），fastQuit 通常 <300ms。
+    // 主窗口：fastQuit 跳过 beforeunload/Chromium 回收慢路径（2~3s → <300ms）
     fastQuit('user-close')
   })
   const hp = ensureHookAssets()
@@ -423,14 +357,12 @@ app.whenReady().then(() => {
   sessionWatcher.start()
   stateWatcher.start()
   createWindow()
-  ensureTray() // 常驻托盘：app 一启动就在托盘可见，随时点开 / 退出
-  // 首次启动的路径已经在 pendingOpenHere 里；等 renderer 主动 invoke consumePendingOpenHere 消费。
-  // 启动时按设置决定是否拉起悬浮窗
+  ensureTray()
+  // 按设置决定是否拉起悬浮窗
   try {
     if (loadSettings().showFloater) setFloaterEnabled(true)
   } catch {}
-  // claudePath 为空（首次启动 / 从未配置）→ 自动检测一次并持久化；
-  // 找到就写死绝对路径，之后由 CC 版本管理接手维护。找不到保持空（走 PATH）。
+  // claudePath 为空 → 自动检测一次并持久化绝对路径；找不到保持空（走 PATH）
   try {
     const s = loadSettings()
     if (!s.claudePath.trim()) {
@@ -450,22 +382,18 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   stopWatchers()
   destroyFloater()
-  // stop 事件同步落盘 + sentinel 删掉，下次启动才不会误判成 unclean_exit
   stopLogging('window-all-closed')
   if (process.platform !== 'darwin') {
-    // Windows/Linux：进程要退了，硬退（TerminateProcess，见 hardExit 注释）。
-    // 不逐个 proc.kill()（同步阻塞、随 tab 线性放大），OS 关闭 ConPTY 句柄即回收
-    // 挂在其上的 pwsh；也不走 app.exit —— exit() 的析构会和 conpty 线程竞态弹断言框。
+    // Windows/Linux 硬退（理由见 hardExit）
     hardExit()
   } else {
-    // macOS：窗口全关进程仍活着，必须把子进程收干净，否则泄漏
+    // macOS 窗口全关进程仍活着，必须收干净子进程
     killAll()
   }
 })
 
 app.on('before-quit', () => {
-  // 走 app.exit 时不会触发这里；保留是兜底 —— 例如 second-instance 路径或外部 app.quit()
-  // 时仍能把 watcher/pty 清干净（重复调用 stopWatchers/killAll 是幂等的）。
+  // app.exit 不触发这里；兜底外部 app.quit() 路径（重复调用幂等）
   stopWatchers()
   killAll()
   stopLogging('before-quit')

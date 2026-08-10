@@ -4,26 +4,20 @@ import { getSettings, setHostsEl, refitActive } from '../controller'
 import { backgroundFor } from '../themes'
 import { t } from '../i18n'
 
-// 终端宿主区：#hosts + 空态占位。
-// 注意：xterm 的 .term-host 容器由 terminal-tab.ts 命令式 append 到 #hosts 下，
-// React 只声明/管理 #hosts-empty 这一个子节点，不做任何会重排 children 的操作
-// （空态显隐由 CSS 的 #hosts:has(.term-host.active) 控制，无需 JS）。
+// 终端宿主区：xterm 的 .term-host 由 terminal-tab.ts 命令式 append 到 #hosts 下，
+// React 只管理 #hosts-empty 这一个子节点，不做任何会重排 children 的操作。
 export function TerminalHosts() {
   const rev = useAppStore((s) => s.rev)
   void rev
 
   const hostRef = useRef<HTMLDivElement | null>(null)
-  // ref 回调：元素一到手就交给 controller（initApp 靠 setHostsEl resolve hostsReady）。
-  // useCallback 稳住回调引用，避免每次 rev 重渲染都被 React 走一遍 null→el。
+  // 元素一到手就交给 controller；useCallback 稳住引用，避免每次重渲染走一遍 null→el
   const refCb = useCallback((el: HTMLDivElement | null) => {
     hostRef.current = el
     setHostsEl(el)
   }, [])
 
-  // 拖窗口时 ResizeObserver 会高频回调，逐帧 refit → 逐帧把 cols push 给 PTY → cc 每帧收
-  // SIGWINCH 重画，既抖又费；每次 cols 变化还会惊动一次 ConPTY reflow（xterm 侧的 disableReflow
-  // 够不着它）。这里 trailing 去抖：拖动过程只等 CSS 吃满，停手 ~120ms 后一次性 refit 到位，把中间
-  // 一连串 resize 合并成一次，顺带把 ConPTY reflow 的触发次数压到最少。
+  // resize 用 trailing 去抖（~120ms）：逐帧 refit 会逐帧触发 SIGWINCH 与 ConPTY reflow，既抖又费
   useEffect(() => {
     const el = hostRef.current
     if (!el) return
@@ -46,7 +40,7 @@ export function TerminalHosts() {
     <div
       id="hosts"
       ref={refCb}
-      // 终端区背板跟随终端主题背景：term-host 左侧 4px 缓冲带 / 空态露出的就是它
+      // 终端区背板跟随终端主题背景
       style={{ background: backgroundFor(getSettings().terminal.theme) }}
     >
       <div id="hosts-empty">

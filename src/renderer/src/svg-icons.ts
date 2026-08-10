@@ -1,6 +1,4 @@
-// 集中维护 Lucide 风格的内联 SVG 图标。
-// 用法：直接把 icon('plus') 的返回值塞进 innerHTML 即可。
-// stroke="currentColor" 让颜色继承父元素，方便复用配色系统。
+// Lucide 风格内联 SVG 图标：icon('plus') 的返回值直接塞 innerHTML；currentColor 继承父元素颜色
 
 type IconName =
   | 'plus'
@@ -72,9 +70,7 @@ const PATHS: Record<IconName, string> = {
   square: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>',
   expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
   'external-link': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>',
-  // 列表行 + 向外的双箭头：展开全部
   'expand-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 8 2-2 2 2M4 16l2 2 2-2"/>',
-  // 列表行 + 向内的双箭头：收起全部
   'collapse-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 6 2 2 2-2M4 18l2-2 2 2"/>'
 }
 

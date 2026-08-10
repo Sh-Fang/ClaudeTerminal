@@ -1,7 +1,5 @@
-// 「分组/工作区管理」全屏 80% 弹窗（原 saved-manager.ts 的 React 版）：
-// 管理所有已保存的分组与工作区快照 —— 重命名 / 删除 / 恢复 / 搜索 / A-Z 跳转。
-// 开合与初始页签订阅 overlays store（openSavedManager(view)/closeSavedManager）；
-// 数据与动作全部走 controller（getManageGroupViews / getManageWorkspaceViews / savedManagerApi）。
+// 「分组/工作区管理」弹窗：重命名 / 删除 / 恢复 / 搜索 / A-Z 跳转。
+// 开合订阅 overlays store，数据与动作全部走 controller。
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
@@ -16,8 +14,7 @@ import type { ManageGroupView, ManageTabView, ManageWorkspaceView } from '../app
 
 type ManageTabName = 'groups' | 'workspaces'
 
-// 会话标题命中（仅搜重命名过的会话）：记录命中的会话 + 标题内高亮区间，
-// 用于在对应标签行下方显示「↳ 会话「…」」提示，点它可直接恢复到该会话。
+// 会话标题命中（仅搜重命名过的会话）：在对应标签行下方显示「↳ 会话」提示，点击直接恢复到该会话
 interface SessHit {
   tabId: string
   sessionId: string
@@ -31,9 +28,8 @@ interface GroupHit {
   sess: Map<string, SessHit[]>
 }
 
-// 命中规则：分组名(3) / 路径(1) / 任一标签名(2) 命中，或任一「重命名过的会话标题」命中
-// = 整组保留；有搜索时按最高匹配分倒序。会话命中额外记录到 sess(tabId → hits)，
-// 供标签行下方渲染 ↳ 会话提示。路径参与匹配但不高亮（短显示串下标对不上）。
+// 命中规则：分组名/路径/标签名/重命名过的会话标题任一命中即整组保留，按最高匹配分倒序；
+// 路径参与匹配但不高亮（短显示串下标对不上）。
 function matchGroups(all: ManageGroupView[], q: string): GroupHit[] {
   if (!q) return all.map((g) => ({ g, hl: [] as Range[][], sess: new Map<string, SessHit[]>() }))
   const scored: Array<GroupHit & { score: number }> = []
@@ -45,7 +41,7 @@ function matchGroups(all: ManageGroupView[], q: string): GroupHit[] {
     let bestSess = 0
     for (const tb of g.tabs) {
       for (const s of tb.sessions) {
-        if (!s.hasUserTitle) continue // 只搜重命名过的标题，默认「会话N」不参与
+        if (!s.hasUserTitle) continue
         const sr = fuzzySearch(q, [s.title])
         if (!sr) continue
         const arr = sess.get(tb.id) ?? []
@@ -61,15 +57,13 @@ function matchGroups(all: ManageGroupView[], q: string): GroupHit[] {
   return scored.map(({ g, hl, sess }) => ({ g, hl, sess }))
 }
 
-// ─── 会话选择浮层（入口②·管理页专用） ────────────────────────────
-// 点「N 会话」徽标弹出的小列表；选一条 = 恢复该标签页并以该会话为活跃会话。
-// 勾选恢复弹窗（入口①）的同款浮层由 OverlayHost 的 openPickTabs 内部实现。
+// 会话选择浮层（管理页专用）：选一条 = 恢复该标签页并以该会话为活跃会话
 interface SessPickEntry {
   sessionId: string
   title: string
   source: string
   ts?: string
-  isDefault: boolean // 该标签默认活跃会话（不选就是它）
+  isDefault: boolean // 该标签默认活跃会话
 }
 
 interface SessPickState {
@@ -93,8 +87,7 @@ function SessPickFloat(props: {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const { anchor, onClose } = props
 
-  // 定位：锚点下方左对齐。上下空间都放不下时，选空间更大的一侧并把高度收进该侧可用高度，
-  // 避免被顶到标题栏（top=8）盖住窗口控制按钮，变成贴顶的一整列。
+  // 定位：锚点下方左对齐；放不下时选空间更大的一侧并把高度收进该侧可用高度
   useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -107,7 +100,6 @@ function SessPickFloat(props: {
     const spaceBelow = vh - r.bottom - GAP - MARGIN
     const spaceAbove = r.top - GAP - MARGIN - SAFE_TOP
     const placeBelow = spaceBelow >= spaceAbove
-    // 把浮层最大高度限制在所选一侧的可用高度内（内部已有 overflow-y 滚动）
     const avail = Math.max(Math.floor(placeBelow ? spaceBelow : spaceAbove), 120)
     host.style.maxHeight = `${avail}px`
     const pw = host.offsetWidth
@@ -133,8 +125,7 @@ function SessPickFloat(props: {
       }
     }
     const onGone = (): void => onClose()
-    // 滚动关闭仅针对浮层"外部"的滚动（底层列表滚动会让锚点移位）；
-    // 在浮层自身内部滚动不该把它关掉。
+    // 仅浮层外部滚动才关闭（外部滚动会让锚点移位）
     const onScroll = (e: Event): void => {
       if (host?.contains(e.target as Node)) return
       onClose()
@@ -175,7 +166,6 @@ function SessPickFloat(props: {
   )
 }
 
-// ─── 行内重命名（contentEditable） ────────────────────────────────
 type EditKind = 'group' | 'tab' | 'workspace'
 interface Editing {
   kind: EditKind
@@ -196,7 +186,7 @@ export function SavedManager() {
   const isOpen = useOverlays((s) => s.savedManagerOpen)
   const initialView = useOverlays((s) => s.savedManagerView)
   const rev = useAppStore((s) => s.rev)
-  void rev // 声明依赖：rev 变化即重渲染，渲染时直接调 controller getter 拿最新数据
+  void rev // rev 变化即重渲染，渲染时直接调 controller getter 拿最新数据
 
   const [activeTab, setActiveTab] = useState<ManageTabName>('groups')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -206,11 +196,9 @@ export function SavedManager() {
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const editElRef = useRef<HTMLElement | null>(null)
-  const editingRef = useRef<Editing | null>(null) // commit 的幂等守卫（blur/Enter 可能双触发）
+  const editingRef = useRef<Editing | null>(null) // commit 幂等守卫（blur/Enter 可能双触发）
   const downOnScrimRef = useRef(false)
 
-  // 打开时：切到指定页签、清空搜索（对应原 open(undefined, view)）、聚焦搜索框——
-  // 打开即可直接敲字搜索，不用先用鼠标点进输入框
   const wasOpenRef = useRef(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
@@ -224,14 +212,12 @@ export function SavedManager() {
     wasOpenRef.current = isOpen
   }, [isOpen, initialView])
 
-  // 列表重建 / 切页 / 搜索 / 关闭 → 关掉可能残留的会话浮层，避免锚点失效（原 render() 里的 closeSessionPicker）
+  // 列表重建 / 切页 / 搜索 / 关闭 → 关掉残留的会话浮层，避免锚点失效
   useEffect(() => {
     setSessPick(null)
   }, [rev, activeTab, searchQuery, expanded, isOpen])
 
-  // Esc：有搜索词时先清空搜索，再次 Esc 才关弹窗 —— 跟浏览器搜索框直觉一致。
-  // 行内改名与会话浮层的 Esc 各自 stopPropagation，不会落到这里。
-  // Tab：在「已保存分组 / 已保存工作区」两个页签间切换（行内改名中不抢——那是编辑心流）。
+  // Esc：先清空搜索，再次 Esc 才关弹窗；Tab：在两个页签间切换（行内改名中不抢）
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent): void => {
@@ -252,7 +238,7 @@ export function SavedManager() {
     return () => document.removeEventListener('keydown', onKey)
   }, [isOpen, searchQuery])
 
-  // 改名开始：光标 collapse 到末尾（不全选），视觉上就是在原始文字上继续改
+  // 改名开始光标 collapse 到末尾（不全选）
   useLayoutEffect(() => {
     if (!editing) return
     const el = editElRef.current
@@ -279,7 +265,7 @@ export function SavedManager() {
     setEditing(null)
     const v = (el.textContent || '').trim()
     if (cancel || !v) {
-      // React 不感知 contentEditable 里的手输内容，取消时手动还原（与原实现一致）
+      // React 不感知 contentEditable 里的手输内容，取消时手动还原
       el.textContent = ed.old
       return
     }
@@ -299,15 +285,13 @@ export function SavedManager() {
       e.preventDefault()
       commitRename(e.currentTarget, false)
     } else if (e.key === 'Escape') {
-      // 有意偏差：原实现 Esc 取消改名后事件继续冒泡，document 层会顺手关掉整个弹窗；
-      // 这里 stopPropagation，Esc 只取消改名。
+      // stopPropagation：Esc 只取消改名，不关整个弹窗
       e.preventDefault()
       e.stopPropagation()
       commitRename(e.currentTarget, true)
     }
   }
 
-  // 正在编辑的那个名称元素才挂 contentEditable + 提交回调
   const editableProps = (kind: EditKind, payload: string): EditableBind => {
     const on = editing?.kind === kind && editing.payload === payload
     if (!on) return {}
@@ -332,7 +316,6 @@ export function SavedManager() {
     })
   }
 
-  // 点击分组行 / 工作区行任意位置 = 展开/收起（与点展开按钮等效）；正在改名时放行
   const onHeadClick = (e: ReactMouseEvent, id: string): void => {
     if ((e.target as HTMLElement).closest('[contenteditable="true"]')) return
     toggleExpand(id)
@@ -349,13 +332,12 @@ export function SavedManager() {
       title: t('从保存里移除「{0}」？', escapeHtml(tabName)),
       message: t('只把该标签从保存记录里删除，已打开的实例不受影响。'),
       okLabel: t('删除'),
-      onOk: () => savedManagerApi.onDeleteTab(savedId, tabId) // 列表刷新由 rev 驱动
+      onOk: () => savedManagerApi.onDeleteTab(savedId, tabId)
     })
   }
 
-  // ─── 右键菜单：重命名 / 恢复 / 删除（删除均有二次确认，确认在 controller 或本地） ───
+  // 右键菜单：重命名 / 恢复 / 删除（删除均有二次确认）；正在改名时右键放行
   const onGroupCtx = (e: ReactMouseEvent, g: ManageGroupView): void => {
-    // 正在改名时的右键放行（不弹菜单，也不拦默认行为）
     if ((e.target as HTMLElement).closest('[contenteditable="true"]')) return
     e.preventDefault()
     e.stopPropagation()
@@ -383,7 +365,7 @@ export function SavedManager() {
     showCtxMenu(items, e.clientX, e.clientY)
   }
 
-  // 工作区展开后的分组行：只有恢复和删除（工作区里的分组不支持重命名）
+  // 工作区展开后的分组行：只有恢复和删除（不支持重命名）
   const onWsGrpCtx = (e: ReactMouseEvent, wsId: string, groupId: string, grpNameRaw: string): void => {
     if ((e.target as HTMLElement).closest('[contenteditable="true"]')) return
     e.preventDefault()
@@ -421,12 +403,11 @@ export function SavedManager() {
     showCtxMenu(items, e.clientX, e.clientY)
   }
 
-  // 点某标签的"会话数"徽标 → 弹会话小列表；选一条即恢复该标签页并以该会话为活跃会话。
+  // 点"会话数"徽标弹会话小列表；只列重命名过的会话
   const openTabSessionPicker = (anchor: HTMLElement, savedId: string, tabId: string): void => {
     const g = getManageGroupViews().find((x) => x.id === savedId)
     const tab = g?.tabs.find((x) => x.id === tabId)
     if (!tab || tab.sessions.length < 2) return
-    // 只列重命名过的会话，默认名「会话 N」不参与选择
     const named = tab.sessions.filter((s) => s.hasUserTitle)
     if (named.length === 0) return
     setSessPick({
@@ -443,13 +424,10 @@ export function SavedManager() {
     })
   }
 
-  // ─── 行渲染 ──────────────────────────────────────────────────
   const renderTabRow = (g: ManageGroupView, tab: ManageTabView, i: number, hl: Range[][], sess: Map<string, SessHit[]>) => {
     const n = tab.sessions.length
-    // 可点条件：会话数 > 1 且至少有一条"重命名过的会话"——选择器只列重命名过的，
-    // 默认名「会话 N」不作为可选项；一条重命名的都没有就退化为纯文本。
+    // 徽标可点条件：会话数 > 1 且至少有一条重命名过的会话，否则退化为纯文本
     const named = tab.sessions.filter((s) => s.hasUserTitle).length
-    // 搜索命中的会话：标签行下方显示「↳ 会话「…」」，点它直接恢复到该会话
     const hits = sess.get(tab.id) ?? []
     return (
       <Fragment key={tab.id}>
@@ -503,10 +481,8 @@ export function SavedManager() {
   }
 
   const renderGroupRow = (g: ManageGroupView, hl: Range[][], forceExpand: boolean, sess: Map<string, SessHit[]>) => {
-    // 搜索时强制展开，让用户一眼看到命中的是哪个标签。
-    // 侧边栏已经容器内滚动渲染全部，没有"可见 / 不可见"之分；统一 is-visible 一种外观即可。
+    // 搜索时强制展开；行上只留展开按钮，其余操作收进右键菜单
     const expandedNow = forceExpand || expanded.has(g.id)
-    // 行上只留展开按钮；重命名/恢复/删除都收进右键菜单
     return (
       <div
         key={g.id}
@@ -555,8 +531,6 @@ export function SavedManager() {
     )
   }
 
-  // 工作区行：与分组行同一套 mg-row 外观，展开显示分组列表（不再下钻到标签页）。
-  // 行上不放操作按钮 —— 恢复/重命名/删除都在右键菜单里。
   const renderWsRow = (w: ManageWorkspaceView, hl: Range[][], forceExpand: boolean) => {
     const expandedNow = forceExpand || expanded.has(w.id)
     return (
@@ -621,7 +595,6 @@ export function SavedManager() {
     )
   }
 
-  // ─── 列表构建（groups / workspaces 两个页签） ─────────────────────
   const q = searchQuery.trim()
   let subText = ''
   let placeholder = ''
@@ -668,8 +641,7 @@ export function SavedManager() {
     }
   }
 
-  // 左缘 A~Z 竖排跳转条：只点亮当前列表里出现过的首字母；
-  // 数字/符号开头的行归到 '#'（仅在需要时出现在最上方）。
+  // A~Z 跳转条：只点亮出现过的首字母，数字/符号开头归到 '#'
   const have = new Set(initials)
   const letters = [...(have.has('#') ? ['#'] : []), ...'abcdefghijklmnopqrstuvwxyz']
   const onAzClick = (ch: string): void => {
@@ -677,8 +649,7 @@ export function SavedManager() {
     bodyRef.current?.querySelector(`.mg-row[data-initial="${ch}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  // 仅当 mousedown 与 click 都落在 scrim 自身时关闭（原 bindScrimDismiss：
-  // 防止在 modal 里按住选文字拖到外部释放被误判为"点外部"）
+  // mousedown 与 click 都落在 scrim 自身才关闭，防止 modal 内选文字拖出被误判
   const onScrimDown = (e: ReactMouseEvent): void => {
     downOnScrimRef.current = e.target === e.currentTarget
   }

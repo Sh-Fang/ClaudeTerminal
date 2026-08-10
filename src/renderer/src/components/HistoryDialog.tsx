@@ -1,7 +1,5 @@
-// 标签历史弹窗（原 history-manager.ts 的 React 版）：仿浏览器历史的左 nav 时间分组 +
-// 右列表 + 底部按时间段清空。数据源是主进程 tabHistoryList()（已按 lastSeenAt 倒序）；
-// 按"今天 / 昨天 / 更早"切桶，左侧 nav 切换右侧列表。点行/恢复按钮 = 恢复成 live tab；
-// 垃圾桶 = 单条删除。开合订阅 overlays store（openHistory/closeHistory）。
+// 标签历史弹窗：数据源为主进程 tabHistoryList()（已按 lastSeenAt 倒序），
+// 按 今天/昨天/更早 切桶；点行恢复成 live tab，开合订阅 overlays store。
 
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
@@ -56,8 +54,7 @@ export function HistoryDialog() {
 
   const grouped = regroup(entries)
 
-  // 打开时拉最近 7 天历史，默认跳到第一个非空桶（用户最关心今天，但今天为空就跳昨天）。
-  // 同时聚焦搜索框——打开即可直接敲字搜索，不用先用鼠标点进输入框。
+  // 打开时拉最近 7 天历史，默认跳到第一个非空桶，并聚焦搜索框
   const searchRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     if (!isOpen) return
@@ -74,8 +71,7 @@ export function HistoryDialog() {
     }
   }, [isOpen])
 
-  // 单条删除 / 清空后重拉。当前 active 桶被删空就跳到第一个非空桶；
-  // 都空就保持原 active（让 empty 提示展示）
+  // 删除/清空后重拉；active 桶被删空就跳到第一个非空桶
   const refresh = async (): Promise<void> => {
     const list = await window.term.tabHistoryList()
     setEntries(list)
@@ -83,9 +79,7 @@ export function HistoryDialog() {
     setActiveBucket((prev) => (g[prev].length === 0 ? (firstNonEmptyBucket(g) ?? prev) : prev))
   }
 
-  // 取过滤后的桶列表；空 query 直接返回原桶。
-  // 命中项 + 每项高亮；有搜索时按匹配分倒序，无搜索时保持原（时间）序。
-  // 路径用完整串匹配（保留全路径可搜），只高亮分组名/标签名，路径不高亮。
+  // 过滤桶列表：有搜索时按匹配分倒序，只高亮分组名/标签名（路径可搜不高亮）
   const filtered = (b: Bucket, query = searchQuery): Array<{ e: HistoryEntry; hl: Range[][] }> => {
     const q = query.trim()
     if (!q) return grouped[b].map((e) => ({ e, hl: [] as Range[][] }))
@@ -98,8 +92,7 @@ export function HistoryDialog() {
       .sort((a, b2) => b2.score - a.score)
   }
 
-  // 输入搜索词后：当前 active 桶被过滤空了就跳到第一个仍有命中的桶，
-  // 没有任何命中则保留当前 active（让 empty 提示展示）。
+  // active 桶被过滤空时跳到第一个仍有命中的桶
   const onSearchInput = (v: string): void => {
     setSearchQuery(v)
     if (filtered(activeBucket, v).length > 0) return
@@ -111,8 +104,7 @@ export function HistoryDialog() {
     }
   }
 
-  // Esc：有搜索词时先清空搜索（并按需跳桶），再次 Esc 才关弹窗。
-  // Tab：在 今天 / 昨天 / 更早 三个时间桶间循环切换。
+  // Esc：先清空搜索，再次 Esc 才关弹窗；Tab：在三个时间桶间循环切换
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent): void => {
@@ -177,8 +169,7 @@ export function HistoryDialog() {
         key={e.tabId}
         className="mg-row is-visible"
         data-tab-id={e.tabId}
-        // 行内任意位置点击（非按钮）= 恢复。不关弹窗：后台恢复，
-        // 用户可能连着恢复多条（与「分组/工作区管理」一致）
+        // 点行即恢复；不关弹窗，方便连着恢复多条
         onClick={() => restoreFromHistory(e)}
       >
         <div className="mg-head-row">
@@ -223,7 +214,6 @@ export function HistoryDialog() {
     )
   }
 
-  // ─── 列表 / 空态 / 清空按钮的派生数据 ────────────────────────────
   const q = searchQuery.trim()
   const list = filtered(activeBucket)
   const isEmptyList = list.length === 0
@@ -243,12 +233,11 @@ export function HistoryDialog() {
   }
   const rows: ReactNode = isEmptyList ? null : list.map(renderRow)
 
-  // 搜索时禁用"清空" —— 避免误把整个桶里没显示的条目也清掉
+  // 搜索时禁用"清空"，避免误清桶里未显示的条目
   const bucketLabel = t(BUCKETS.find((b) => b.key === activeBucket)?.label ?? '')
   const clearCount = grouped[activeBucket].length
 
-  // 仅当 mousedown 与 click 都落在 scrim 自身时关闭（原 bindScrimDismiss：
-  // 防止在 modal 里按住选文字拖到外部释放被误判为"点外部"）
+  // mousedown 与 click 都落在 scrim 自身才关闭，防止 modal 内选文字拖出被误判
   const onScrimDown = (e: ReactMouseEvent): void => {
     downOnScrimRef.current = e.target === e.currentTarget
   }

@@ -1,7 +1,5 @@
-// 标签历史：所有"打开过"的标签在这里留底，用于崩溃/强退后找回未保存的标签。
-// 与 workspace.savedGroups 区别：savedGroups 是用户主动"保存分组"，需要手动触发；
-// tab-history 是被动记录，开 tab 就写入，不依赖用户操作 → 真正能挡崩溃丢数据。
-// 7 天自动过期：旧数据没找回价值，避免无限膨胀。
+// 标签历史：开 tab 即被动留底（区别于用户主动保存的 savedGroups），供崩溃/强退后找回；
+// 7 天自动过期。
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -92,8 +90,7 @@ function writeFileAtomic(data: HistoryFile): void {
   renameSync(tmp, path)
 }
 
-// 内存缓存：upsert 是高频写（每次激活），全部走文件 IO 太慢；保留缓存 +
-// 失败回退到读文件。renderer 那边也做 debounce 降低频次。
+// 内存缓存：upsert 高频，避免每次读文件；renderer 侧另有 debounce
 let cache: HistoryFile | null = null
 function load(): HistoryFile {
   if (!cache) cache = readFile()
@@ -104,12 +101,12 @@ export function listTabHistory(): HistoryEntry[] {
   const data = load()
   const now = Date.now()
   const fresh = data.entries.filter((e) => !isExpired(e, now))
-  // 顺手把过期清掉
+  // 顺手清掉过期项
   if (fresh.length !== data.entries.length) {
     data.entries = fresh
     try { writeFileAtomic(data) } catch {}
   }
-  // 按 lastSeenAt 倒序：最近用的在最前面，符合"浏览历史"体验
+  // 按 lastSeenAt 倒序
   return [...fresh].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
 }
 
@@ -137,7 +134,7 @@ export function deleteTabHistory(tabId: string): void {
   try { writeFileAtomic(data) } catch {}
 }
 
-// 批量删除：renderer 按当前显示的时间桶整段清掉时用。一次写盘，比循环 delete 快。
+// 批量删除，一次写盘
 export function deleteManyTabHistory(tabIds: string[]): void {
   if (!Array.isArray(tabIds) || tabIds.length === 0) return
   const set = new Set(tabIds.filter((x): x is string => typeof x === 'string' && !!x))

@@ -5,7 +5,7 @@ export type AppTheme = 'light' | 'dark'
 export type CursorStyle = 'block' | 'underline' | 'bar'
 export type UsageStyle = 'bar' | 'ring'
 export type CloseBehavior = 'quit' | 'tray'
-// 标签栏布局：vertical = 左侧栏分组层级（默认）；horizontal = 隐藏左栏，顶部平铺标签（无分组）
+// vertical = 左侧栏分组层级（默认）；horizontal = 隐藏左栏，顶部平铺标签
 export type TabBarMode = 'vertical' | 'horizontal'
 export type AppLanguage = 'zh' | 'en'
 
@@ -15,9 +15,8 @@ export interface Settings {
   cursor: { style: CursorStyle; blink: boolean }
   terminal: { scrollback: number; theme: ThemePreset }
   appTheme: AppTheme
-  // model = cc `--model <arg>` 实参：alias（如 'fable'/'haiku'）或完整 id（如
-  // 'claude-opus-4-8'）；空串 = 不带 --model，跟随 cc 默认。只在新建会话（非
-  // --resume）时生效，避免覆盖旧会话原有模型。
+  // model = cc `--model <arg>` 实参（alias 或完整 id）；空串 = 跟随 cc 默认。
+  // 只在新建会话（非 --resume）时生效，避免覆盖旧会话原有模型。
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
   claudePath: string
   npmRegistry: string
@@ -121,8 +120,7 @@ export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss
     brightCyan: '#a9fff0',
     brightWhite: '#ffffff'
   },
-  // One Light 已下线：cc 的 diff / 代码块按深色终端假设绘制（深底 + 默认前景），
-  // 浅色终端里"默认前景 = 深色"落在深底上直接看不见。换成同族的 One Dark。
+  // 不提供浅色终端主题：cc 的 diff/代码块按深色终端假设绘制，浅色下前景落在深底上看不见
   'one-dark': {
     label: 'One Dark',
     backgroundCss: '#282c34',

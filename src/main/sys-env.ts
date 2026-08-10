@@ -2,11 +2,8 @@ import { execFile, execFileSync } from 'node:child_process'
 
 const IS_WIN = process.platform === 'win32'
 
-// 操作 Windows 用户级环境变量（HKCU\Environment）。
-// 写用 setx（会广播 WM_SETTINGCHANGE，之后**新启动**的进程从注册表读到新值）。
-// 已经在跑的 Electron 主进程 process.env 是启动时的快照，setx 不会刷新它。
-// 新 pty 想读到最新 env 必须用 snapshotCurrentEnv() 现读注册表。
-// 删用 reg delete（setx 无法真正删除，只能写空字符串）。
+// Windows 用户级环境变量（HKCU\Environment）：写用 setx、删用 reg delete（setx 删不掉）。
+// 主进程 process.env 是启动时快照，新 pty 要拿最新 env 必须 snapshotCurrentEnv() 现读注册表。
 
 const NAME_RE = /^[A-Z_][A-Z0-9_]*$/i
 
@@ -19,17 +16,15 @@ function callExecFile(file: string, args: string[]): Promise<{ stdout: string; s
   })
 }
 
-// 读 HKCU\Environment 下某个变量当前值；不存在返回 null
+// 读 HKCU\Environment 下变量当前值；不存在返回 null。非 Windows 直接读进程 env。
 export function readUserEnv(name: string): string | null {
   if (!NAME_RE.test(name)) return null
-  // 非 Windows 没有"用户级注册表环境变量"这一层，直接读进程 env（够 UI 回显用）
   if (!IS_WIN) return process.env[name] ?? null
   try {
     const out = execFileSync('reg', ['query', 'HKCU\\Environment', '/v', name], {
       encoding: 'utf8',
       windowsHide: true
     })
-    // 行格式：    VAR_NAME    REG_SZ    value
     const m = out.match(new RegExp(`${name}\\s+REG_[A-Z_]+\\s+(.*)`, 'i'))
     return m ? m[1].trim() : null
   } catch {
@@ -39,7 +34,7 @@ export function readUserEnv(name: string): string | null {
 
 export async function setUserEnv(name: string, value: string): Promise<boolean> {
   if (!NAME_RE.test(name)) return false
-  if (!IS_WIN) return false // 非 Windows 不做系统级持久化
+  if (!IS_WIN) return false
   try {
     await callExecFile('setx', [name, value])
     return true
@@ -50,7 +45,7 @@ export async function setUserEnv(name: string, value: string): Promise<boolean> 
 
 export async function deleteUserEnv(name: string): Promise<boolean> {
   if (!NAME_RE.test(name)) return false
-  if (!IS_WIN) return false // 非 Windows 不做系统级持久化
+  if (!IS_WIN) return false
   try {
     await callExecFile('reg', ['delete', 'HKCU\\Environment', '/v', name, '/f'])
     return true
@@ -59,12 +54,8 @@ export async function deleteUserEnv(name: string): Promise<boolean> {
   }
 }
 
-// —— 注册表环境变量快照 —— //
-// 主进程 process.env 是启动瞬间从 CreateProcess 拿到的一份拷贝，之后不会随
-// setx / 系统属性 / applyDisableAutoupdater 的写入而刷新。开新 pty 时如果直接把
-// process.env 塞给 conpty，用户看到的就是老 env。这里每次现读一份注册表覆盖到
-// process.env 之上，PATH 按 Windows 语义拼 machine + user。
-
+// 注册表环境变量快照：现读 machine+user 注册表覆盖到 process.env 之上，
+// PATH 按 Windows 语义拼 machine + user。
 function parseRegQuery(output: string): Record<string, string> {
   const result: Record<string, string> = {}
   for (const line of output.split(/\r?\n/)) {
@@ -74,8 +65,7 @@ function parseRegQuery(output: string): Record<string, string> {
   return result
 }
 
-// env 键在 Windows 上大小写不敏感（"Path" == "PATH"）；用普通对象存要手动去重，
-// 否则可能同时留下 Path 和 PATH 两把，行为未定义。
+// env 键在 Windows 上大小写不敏感，需手动去重避免同时存 Path/PATH
 function envGet(env: Record<string, string>, key: string): string | undefined {
   const lower = key.toLowerCase()
   for (const k of Object.keys(env)) if (k.toLowerCase() === lower) return env[k]
@@ -93,7 +83,7 @@ function envSet(env: Record<string, string>, key: string, value: string): void {
   env[key] = value
 }
 
-// REG_EXPAND_SZ 里的 %VAR% 需要按当前 env 展开；找不到就留原样，跟 cmd 行为一致。
+// REG_EXPAND_SZ 的 %VAR% 按当前 env 展开；找不到留原样（同 cmd 行为）
 function expandVars(value: string, env: Record<string, string>): string {
   return value.replace(/%([^%]+)%/g, (_m, name) => envGet(env, name) ?? `%${name}%`)
 }
@@ -108,8 +98,7 @@ function readRegistryEnv(path: string): Record<string, string> {
 }
 
 export function snapshotCurrentEnv(): Record<string, string> {
-  // 非 Windows：没有注册表这层，且 pty 走登录 shell 会自行补全 PATH（~/.zprofile 等），
-  // 这里直接返回主进程 env 即可。
+  // 非 Windows 直接返回主进程 env（pty 走登录 shell 自行补全 PATH）
   if (!IS_WIN) return { ...(process.env as Record<string, string>) }
   const env: Record<string, string> = { ...(process.env as Record<string, string>) }
   const machine = readRegistryEnv(
@@ -141,8 +130,7 @@ export async function applyDisableAutoupdater(enabled: boolean): Promise<{
   systemWide: boolean
   message?: string
 }> {
-  // 非 Windows：不做系统级持久化。开关值存在 settings.disableAutoupdater 里，
-  // 每次 spawn pty 时由 ipc 注入 DISABLE_AUTOUPDATER=1，app 内会话即时生效。
+  // 非 Windows 不做系统级持久化；开关由 ipc 在 spawn pty 时注入 env 即时生效
   if (!IS_WIN) {
     return {
       ok: true,
@@ -155,7 +143,7 @@ export async function applyDisableAutoupdater(enabled: boolean): Promise<{
       const ok = await setUserEnv('DISABLE_AUTOUPDATER', '1')
       return { ok, systemWide: ok, message: ok ? '已写入用户环境变量' : 'setx 失败' }
     }
-    // 取消：只有我们之前确实写过才删（避免破坏用户原有设置）
+    // 取消时只删我们写过的，避免破坏用户原有设置
     const cur = readUserEnv('DISABLE_AUTOUPDATER')
     if (cur === null) return { ok: true, systemWide: false, message: '无需操作（未设置）' }
     const ok = await deleteUserEnv('DISABLE_AUTOUPDATER')

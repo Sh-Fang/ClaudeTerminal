@@ -1,7 +1,13 @@
 {
   "name": "claude-terminal",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "适配 Claude Code 的多窗口管理终端",
+  "license": "GPL-3.0-only",
+  "author": "Sh-Fang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sh-Fang/ClaudeTerminal.git"
+  },
   "private": true,
   "type": "commonjs",
   "main": "out/main/index.js",

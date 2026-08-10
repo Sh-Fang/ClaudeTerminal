@@ -12,11 +12,9 @@ export function getLanguage(): AppLanguage {
   return lang
 }
 
-// t('安装失败：{0}', err)：中文原文即 key，占位符 {0} {1}… 按参数序号替换。
-// English 缺词条时回退中文原文 —— 漏翻只会显示中文，不会坏。
-// 注意：不要在模块顶层 const 初始化时调用（那时语言还没 set），在使用处调用。
-// key 支持 '||' 消歧后缀：同一中文在不同位置要翻成不同英文时，
-// 用 t('恢复||来源')——zh 模式截掉 '||' 及之后的部分显示，en 模式按完整 key 查词典。
+// t('安装失败：{0}', err)：中文原文即 key；en 缺词条回退中文原文。
+// key 支持 '||' 消歧后缀（如 t('恢复||来源')）：zh 截掉 '||' 后显示，en 按完整 key 查词典。
+// 不要在模块顶层 const 初始化时调用（那时语言还没 set）。
 export function t(zh: string, ...args: Array<string | number>): string {
   const cut = zh.indexOf('||')
   const base = cut >= 0 ? zh.slice(0, cut) : zh

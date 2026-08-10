@@ -46,13 +46,12 @@ export function readSessionMeta(sessionId: string): SessionMeta {
 
   let lastTs: string | undefined
 
-  // 倒序遍历找最新的真实 user/assistant timestamp
+  // 倒序找最新的真实 user/assistant timestamp（排除 tool_result/command 包装/compact 提示）
   for (let i = lines.length - 1; i >= 0; i--) {
     const obj = safeParse(lines[i])
     if (!obj) continue
     const type = typeof obj.type === 'string' ? obj.type : ''
     if ((type === 'user' || type === 'assistant') && typeof obj.timestamp === 'string') {
-      // 排除非真实对话条目：tool_result 数组、command 包装、compact 提示
       if (isRealMessage(obj)) { lastTs = obj.timestamp; break }
     }
   }
@@ -79,9 +78,7 @@ function prettyModel(id: string): string {
   return `${fam} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`
 }
 
-// app 自己的 statusline 探针把 cc statusLine stdin 的快照按 session_id 落在这里
-// （session-status/<sessionId>.json）。这是 cc 自算的 used_percentage + 真实窗口 + 模型，
-// 最准，且不依赖任何第三方插件。
+// statusline 探针落的快照（session-status/<sessionId>.json）：cc 自算的百分比/窗口/模型，最准
 const STATUS_DIR = (): string => join(app.getPath('userData'), 'session-status')
 
 interface OwnStatus {
@@ -115,8 +112,7 @@ function readOwnStatus(sessionId: string): OwnStatus | null {
   }
 }
 
-// 最后一条「主线」（非 sidechain）assistant 的模型 id。
-// 过滤 isSidechain 是为了避开子 agent / 标题生成用的小模型，拿到真正的会话模型。
+// 最后一条主线 assistant 的模型 id（过滤 isSidechain，避开子 agent 小模型）
 function lastMainModel(lines: string[]): string | undefined {
   for (let i = lines.length - 1; i >= 0; i--) {
     const obj = safeParse(lines[i])
@@ -127,7 +123,7 @@ function lastMainModel(lines: string[]): string | undefined {
   return undefined
 }
 
-// transcript 兜底估算（探针快照缺失时用，如会话刚起首帧还没落盘）：窗口只能靠启发式猜。
+// transcript 兜底估算（探针快照缺失时）：窗口靠启发式猜
 function estimateFromTranscript(lines: string[]): OwnStatus | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const obj = safeParse(lines[i])
@@ -143,12 +139,11 @@ function estimateFromTranscript(lines: string[]): OwnStatus | null {
   return null
 }
 
-// 模型从 transcript 取；上下文优先读 claude-hud 缓存（最准），否则 transcript 估算。
+// 优先用探针快照（cc 自算，最准）；缺失才回退 transcript 尾部估算。
 export function readSessionUsage(sessionId: string): SessionUsage {
   const path = findJsonl(sessionId)
   if (!path) return { exists: false }
 
-  // 优先用探针快照（cc 自算，最准）；缺失才回退 transcript（按需读一次尾部）。
   const snap = readOwnStatus(sessionId)
   let lines: string[] | null = null
   const tail = (): string[] => (lines ??= readTail(path))
@@ -165,11 +160,11 @@ export function readSessionUsage(sessionId: string): SessionUsage {
     exists: true,
     model: modelLabel,
     modelLabel,
-    effort: snap?.effort, // 仅探针快照有；transcript 兜底路径拿不到 effort（可接受）
+    effort: snap?.effort, // 仅探针快照有
     ctxTokens: ctx?.tokens,
     ctxWindow: ctx?.window,
     ctxPercent: ctx?.percent,
-    ctxApprox: ctx ? !snap : undefined // 来自 transcript 兜底估算时为 true（窗口靠猜）
+    ctxApprox: ctx ? !snap : undefined // transcript 兜底估算时为 true
   }
 }
 
@@ -180,10 +175,8 @@ function readTail(path: string): string[] {
 }
 
 function isRealMessage(obj: Record<string, unknown>): boolean {
-  // 简单过滤：message 是 array 通常是 tool_result；compact boundary
   const msg = obj.message as { content?: unknown; role?: unknown } | undefined
   if (msg && Array.isArray(msg.content)) {
-    // tool_result 段
     const first = msg.content[0] as Record<string, unknown> | undefined
     if (first && (first.type === 'tool_result' || first.type === 'tool_use')) return false
   }

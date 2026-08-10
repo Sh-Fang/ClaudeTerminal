@@ -6,13 +6,10 @@ directories:
   output: release
   buildResources: resources
 
-# 关键：禁掉 electron-builder 自动 rebuild 原生依赖。
-# @lydell/node-pty 自带 N-API 预编译二进制，rebuild 反而会触发本机现场编译（需 VS C++ Build Tools）。
-# 见 docs/PLAN.md §6.1
+# 禁掉自动 rebuild：@lydell/node-pty 自带 N-API 预编译二进制，rebuild 反而触发本机现场编译
 npmRebuild: false
 
-# 把 @lydell/node-pty 整体解到 app.asar.unpacked 下，
-# 让 require('@lydell/node-pty') 能加载到里面的 .node 文件 + OpenConsole.exe + conpty.dll
+# @lydell/node-pty 解到 app.asar.unpacked，require 才能加载 .node / OpenConsole.exe / conpty.dll
 asarUnpack:
   - '**/node_modules/@lydell/**'
 
@@ -33,14 +30,12 @@ win:
     - target: zip
       arch: x64
 
-# macOS：内部自用，不签名（identity: null）。universal 同时覆盖 Intel + Apple Silicon。
-# icon.icns 需先用 scripts/generate-icns 从 icon.png 生成（见 docs/MAC.md）。
-# 注意：mac target 只能在 macOS 上构建，Windows 上执行 dist:mac 会失败。
+# macOS：不签名；icon.icns 先用 scripts/generate-icns.sh 生成；mac target 只能在 macOS 上构建
 mac:
   category: public.app-category.developer-tools
   icon: resources/icon.icns
   artifactName: ${productName}-${version}-${arch}.${ext}
-  identity: null            # 不做代码签名/公证（首次打开需右键→打开绕过 Gatekeeper）
+  identity: null            # 不签名/公证，首次打开需右键→打开绕过 Gatekeeper
   hardenedRuntime: false
   target:
     - target: dmg
@@ -62,5 +57,5 @@ nsis:
   installerIcon: resources/icon.ico
   uninstallerIcon: resources/icon.ico
   deleteAppDataOnUninstall: false
-  # 自定义脚本：注册资源管理器"在此处打开 Claude Terminal"右键菜单，卸载时清理
+  # 注册资源管理器"在此处打开"右键菜单，卸载时清理
   include: scripts/installer.nsh

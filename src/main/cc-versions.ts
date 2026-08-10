@@ -3,19 +3,15 @@ import { execFile, execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-// 每个版本装到 <userData>/cc-versions/<version>/，用 `npm install -g pkg@ver --prefix=<dir>`
-// 隔离；Windows 下 prefix 根目录直接有 claude.cmd / claude.ps1 / claude 及 node_modules。
-// 切换 = 把 settings.claudePath 指向对应目录的 claude.cmd，走既有 pty 注入 env 的路径。
-// 登录态在 ~/.claude/ 全局共享，切版本不用重登。
+// cc 多版本管理：每版装到 <userData>/cc-versions/<version>/（npm install -g --prefix 隔离），
+// 切换 = 把 settings.claudePath 指向对应 claude.cmd；登录态在 ~/.claude/ 全局共享，不用重登。
 
 export const CC_PACKAGE = '@anthropic-ai/claude-code'
 export const DEFAULT_NPM_REGISTRY = 'https://registry.npmmirror.com'
 
 const IS_WIN = process.platform === 'win32'
 
-// `npm install -g pkg --prefix=<dir>` 的产物布局按平台不同：
-//   Windows：<dir>/claude.cmd（+ .ps1/无扩展）、包在 <dir>/node_modules/
-//   类 Unix：<dir>/bin/claude（无扩展）、       包在 <dir>/lib/node_modules/
+// npm --prefix 产物布局：Windows 在 <dir>/ 根下；类 Unix 在 <dir>/bin 与 <dir>/lib/node_modules
 function claudeBinPath(prefix: string): string {
   return IS_WIN ? join(prefix, 'claude.cmd') : join(prefix, 'bin', 'claude')
 }
@@ -24,14 +20,12 @@ function pkgJsonPath(prefix: string): string {
     ? join(prefix, 'node_modules', CC_PACKAGE, 'package.json')
     : join(prefix, 'lib', 'node_modules', CC_PACKAGE, 'package.json')
 }
-// 从 claude 可执行路径反推安装 prefix：
-//   Windows：<prefix>/claude.cmd → dirname 即 prefix
-//   类 Unix：<prefix>/bin/claude → 上跳两级
+// 从 claude 可执行路径反推安装 prefix
 function prefixFromClaudeBin(binPath: string): string {
   return IS_WIN ? dirname(binPath) : dirname(dirname(binPath))
 }
 
-// 用登录+交互 shell 解析某命令的绝对路径（macOS GUI 进程 PATH 极简，必须借登录 shell）
+// 用登录 shell 解析命令绝对路径（macOS GUI 进程 PATH 极简）
 function whichViaLoginShell(name: string): string | null {
   try {
     const shell = process.env.SHELL || '/bin/zsh'
@@ -67,10 +61,10 @@ function versionsRoot(): string {
   return d
 }
 
-// 版本目录名允许 semver 常见字符；挡掉 .. / 斜杠等目录穿越
+// 版本目录名白名单，挡掉目录穿越
 const VERSION_RE = /^[A-Za-z0-9._+-]+$/
 
-// 简易 semver 比较：主/次/修订取数字比较，pre-release 视为更小（无 pre > 有 pre）
+// 简易 semver 比较：pre-release 视为更小
 function cmpSemver(a: string, b: string): number {
   const [ah, ap = ''] = a.split('-', 2)
   const [bh, bp = ''] = b.split('-', 2)
@@ -82,13 +76,12 @@ function cmpSemver(a: string, b: string): number {
     if (da !== db) return da - db
   }
   if (ap === bp) return 0
-  if (!ap) return 1   // 1.0.0 > 1.0.0-beta
+  if (!ap) return 1
   if (!bp) return -1
   return ap < bp ? -1 : 1
 }
 
-// 找到系统 npm；结果缓存到进程生命周期。
-// Windows：where.exe npm.cmd / npm；类 Unix：登录 shell command -v npm。
+// 找系统 npm；结果缓存到进程生命周期
 let cachedNpm: string | null | undefined
 export function detectNpm(): string | null {
   if (cachedNpm !== undefined) return cachedNpm
@@ -109,11 +102,8 @@ export function detectNpm(): string | null {
   return cachedNpm
 }
 
-// 统一的 npm 调用形式：spawn(file, [...lead, ...npmArgs])。
-//   类 Unix：file = npm（shell 脚本，可直接 spawn），lead = []
-//   Windows：Node 20+ 因 CVE-2024-27980 禁止直接 spawn .cmd（甩 EINVAL）。绕过：找 npm.cmd
-//            所在目录的 node.exe + npm-cli.js，用 node 跑，file = node.exe，lead = [cli]。
-//            兼容 nvm4w / 官方 msi / winget 布局，也可退化到 where node 拿 node.exe 再拼 cli。
+// npm 调用形式 spawn(file, [...lead, ...args])。Windows 上 Node 20+ 因 CVE-2024-27980
+// 禁止直接 spawn .cmd，改用 node.exe + npm-cli.js 跑（兼容 nvm4w / msi / winget 布局）。
 interface NpmInvocation { file: string; lead: string[] }
 let cachedInvoke: NpmInvocation | null | undefined
 function resolveNpmInvocation(): NpmInvocation | null {
@@ -121,7 +111,6 @@ function resolveNpmInvocation(): NpmInvocation | null {
   const npmCmd = detectNpm()
   if (!npmCmd) { cachedInvoke = null; return null }
   if (!IS_WIN) {
-    // npm 在 macOS/类 Unix 是普通 shell 脚本，直接 spawn 即可
     cachedInvoke = { file: npmCmd, lead: [] }
     return cachedInvoke
   }
@@ -137,7 +126,6 @@ function resolveNpmInvocation(): NpmInvocation | null {
       return cachedInvoke
     }
   }
-  // 兜底：where node.exe，再回来拼 cli
   try {
     const out = execFileSync('where.exe', ['node.exe'], { encoding: 'utf8', windowsHide: true })
     const nodeExe = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l && existsSync(l))
@@ -150,8 +138,7 @@ function resolveNpmInvocation(): NpmInvocation | null {
   return null
 }
 
-// registry URL 白名单校验：http(s) + 常规 URL 字符，挡掉 shell 元字符（虽然我们不走 shell，
-// 但传给 npm 的 --registry 也可能被 npm 内部再解析）
+// registry URL 白名单校验，挡掉 shell 元字符
 const REGISTRY_RE = /^https?:\/\/[A-Za-z0-9._~\-/:@%?&=+]+$/
 function safeRegistry(reg: string): string {
   const v = (reg || '').trim() || DEFAULT_NPM_REGISTRY
@@ -196,17 +183,13 @@ export function listInstalled(activePath: string): InstalledVersion[] {
   return out
 }
 
-// 从任意 claude 可执行路径反查版本号：
-// - 托管路径：<userData>/cc-versions/<ver>/claude.cmd → 顺着找 node_modules/@anthropic-ai/claude-code/package.json
-// - 系统 npm 全局：C:\...\node_modules\@anthropic-ai\claude-code\cli.js 或旁边的 claude.cmd
-// 找不到返回 null，UI 显示「未知版本」即可
+// 从任意 claude 可执行路径反查版本号：先按托管布局反推 prefix 读版本，
+// 再向上逐级找 @anthropic-ai/claude-code/package.json；找不到返回 null。
 export function versionFromPath(claudePath: string): string | null {
   if (!claudePath) return null
-  // 优先当作我们托管布局的 claude 可执行处理，反推 prefix 再读版本
   const prefix = prefixFromClaudeBin(claudePath)
   const v1 = readPkgVersion(prefix)
   if (v1) return v1
-  // 或者路径直接指向 cli.js —— 向上找到 @anthropic-ai/claude-code/package.json
   let cur = claudePath
   for (let i = 0; i < 8; i++) {
     const parent = dirname(cur)
@@ -247,16 +230,16 @@ export async function listRemote(registry: string): Promise<string[]> {
   })
 }
 
-// 记录在跑的安装进程，供 cancel 调用；key = version，value = spawned ChildProcess + cleanup 路径
+// 在跑的安装进程，key = version，供 cancel 调用
 interface InflightInstall {
   proc: ReturnType<typeof spawn>
   prefix: string
-  createdDir: boolean  // 目录是本次安装才建的 → 取消/失败时可整目录清理
+  createdDir: boolean  // 本次安装新建的目录 → 取消/失败时可整目录清理
   cancelled: boolean
 }
 const inflightInstalls = new Map<string, InflightInstall>()
 
-// ANSI 转义序列剥离：npm progress 会用 CSI 序列做游标控制，直接展示会有乱码
+// 剥离 npm progress 输出里的 ANSI 转义序列
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 export function install(
@@ -274,7 +257,7 @@ export function install(
   const inv = resolveNpmInvocation()
   if (!inv) return Promise.resolve({ ok: false, version: ver, error: '未找到 npm' })
   const reg = safeRegistry(registry)
-  // 目录名先用请求的 ver；latest 用临时名，装完读 package.json 里真实版本改名
+  // latest 先装到临时目录，装完读真实版本改名
   const useTmp = ver === 'latest'
   const dirName = useTmp ? `_pending_${Date.now()}` : ver
   const prefix = join(versionsRoot(), dirName)
@@ -293,11 +276,10 @@ export function install(
     const state: InflightInstall = { proc: p, prefix, createdDir, cancelled: false }
     inflightInstalls.set(ver, state)
     const cleanupOnFail = (): void => {
-      // 只清理本次新建的目录；用户之前已装的同版本不能被误删（虽然 has(ver) 已挡在前面，双保险）
+      // 只清理本次新建的目录，已装的同版本不能误删
       if (state.createdDir) { try { rmSync(prefix, { recursive: true, force: true }) } catch {} }
     }
-    // 从 npm stdout/stderr 抽取最新一行短语作为 phase：剥 ANSI + 拆行 + 去空
-    // npm progress 走 stderr（TTY spinner 行）；install summary 走 stdout
+    // 从 npm stdout/stderr（progress 走 stderr）抽取最新一行作为 phase，节流上报
     let lastPhaseSent = ''
     let lastSendTs = 0
     const handleChunk = (buf: Buffer): void => {
@@ -307,7 +289,7 @@ export function install(
       const line = lines[lines.length - 1]
       if (line === lastPhaseSent) return
       const now = Date.now()
-      if (now - lastSendTs < 250) return  // 节流 250ms
+      if (now - lastSendTs < 250) return
       lastPhaseSent = line
       lastSendTs = now
       onPhase(line)
@@ -349,14 +331,13 @@ export function install(
   })
 }
 
-// 取消正在进行的安装：kill node 子进程；返回是否找到并杀掉了对应进程
+// 取消正在进行的安装（Windows 上 SIGTERM 被 libuv 翻成 TerminateProcess，可立即中断）
 export function cancelInstall(version: string): { ok: boolean; error?: string } {
   const v = version.trim()
   const inf = inflightInstalls.get(v)
   if (!inf) return { ok: false, error: '没有正在进行的安装任务' }
   inf.cancelled = true
   try {
-    // Windows 上 SIGTERM 由 libuv 翻成 TerminateProcess，能立刻中断 node/npm
     inf.proc.kill()
     return { ok: true }
   } catch (e) {

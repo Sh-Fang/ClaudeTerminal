@@ -8,23 +8,23 @@ import { t } from '../i18n'
 interface UsageWindow {
   utilization: number
   resetsAt: string | null
-  scopeLabel?: string // 周额度按模型拆分时的模型名（如 'Fable'）；无 = 账号级总额度
+  scopeLabel?: string // 周额度按模型拆分时的模型名；无 = 账号级总额度
 }
 interface ClaudeUsage {
   ok: boolean
   error?: string
   fiveHour?: UsageWindow
   sevenDay?: UsageWindow
-  sevenDayModel?: UsageWindow | null // 模型级周额度（如 Fable），主条是总池时用于 hover 展示
+  sevenDayModel?: UsageWindow | null // 模型级周额度，主条是总池时用于 hover 展示
   sevenDayOpus?: UsageWindow | null
   sevenDaySonnet?: UsageWindow | null
   fetchedAt: number
 }
 
 const POLL_MS = 180_000 // 与主进程缓存一致：每 3 分钟拉一次
-const TICK_MS = 30_000 // 重置倒计时文案每 30s 刷新一次（不发请求）
+const TICK_MS = 30_000 // 倒计时文案每 30s 刷新一次（不发请求）
 
-// 把毫秒差格式化成紧凑倒计时：3d20h / 4h13m / 12m / <1m
+// 紧凑倒计时：3d20h / 4h13m / 12m / <1m
 function fmtCountdown(resetsAt: string | null): string {
   if (!resetsAt) return ''
   const ms = new Date(resetsAt).getTime() - Date.now()
@@ -49,9 +49,8 @@ function lvOf(p: number): string {
   return 'lv-ok'
 }
 
-// 一行 inline：label · 进度条 · 百分比 · 重置时间，跟底部状态栏 ctx 同款排版。
-// percent 为 null = 最终没拿到数据 → 空轨 + 横杠占位（区别于真实 0%）。
-// weekly=true 时打 data-weekly 标记（CSS 靠它做 hover 弹模型额度卡片）。
+// 一行 inline：label · 进度条 · 百分比 · 重置时间。percent=null 显示横杠占位（区别于真实 0%）；
+// weekly=true 打 data-weekly 标记（CSS 靠它 hover 弹模型额度卡片）。
 function bar(label: string, percent: number | null, reset: string, weekly = false, key?: string): ReactNode {
   const has = typeof percent === 'number'
   const lv = has ? lvOf(percent as number) : 'lv-none'
@@ -67,8 +66,7 @@ function bar(label: string, percent: number | null, reset: string, weekly = fals
   )
 }
 
-// 圆环：SVG 双圆（底轨 + 按百分比截断的进度弧），中心是百分比。
-// 横向排布：左侧圆环，右侧两行文字（标题 / 重置倒计时）。
+// 圆环样式：左侧圆环，右侧两行文字（标题 / 重置倒计时）
 const RING_R = 15.5
 const RING_C = 2 * Math.PI * RING_R
 function ring(label: string, percent: number | null, reset: string, weekly = false, key?: string): ReactNode {
@@ -110,15 +108,13 @@ export function UsagePanel() {
 
   const [last, setLast] = useState<ClaudeUsage | null>(null)
   const [fetchFailed, setFetchFailed] = useState(false) // IPC 本身抛异常（区别于 last.ok=false）
-  const [, setTickN] = useState(0) // 只为让倒计时文案每 30s 重算一次，无请求
+  const [, setTickN] = useState(0) // 只为让倒计时文案每 30s 重算一次
 
-  // 开关驱动的拉取生命周期：show=true 起两只定时器，关掉/卸载时清理并清空数据
-  // （对应原 start()/stop()；样式切换不进 effect——render 本身就是原 paint()，rev 一变即重绘）。
+  // show=true 起两只定时器，关掉/卸载时清理并清空数据
   useEffect(() => {
     if (!show) return
     let alive = true
-    // 非 force：快照/新鲜缓存(180s)直接秒显，过期或没有才真拉 —— 反复开关不重复打接口，
-    // 也不会无视失败冷却硬打；首次无缓存时仍会立即拉。
+    // 非 force：新鲜缓存(180s)直接秒显，过期或没有才真拉——反复开关不重复打接口
     const refresh = async (force: boolean): Promise<void> => {
       try {
         const u = await window.term.claudeUsage(force)
@@ -137,13 +133,12 @@ export function UsagePanel() {
       alive = false
       window.clearInterval(pollTimer)
       window.clearInterval(tickTimer)
-      // 对齐原 stop()：关闭即丢弃数据，下次打开重新走缓存/拉取
+      // 关闭即丢弃数据，下次打开重新走缓存/拉取
       setLast(null)
       setFetchFailed(false)
     }
   }, [show])
 
-  // ── paint ──
   let cls = 'usage-bars'
   let title = ''
   let content: ReactNode = null
@@ -152,13 +147,11 @@ export function UsagePanel() {
       const u = last
       const render = style === 'ring' ? ring : bar
       const items: ReactNode[] = []
-      // 5h 缺失才跳过；本周额度始终渲染，最终没拿到就传 null → 显示横杠占位（区别于真实 0%）
+      // 5h 缺失才跳过；本周额度始终渲染，没拿到传 null 显示横杠占位
       if (u.fiveHour) items.push(render(t('5h额度'), pct(u.fiveHour), fmtCountdown(u.fiveHour.resetsAt), false, '5h'))
-      // 周额度主条：账号级总池 → 「本周额度」；没有总池、只有模型专属配额（如 Fable）→ 「Fable额度」；
-      // 彻底没拿到 → 仍用「本周额度」显示横杠占位。
+      // 周额度主条：账号级总池 → 「本周额度」；只有模型专属配额 → 「{模型}额度」
       const weeklyLabel = u.sevenDay?.scopeLabel ? t('{0}额度', u.sevenDay.scopeLabel) : t('本周额度')
-      // hover 卡片：仅当主条是账号总池（无 scopeLabel）且另有模型级配额时，悬浮补显模型额度。
-      // 主条本身就是模型级（总池缺失退回 Fable）时不再重复展示，模型级缺失则 hover 无反应。
+      // hover 卡片：仅当主条是账号总池且另有模型级配额时，悬浮补显模型额度
       const model = (u.sevenDay && !u.sevenDay.scopeLabel && u.sevenDayModel) || null
       items.push(
         u.sevenDay

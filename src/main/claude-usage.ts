@@ -3,8 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-// 官方 usage 接口对不受支持地区直接 403（Request not allowed）。cc 自己走 settings.json 里
-// 配的代理才拿得到数据，所以这里也复用同一个代理。返回 Chromium proxyRules + 认证。
+// usage 接口对不受支持地区直接 403，需复用 cc settings.json 里配的代理。返回 Chromium proxyRules + 认证。
 function readCcProxy(): { rules: string; username?: string; password?: string } | null {
   try {
     const s = JSON.parse(readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8')) as {
@@ -23,19 +22,18 @@ function readCcProxy(): { rules: string; username?: string; password?: string } 
   }
 }
 
-// cc 的 User-Agent 是这个接口的"白名单"，缺了会被激进限流甚至拒绝。版本号跟着 cc 大版本走即可。
+// 该接口按 UA 白名单放行，缺 cc 的 UA 会被激进限流甚至拒绝
 const CC_UA = 'claude-code/2.1.215'
 
-// cc 登录后把 OAuth 凭据存这里；accessToken 就是调用账号级用量接口用的 Bearer。
+// cc 登录后的 OAuth 凭据；accessToken 即账号级用量接口的 Bearer
 const CRED_FILE = (): string => join(homedir(), '.claude', '.credentials.json')
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
-const TTL_MS = 180_000 // 接口建议节流，180s 内复用缓存
+const TTL_MS = 180_000 // 180s 内复用缓存
 
 export interface UsageWindow {
   utilization: number // 0~100
   resetsAt: string | null // ISO，UTC
-  // 该周额度按模型 scope 拆分时的模型名（如 'Fable'）。有值 = 这是某个模型的专属周配额，
-  // 而非账号级总周额度 → UI 显示「Fable额度」而不是「本周额度」。无值 = 账号级总额度。
+  // 有值 = 某模型的专属周配额（如 'Fable'）；无值 = 账号级总额度
   scopeLabel?: string
 }
 export interface ClaudeUsage {
@@ -52,8 +50,7 @@ export interface ClaudeUsage {
 let cache: ClaudeUsage | null = null
 let inflight: Promise<ClaudeUsage> | null = null
 
-// statusline 探针从 cc stdin 的 rate_limits 落下的账号用量快照。
-// cc 自己联网拿到，所以这条路不依赖代理/直连——这正是 claude-hud 关了 Clash 也能用的原因。
+// statusline 探针从 cc stdin 的 rate_limits 落下的账号用量快照；cc 自己联网拿到，此路不依赖代理。
 const ACCOUNT_FILE = (): string => join(app.getPath('userData'), 'session-status', '_account-usage.json')
 
 function readAccountSnapshot(): ClaudeUsage | null {
@@ -74,13 +71,11 @@ function readAccountSnapshot(): ClaudeUsage | null {
   }
 }
 
-// 排障用：把最近一次拉取的关键信息覆盖写到 userData，方便定位 0%/失败。
+// 排障：最近一次拉取的关键信息覆盖写到 userData
 function debugLog(line: string): void {
   try {
     writeFileSync(join(app.getPath('userData'), 'claude-usage-debug.log'), line, 'utf8')
-  } catch {
-    // 日志失败无所谓
-  }
+  } catch {}
 }
 
 function readToken(): { token: string } | { error: string } {
@@ -103,18 +98,15 @@ function readToken(): { token: string } | { error: string } {
   }
 }
 
-// 直连此接口会被 Anthropic 拦成 403（需经用户的代理出口），且 node 的 undici 还会被
-// Cloudflare 按 TLS 指纹拦。用 Electron 的 net 模块：走 Chromium 网络栈 → 自动套用系统
-// 代理（WinINET）+ 真实浏览器 TLS 指纹，两个问题一并解决；token 也只在内存里当请求头，
-// 不经过命令行。
+// 必须用 Electron net 模块（Chromium 网络栈）：node undici 会被 Cloudflare 按 TLS 指纹拦，
+// 且需自动套用系统/cc 代理；代理认证走 request 的 'login' 事件。
 async function netUsage(token: string): Promise<{ status: number; body: string; err?: string }> {
-  // 走 cc 那条代理（若配了）：用独立内存 session 设代理，代理认证走 request 的 'login' 事件。
   const proxy = readCcProxy()
   const ses = session.fromPartition('claude-usage-probe')
   try {
     await ses.setProxy(proxy ? { proxyRules: proxy.rules } : { mode: 'system' })
   } catch {
-    // setProxy 失败就退回 session 默认（系统代理）
+    // setProxy 失败退回系统代理
   }
   return new Promise((resolve) => {
     let done = false
@@ -144,8 +136,7 @@ async function netUsage(token: string): Promise<{ status: number; body: string; 
         res.on('error', (e: Error) => finish({ status: 0, body: '', err: e.message }))
       })
       req.on('error', (e) => finish({ status: 0, body: '', err: e.message }))
-      // 超时兜底：只清定时器并 resolve，不主动 abort 请求——abort 在某些代理/TLS
-      // 异常下可能引发底层 socket 错误，求稳不碰；请求自然结束后因 done=true 被忽略。
+      // 超时只 resolve 不 abort——abort 在某些代理/TLS 异常下会引发底层 socket 错误
       timer = setTimeout(() => {
         finish({ status: 0, body: '', err: '请求超时' })
       }, 10_000)
@@ -164,20 +155,16 @@ function pickWindow(v: unknown): UsageWindow | null {
   return { utilization: u, resetsAt: typeof o.resets_at === 'string' ? o.resets_at : null }
 }
 
-// 顶层 seven_day 现已废弃恒为 null，真实周额度全搬进 limits[] 数组。官方把周额度拆成两类：
-//   · kind='weekly_all'    —— 账号级总周额度（全模型共享池），对应「本周额度」；
-//   · kind='weekly_scoped' —— 某模型专属周配额（带 scope.model.display_name，如 Fable / Sonnet），
-//                             对应「Fable额度」等。
-// 返回两条：overall = 账号总池（无 scopeLabel），scoped = 用量最高的模型级配额（带模型名）。
-// 用 kind 作主判据（最可靠）；对没有 kind 的旧结构兜底：scope 无模型 / 显式「All models」= 总池。
+// 周额度在 limits[]：kind='weekly_all' 为账号总池，'weekly_scoped' 为模型专属配额。
+// 返回 overall（总池）与 scoped（用量最高的模型级）；无 kind 的旧结构按 scope 兜底判断。
 function pickWeekly(raw: Record<string, unknown>): {
   overall: UsageWindow | null
   scoped: UsageWindow | null
 } {
   const limits = raw.limits
   if (!Array.isArray(limits)) return { overall: null, scoped: null }
-  let overall: UsageWindow | null = null // 账号级总池（无 scopeLabel → 显示「本周额度」）
-  let scoped: UsageWindow | null = null // 模型级里用量最高的一条
+  let overall: UsageWindow | null = null
+  let scoped: UsageWindow | null = null
   for (const l of limits) {
     if (!l || typeof l !== 'object') continue
     const o = l as Record<string, unknown>
@@ -223,7 +210,7 @@ async function fetchFresh(): Promise<ClaudeUsage> {
     return fail(`返回非 JSON (HTTP ${status})`, body.slice(0, 300))
   }
 
-  // 接口报错时是 {"error":{"type":..,"message":..}} 形态——别当成功解析成 0%。
+  // 接口报错是 {"error":{...}} 形态，别当成功解析成 0%
   if (status !== 200 || (raw.error && typeof raw.error === 'object')) {
     const m =
       (raw.error as { message?: string } | undefined)?.message || JSON.stringify(raw.error ?? raw)
@@ -231,7 +218,7 @@ async function fetchFresh(): Promise<ClaudeUsage> {
   }
 
   const fiveHour = pickWindow(raw.five_hour)
-  // 顶层 seven_day 已废弃恒 null，真数据在 limits[]。总池优先当主条，缺总池才退回模型级。
+  // 顶层 seven_day 已废弃恒 null，真数据在 limits[]；总池优先，缺总池才退回模型级
   const wk = pickWeekly(raw)
   const overall = pickWindow(raw.seven_day) || wk.overall
   const sevenDay = overall || wk.scoped
@@ -254,8 +241,7 @@ async function fetchFresh(): Promise<ClaudeUsage> {
   }
 }
 
-// API 失败后的冷却：403/超时等失败后 BACKOFF 内不再打，免得每次 UI poll 都发无用请求
-// （典型场景：cc 的 rate_limits 只给 five_hour，缺 seven_day，这里每次都想补但接口一直 403）。
+// API 失败后的冷却期，避免每次 UI poll 都发注定失败的请求
 const FAIL_BACKOFF_MS = 600_000
 let lastApiFailAt = 0
 
@@ -278,14 +264,11 @@ async function fetchApiUsage(force: boolean): Promise<ClaudeUsage> {
   return inflight
 }
 
-// force=true 跳过缓存（如用户刚在设置里开启时想立刻看到）。
+// force=true 跳过缓存。
 export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
-  // 1) 首选：cc statusline stdin 落下的账号用量快照。cc 已联网拿到，无需代理/直连，
-  //    且只要在 app 里开过 cc 就有数据（含上次会话残留的快照）。
+  // 首选 statusline 快照（无需代理）；rate_limits 常缺 seven_day，用 OAuth API 补周额度
   const snap = readAccountSnapshot()
   if (snap) {
-    // cc 的 rate_limits 经常只给 five_hour、没有 seven_day → 本周额度会缺。
-    // 用 OAuth usage API 补周额度（走系统代理；拿不到就维持缺失，UI 会隐藏本周项而非误显 0%）。
     if (snap.fiveHour && !snap.sevenDay) {
       const api = await fetchApiUsage(force)
       if (api.ok && api.sevenDay) {
@@ -298,6 +281,6 @@ export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
     return snap
   }
 
-  // 2) 退路（首次还没跑过任何 cc 时的引导）：直连 OAuth usage API，需要能直连或走代理。
+  // 退路：直连 OAuth usage API（需能直连或走代理）
   return fetchApiUsage(force)
 }

@@ -15,13 +15,11 @@ export interface TermTabHandlers {
   // Ctrl+S：把当前脏分组保存到"已保存分组"
   onRequestSaveGroup?: () => void
   onPtyStarted?: () => void
-  // 用户在 busy 中按 ESC 撤回提示词时，Claude 不会发 hook，由 renderer 兜底重置
+  // busy 中按 ESC 撤回提示词时 Claude 不发 hook，由 renderer 兜底重置
   onUserAbort?: () => void
-  // cc 接口异常（API Error 等）时不发 Stop hook，busy 会一直卡蓝。由 renderer 扫 PTY
-  // 输出文本兜底：命中错误行 → 通知上层把该 tab 置成 error（红点）。note 为简短说明。
+  // cc 接口异常（API Error 等）不发 Stop hook，busy 会卡蓝：renderer 扫 PTY 输出命中错误行 → 置 error
   onErrorDetected?: (note?: string) => void
-  // pwsh shell integration 上报：非 cc 命令的开始/结束（cmdLine 只在 start 时有值）。
-  // 由 pwsh profile 通过 OSC 133;C/D + OSC 633;E 序列驱动，用于给纯 pwsh tab 标注运行态。
+  // pwsh shell integration（OSC 133;C/D + 633;E）上报非 cc 命令的开始/结束，cmdLine 仅 start 时有值
   onShellCommand?: (kind: 'start' | 'end', cmdLine?: string) => void
 }
 
@@ -35,19 +33,14 @@ export interface SessionRecord {
 
 export type TabStatus = 'busy' | 'attention' | 'done' | 'idle' | 'error'
 
-// 调试开关：默认关。devtools 里执行 `window.__termDebug = true` 打开。
-// 打开后在切换 tab / fit / resize / startPty / 收到 PTY data 这些关键节点打日志，
-// 用来追"切回 tab 出现脏字 / 左移 / splash 错位"这类时序问题。
-// 关掉就完全 no-op，不影响性能。
+// 调试开关：devtools 里执行 `window.__termDebug = true` 打开，关闭时完全 no-op
 declare global { interface Window { __termDebug?: boolean; __termDebugDataChars?: number } }
 function dbg(...args: unknown[]): void {
   if (typeof window === 'undefined' || !window.__termDebug) return
-  // 高精度时间戳 + 统一前缀，console 过滤搜 [term] 一次拉全
   const t = performance.now().toFixed(1)
   console.log(`[term] +${t}ms`, ...args)
 }
-// PTY chunk preview：默认前 64 个 codepoint，避免大段 ANSI 刷爆 console。
-// 不可见控制符 (< 0x20 / 0x7f) 渲染成 \x?? 转义，方便看到 ANSI 序列起止。
+// PTY chunk 预览：默认前 64 codepoint；控制符转义成 \x?? 便于看 ANSI 序列起止
 function previewData(d: string): string {
   const max = (typeof window !== 'undefined' && window.__termDebugDataChars) || 64
   const s = d.length > max ? d.slice(0, max) + '…' : d
@@ -56,8 +49,7 @@ function previewData(d: string): string {
   )
 }
 
-// OSC 52 的 Pd 是 UTF-8 字节流的 base64。atob 解出来是 latin1 字节串，必须再按
-// UTF-8 解码，否则中文 / emoji 复制出来全是乱码。失败返回空串（调用方据此不写剪贴板）。
+// OSC 52 的 Pd 是 UTF-8 字节流的 base64：atob 得 latin1 字节串须再按 UTF-8 解码，否则中文/emoji 乱码；失败返回空串
 function decodeBase64Utf8(b64: string): string {
   try {
     const bin = atob(b64.replace(/\s+/g, ''))
@@ -68,10 +60,7 @@ function decodeBase64Utf8(b64: string): string {
   }
 }
 
-// cc 接口异常兜底：cc 报 API Error 时不发 Stop hook，busy 状态会永久卡蓝。
-// 这些错误行是 cc 打到 PTY 的可见文本（唯一痕迹），扫到就把 tab 复位成 error。
-// cc 几乎所有网络/服务端异常都以 "API Error:" 前缀打出（连接断开 / 超时 / 529 过载等），
-// 单独再列 "Connection closed mid-response" 兜住少数不带前缀的续行。keyword → 中文 note。
+// cc 报 API Error 时不发 Stop hook，错误行是打到 PTY 的可见文本（唯一痕迹），扫到即置 error。keyword → 中文 note。
 const CC_ERROR_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/Connection closed mid-response/i, '连接中断，回复可能未完成'],
   [/API Error:\s*(?:Connection error|fetch failed|network)/i, '接口连接异常'],
@@ -79,59 +68,18 @@ const CC_ERROR_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/API Error:\s*5\d\d\b|overloaded/i, '服务端过载/异常'],
   [/API Error:/i, '接口异常'] // 兜底：其余 API Error 一律红点
 ]
-// 匹配任意一条错误的合并正则（先快筛，命中再定位具体 note，避免逐条跑）。
+// 合并正则先快筛，命中再定位具体 note
 const CC_ERROR_RE = new RegExp(CC_ERROR_PATTERNS.map(([re]) => re.source).join('|'), 'i')
 
 /*
- * ───────────────────────────────────────────────────────────────────
- * 输入子系统总览（bind* 的职责分工）
- * ───────────────────────────────────────────────────────────────────
- * 根本难点：cc 是跑在 PTY 里的全屏 TUI（alt-screen + bracketed paste +
- * 鼠标追踪 + raw mode）。同一个用户动作往往被 浏览器 / xterm / cc 三层
- * 各自解读一遍。核心原则：凡 app 要接管的动作，必须在它到达"另一个也想
- * 处理它的层"之前拦死；凡要交给 cc 的（普通输入、左键选择、滚轮）完整透传。
- *
- * 键盘  attachCustomKeyEventHandler ─ xterm 的 keydown 入口
- *   · IME 接管键（isComposing / keyCode=229 / key='Process'）→ return false
- *     否则 xterm 会把第一颗拼音字母当字符发到 PTY（prompt 里冒出 "zhe'g"）
- *   · 应用快捷键 Ctrl+T/W/F → return false，不透传
- *   · 复制 Ctrl+C（有选区）/ Ctrl+Shift+C → copySelectionIfAny()
- *       Ctrl+C 无选区时 return true，把 SIGINT 透传给 cc
- *   · 粘贴 Ctrl+V / Ctrl+Shift+V → preventDefault + pasteFromClipboard()
- *       不能依赖浏览器 paste 事件：xterm 会把 Ctrl+V 译成 \x16 并 preventDefault，
- *       paste 事件根本不触发（普通 pwsh 下是 PSReadLine 自己接 \x16 才显得正常）
- *   · ESC：busy 时通知 onUserAbort，按键仍透传给 cc
- *
- * 鼠标
- *   · 右键 mousedown（capture 阶段）→ stopPropagation，挡住 xterm 把右键上报成
- *     mouse report 给 cc —— 否则 cc 把右键当自己的粘贴，会和下面的 contextmenu
- *     重复粘两次。左键/移动/滚轮不拦，照常透传给 cc。
- *   · contextmenu → 有选区复制，无选区 pasteFromClipboard()（Win Terminal 风格）
- *
- * 粘贴兜底  bindPasteHandler ─ 浏览器原生 paste 事件（如 Shift+Insert）
- *   Ctrl+V 不走这里（已在 keydown 拦截）
- *
- * IME（capture 阶段先于 xterm 的 textarea bubble 监听）
- *   compositionstart → composing=true
- *   compositionend   → composing=false + 手动 send e.data
- *                    + 开 100ms 窗口抑制 xterm 接着错发的"过时 buffer"
- *     （alt-screen 下 xterm 的 textarea buffer 不被 insertCompositionText 更新，
- *      每次 compositionend 都会 emit 第一次锁住的老内容，只能我们自己接管）
- *
- * 选区缓存  onSelectionChange → 非空时记录文本+时间戳
- *   仅服务于应用层复制 xterm 自身选区（普通 shell）：实时选区被 clearSelection /
- *   输出刷新清掉时，1.5s 内可回退到缓存。cc 等 TUI 的复制走 OSC52，不经这里。
- *
- * 出口
- *   sendInput(d) ─ 唯一出口，处理 waitingForRestart / pendingInput 兜底
- *   term.onData(d) → composing 中丢弃；compositionend 后短窗口内首字节非 ESC 丢弃
- *
- * 剪贴板读写（都优先走主进程 Electron clipboard，再回退浏览器 Clipboard API）
- *   写 writeToClipboard(text)
- *   读 readClipboardText()：files → 绝对路径串（含空格加引号）；text → 原样
- *   OSC52  bindClipboardOsc ─ PTY 内 TUI(cc 等)发 ESC]52 写剪贴板，xterm 不内置 52，
- *          自己接 → 解码 base64 → writeToClipboard。否则 cc 复制写不进系统剪贴板。
- * ───────────────────────────────────────────────────────────────────
+ * 输入子系统要点（bind* 分工）：cc 是 PTY 内全屏 TUI，同一动作会被浏览器/xterm/cc 三层各解读一遍，
+ * app 要接管的必须在到达下一层前拦死，交给 cc 的（普通输入/左键选择/滚轮）完整透传。
+ * 键盘：IME 接管键拦掉；Ctrl+V 须在 keydown 拦（xterm 会译成 \x16 并吞掉浏览器 paste 事件）。
+ * 鼠标：右键 mousedown capture 拦掉，防 cc 把 mouse report 当自己的粘贴重复粘两次。
+ * IME：compositionend 手动 send，再开 100ms 窗口抑制 xterm 从过时 buffer 错发的假合成串。
+ * 选区缓存：仅服务应用层复制，实时选区被清掉时 1.5s 内可回退；cc 等 TUI 的复制走 OSC52。
+ * 出口：sendInput 唯一出口；剪贴板读写优先主进程 Electron clipboard，失败回退浏览器 API。
+ * OSC52：xterm 不内置，自己接并解码写剪贴板，否则 cc 复制写不进系统剪贴板。
  */
 
 export class TerminalTab {
@@ -144,9 +92,8 @@ export class TerminalTab {
   status: TabStatus
   note?: string
   dirty: boolean
-  // 运行时状态：当下 cc 进程是否活跃。SessionStart hook → true；任意 pwsh shell integration
-  // OSC 序列（onShellCommand）→ false（cc 在 alt-screen 里屏蔽 pwsh 序列，触发即证明 pwsh 前台）。
-  // 不持久化——仅用于顶栏"启动 CC"按钮显隐等即时判定，重启/恢复后重新根据事件推导。
+  // cc 进程是否活跃：SessionStart hook → true；任意 pwsh shell integration OSC → false
+  // （cc 屏蔽 pwsh 序列，触发即证明 pwsh 前台）。不持久化，重启后按事件重新推导。
   ccActive: boolean = false
 
   readonly host: HTMLDivElement
@@ -161,21 +108,20 @@ export class TerminalTab {
   private disposed = false
   private handlers: TermTabHandlers
 
-  // ── 输入子系统：选区缓存 ────────────────────────────────────
+  // 选区缓存
   private lastSelection = ''
   private lastSelectionAt = 0
   private static readonly SEL_FALLBACK_MS = 1500
 
-  // ── 输入子系统：IME 守卫 ───────────────────────────────────
+  // IME 守卫
   private composing = false
   private suppressOnDataUntil = 0
   private static readonly POST_COMPOSE_SUPPRESS_MS = 100
 
-  // ── shell integration：OSC 633;E 上报的下一条命令行，落到 133;C 时消费
+  // OSC 633;E 上报的下一条命令行，落到 133;C 时消费
   private pendingShellCmd: string | undefined
 
-  // ── cc 错误兜底：只在 busy 时扫 PTY 文本。errScanTail 存上一 chunk 末尾几十字符，
-  // 拼到下一 chunk 前面，避免错误行正好被 chunk 边界切开而漏匹配。
+  // cc 错误兜底：errScanTail 存上一 chunk 末尾，拼接后再扫，避免错误行被 chunk 边界切开漏匹配
   private errScanTail = ''
   private static readonly ERR_SCAN_TAIL_LEN = 80
 
@@ -219,8 +165,7 @@ export class TerminalTab {
       scrollback: opts.settings.terminal.scrollback,
       allowProposedApi: true,
       theme: themeForPreset(opts.settings.terminal.theme),
-      // windowsPty 让 xterm 按 ConPTY 语义处理换行/reflow，仅 Windows 需要；
-      // macOS/类 Unix 走系统 pty，设了反而不对，故按平台条件注入。
+      // windowsPty 让 xterm 按 ConPTY 语义处理换行/reflow；仅 Windows 需要，其它平台设了反而不对
       ...(window.term.platform === 'win32'
         ? { windowsPty: { backend: 'conpty' as const } }
         : {})
@@ -232,15 +177,9 @@ export class TerminalTab {
     this.term.loadAddon(this.fit)
     this.term.loadAddon(this.search)
     this.term.loadAddon(this.serializer)
-    // 宽度表对齐：xterm 内置的是 Unicode 6 时代宽度表，emoji（如 ✅）被记 1 格，
-    // 而 cc（string-width，新版 Unicode）按 2 格打印 —— buffer 格数和视觉字形错位，
-    // 选中重绘时就会整段平移/凭空多空格。切到 Unicode 11 表与打印方对齐。
-    //
-    // 再补一刀「VS16」：带变体选择符 U+FE0F 的符号（✔️/⚠️/↗️/ℹ️…）string-width 记 2 格，
-    // 而 Unicode11 表只按基字符宽度记 1 格 —— 代码块 diff 有背景色时，背景/列位错开一格特别明显。
-    // 先用一个「假 terminal」捕获 addon 内部的 UnicodeV11 provider（activate 走公开的
-    // terminal.unicode.register，minify 稳定），委托它的完整宽度表；再注册一个覆盖 '11' 的
-    // 包装：只把「基字符 + U+FE0F」的合并宽度强制成 2，和 string-width 对齐。
+    // 宽度表对齐：xterm 内置 Unicode 6 宽度表把 emoji 记 1 格，cc（string-width）按 2 格打印，
+    // 错位导致选中重绘整段平移，切 Unicode 11 对齐；U+FE0F 变体符号仍差 1 格，故捕获 addon
+    // 的 provider 包装成「基字符+U+FE0F 强制宽 2」再注册覆盖 '11'。
     let baseV11: IUnicodeVersionProvider | undefined
     new Unicode11Addon().activate({
       unicode: { register: (p: IUnicodeVersionProvider) => (baseV11 = p) }
@@ -250,7 +189,7 @@ export class TerminalTab {
       const patched: IUnicodeVersionProvider = {
         version: '11',
         wcwidth: (cp) => base.wcwidth(cp),
-        // packed 布局（见 addon 源码）：bit0=shouldJoin，bit1-2=width。U+FE0F 时清宽度位再置 2。
+        // packed 布局：bit0=shouldJoin，bit1-2=width。U+FE0F 时清宽度位再置 2。
         charProperties: (cp, preceding) => {
           const r = base.charProperties(cp, preceding)
           return cp === 0xfe0f ? (r & ~0b110) | 0b100 : r
@@ -258,7 +197,7 @@ export class TerminalTab {
       }
       ;(this.term.unicode as unknown as { register(p: IUnicodeVersionProvider): void }).register(patched)
     } else {
-      // 捕获失败（addon 内部结构变了）兜底：退回原始 Unicode11，至少纯 emoji 对齐
+      // 捕获失败兜底：退回原始 Unicode11，至少纯 emoji 对齐
       this.term.loadAddon(new Unicode11Addon())
     }
     this.term.unicode.activeVersion = '11'
@@ -269,7 +208,7 @@ export class TerminalTab {
       })
     )
 
-    // 输入子系统：键盘 + 输出守卫 + OSC52 剪贴板（不依赖 mount，构造期间挂上）
+    // 键盘 + 输出守卫 + OSC 处理不依赖 mount，构造期间挂上
     this.bindKeyboard()
     this.bindOnData()
     this.bindClipboardOsc()
@@ -280,39 +219,21 @@ export class TerminalTab {
     parent.appendChild(this.host)
     this.term.open(this.host)
     this.disableReflow()
-    // 渲染器：用 xterm 默认的 DOM renderer，不挂 WebGL。
-    // WebGL 的实质收益是"GPU 把字形烘成纹理、逐 cell blit"，只在全屏高频重绘时省 CPU——本应用
-    // 以 cc 会话为主（中等输出 + 大量阅读/滚动），DOM renderer 毫无压力，用不上这份收益。
-    // 而 WebGL 在本应用有实打实的残影前科：63400e0 记录的"切 tab 后下半屏整列左移 1 cell"就是它
-    // 干的、clearTextureAtlas 都压不住；且本机 dpr=1.5 分数缩放正是纹理图集半像素对齐的高发坑。
-    // DOM 逐行重建、无纹理/几何缓存这层，渲染更可预测。故弃用 WebGL。
-    // （注：另有一种"快滚时列 0 顶格内容留竖脏缝"是 Chromium 合成器残留 tile、非渲染器问题，
-    //   DOM/WebGL 都有、且只在个别 cc 会话写坏的历史 buffer 上复现，与这里的取舍无关。）
+    // 渲染器固定用 DOM renderer，不挂 WebGL：WebGL 曾出现"切 tab 后整列左移 1 cell"残影
+    //（分数缩放 dpr 下纹理图集对齐坑），且本负载下 DOM 渲染毫无压力、更可预测。
     try { this.fit.fit() } catch {}
-    // 输入子系统：右键、粘贴、选区缓存、IME 守卫（依赖 host 已经挂上 DOM）
+    // 右键、粘贴、选区缓存、IME 守卫依赖 host 已挂上 DOM
     this.bindContextMenu()
     this.bindPasteHandler()
     this.bindSelectionCache()
     this.bindIMEGuard()
   }
 
-  // 关闭 xterm 的 resize reflow（重折行）。
-  // cc 是 normal-buffer 全屏 TUI（能往上滚看历史 → 不是 alt-screen），它靠 autowrap 换行的
-  // 宽行会被 xterm 标记为 wrapped（"一条逻辑长行折成几行"）。当 cols 真的变化时（拖窗口 /
-  // 多屏 dpr 变化），xterm 会对 scrollback 里这些 wrapped 历史行做 reflow：每行行首几个字符
-  // 被挪到上一行尾、错位逐行累积（sync→sy+nc）。而 cc 收到 SIGWINCH 只重画当前视口、不重画
-  // 已滚上去的历史行，于是错位固化在 buffer 里，refresh 只会把这份脏 buffer 原样重画。
-  // 关掉后：cols 变小只截断历史行右侧（xterm 无横向滚动），不再错位 —— 对以跑 cc 为主的终端稳赚。
-  //
-  // 分工要分清：切 tab 那种"必现"的错位不归本函数管 —— 它 cols 根本没变、走不到 xterm reflow。
-  // 那份真凶是 refit() 以前无脑发的 same-size PTY resize 惊动了 ConPTY 自己的 reflow（在数据
-  // 进 xterm 之前就做，本函数够不着），已在 refit() 里用"尺寸没变就不 resize"根治。本函数只负责
-  // "真·改变尺寸"时 xterm 这一侧的 reflow。与字体 / 连字 / DOM·WebGL 渲染器都无关。
-  //
-  // xterm 没有"保留 scrollback 又关 reflow"的公开开关：现代 ConPTY 下 Buffer 的
-  // _isReflowEnabled getter 恒为 true（_hasScrollback && backend==='conpty' && buildNumber>=21376）。
-  // 只能在 normal / alt 两个内部 Buffer 实例上，用实例数据属性遮蔽原型上的 getter。
-  // 私有 API：升级 xterm 时需复核 _core._bufferService.buffers 这条路径。
+  // 关闭 xterm 的 resize reflow：cols 真变化时 xterm 会重折 scrollback 里的 wrapped 历史行，
+  // 而 cc 收到 SIGWINCH 只重画视口不重画历史，错位固化进 buffer；关掉后 cols 变小只截断右侧。
+  //（切 tab 的必现错位另有真凶：same-size PTY resize 惊动 ConPTY 自身 reflow，已在 refit() 根治。）
+  // xterm 无公开开关，只能在 normal/alt 两个内部 Buffer 实例上用数据属性遮蔽原型 getter。
+  // 私有 API：升级 xterm 时需复核 _core._bufferService.buffers 路径。
   private disableReflow(): void {
     try {
       const core = (this.term as unknown as {
@@ -327,7 +248,7 @@ export class TerminalTab {
       for (const buf of targets) {
         Object.defineProperty(buf, '_isReflowEnabled', { value: false, configurable: true })
       }
-      // 读回验证：确认遮蔽 getter 生效（仅在 __termDebug 下打印，排查"到底关没关上"）
+      // 读回验证遮蔽是否生效（仅 __termDebug 下打印）
       const rbNormal = (buffers as { normal?: { _isReflowEnabled?: unknown } })?.normal?._isReflowEnabled
       const rbAlt = (buffers as { alt?: { _isReflowEnabled?: unknown } })?.alt?._isReflowEnabled
       dbg(this.id, `disableReflow: targets=${targets.length} normal._isReflowEnabled=${rbNormal} alt._isReflowEnabled=${rbAlt}`)
@@ -336,9 +257,7 @@ export class TerminalTab {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  //   输入子系统 ─ 实现
-  // ═══════════════════════════════════════════════════════════
+  // ── 输入子系统 ──
 
   private bindKeyboard(): void {
     this.term.attachCustomKeyEventHandler((e) => {
@@ -352,10 +271,9 @@ export class TerminalTab {
         if (e.key === 't' || e.key === 'T') { this.handlers.onRequestNewTab(); return false }
         if (e.key === 'w' || e.key === 'W') { this.handlers.onRequestCloseSelf(); return false }
         if (e.key === 'f' || e.key === 'F') { this.handlers.openSearch(); return false }
-        // Ctrl+S：保存当前分组（顺带挡掉 XOFF —— 裸 \x13 会把终端"冻住"，几乎不会是用户本意）
+        // Ctrl+S：保存当前分组（顺带挡掉 XOFF，裸 \x13 会把终端"冻住"）
         if (e.key === 's' || e.key === 'S') { this.handlers.onRequestSaveGroup?.(); return false }
-        // Ctrl+P：命令面板(由 CommandPalette 在 window capture 阶段自行处理)。
-        // 这里只负责不让 xterm 把它译成 pty 输入(pwsh PSReadLine 会把 Ctrl+P 当"历史上一条")。
+        // Ctrl+P：命令面板由 CommandPalette 处理，这里只挡住 xterm 把它译成 pty 输入
         if (e.key === 'p' || e.key === 'P') return false
         if (e.key === 'c' || e.key === 'C') {
           // Ctrl+C：有选区→复制（吃掉按键）；无选区→透传 SIGINT 给 cc
@@ -371,13 +289,9 @@ export class TerminalTab {
         this.copySelectionIfAny()
         return false
       }
-      // Ctrl+V / Ctrl+Shift+V：统一在 keydown 主动拦截，手动走 pasteFromClipboard。
-      // 不能依赖浏览器原生 paste 事件：xterm 会先把 Ctrl+V 译成 \x16(SYN) 发给 PTY，
-      // 并对该 keydown 调 preventDefault —— 浏览器的 paste 事件因此根本不触发，
-      // bindPasteHandler 收不到。普通 pwsh 下 PSReadLine 恰好把 \x16 当"粘贴"才显得
-      // 正常，cc 的 TUI 只认 bracketed paste、不认裸 \x16，于是表现为"无反应"。
-      // 这里 preventDefault 阻止浏览器原生 paste（避免与 bindPasteHandler 重复），
-      // return false 阻止 xterm 继续把按键译成 \x16。
+      // Ctrl+V / Ctrl+Shift+V 须在 keydown 拦截手动粘贴：xterm 会把 Ctrl+V 译成 \x16 并
+      // preventDefault，浏览器 paste 事件不触发；而 cc 只认 bracketed paste、不认裸 \x16。
+      // preventDefault 防原生 paste 重复，return false 防 xterm 继续译成 \x16。
       if (e.ctrlKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault()
         void this.pasteFromClipboard()
@@ -395,49 +309,34 @@ export class TerminalTab {
   private bindOnData(): void {
     this.term.onData((d) => {
       if (this.composing) return
-      // compositionend 后短窗口：xterm 会从过时 buffer 发一段假合成串。
-      // 真正的合成结果已经在 compositionend 里手动 send；这里把假货拦掉。
-      // 鼠标追踪 / 功能键的 onData 都以 ESC(0x1B) 开头，放行不拦。
+      // compositionend 后短窗口内拦掉 xterm 从过时 buffer 发的假合成串（真结果已手动 send）；
+      // 鼠标追踪/功能键的 onData 以 ESC 开头，放行。
       if (Date.now() < this.suppressOnDataUntil && d.length > 0 && d.charCodeAt(0) !== 0x1b) return
       this.sendInput(d)
     })
   }
 
-  // OSC 52 剪贴板写：cc 等 PTY 内 TUI 在鼠标追踪模式下自己管理选区，复制时不走
-  // 应用层的 copySelectionIfAny，而是发 ESC]52;Pc;Pd ST 让终端把内容落到系统剪贴板。
-  // xterm core 不内置 52（只注册了 0/1/2/4/8/10/11/12/104/110/111/112），不接的话
-  // cc 的复制永远写不进剪贴板 —— cc 发完仍乐观提示 "copied N chars"，但剪贴板里是空的，
-  // 表现为"提示复制成功、Win+V 却找不到，要试 3~4 次 cc 降级到本地剪贴板后才行"。
-  // 这里自己接：payload 形如 "Pc;Pd"，Pc=目标选择符(忽略)，Pd=base64(UTF-8) 或 '?'(查询)。
-  // 复用 writeToClipboard 走主进程 Electron clipboard，不受 navigator.clipboard 的焦点/权限限制。
+  // OSC 52 剪贴板写：xterm core 不内置 52，不接的话 cc 复制永远写不进系统剪贴板（cc 仍乐观
+  // 提示 copied）。payload 形如 "Pc;Pd"，Pd=base64(UTF-8) 或 '?'(查询)。走主进程 clipboard。
   private bindClipboardOsc(): void {
     try {
       this.term.parser.registerOscHandler(52, (data) => {
         const sep = data.indexOf(';')
         const payload = sep >= 0 ? data.slice(sep + 1) : data
-        // Pd='?' 是"读剪贴板"请求：出于安全不回应（避免 TUI 偷读剪贴板），直接吞掉
+        // Pd='?' 是读剪贴板请求：出于安全直接吞掉不回应
         if (!payload || payload === '?') return true
         const text = decodeBase64Utf8(payload)
         if (text) void this.writeToClipboard(text)
-        return true // 已处理，阻止 xterm 把它当未知 OSC 继续往下抛
+        return true
       })
     } catch (e) {
       console.warn('[term] OSC52 clipboard handler register failed', e)
     }
   }
 
-  // OSC 133 / 633：pwsh shell-integration.ps1 发的 shell 命令生命周期信号。
-  //   OSC 133;A   prompt 开始 → 当作 idle 兜底
-  //   OSC 133;C   命令开始    → busy
-  //   OSC 133;D   命令结束    → idle
-  //   OSC 633;E;<cmdline>  命令行原文（在 C 之前发），用于过滤 cc 自身
-  //
-  // xterm 的 parser.registerOscHandler(id, cb)：cb 接到的 data 是「;」后剩下的字符串。
-  // 例如原序列 `\x1b]133;C\x07`，data = 'C'；`\x1b]633;E;claude --resume xxx\x07`，data = 'E;claude ...'。
-  // 返回 true 表示已处理，阻止 xterm 把它当未知 OSC 继续抛出。
-  //
-  // 只发布事件，不在这里判定 cc / 也不改 status —— main.ts 负责决策（要读 settings.claudePath、
-  // 要判 tab.autoLaunchCC / activeSessionId），把状态推到 sidebar。
+  // OSC 133/633：pwsh shell-integration 发的命令生命周期信号（133;A prompt / 133;C 开始 /
+  // 133;D 结束；633;E;<cmdline> 命令行原文，在 C 之前发）。registerOscHandler 的 data 是
+  // OSC id 与首个「;」之后的剩余串。这里只发布事件不判定 cc、不改 status，决策在 main.ts。
   private bindShellIntegrationOsc(): void {
     try {
       this.term.parser.registerOscHandler(133, (data) => {
@@ -448,7 +347,7 @@ export class TerminalTab {
           this.pendingShellCmd = undefined
           this.handlers.onShellCommand?.('start', cmd)
         } else if (marker === 'D' || marker === 'A') {
-          // A / D 都视为「回到 prompt」→ 命令结束。首个 A 触发的 end 是空转，无副作用。
+          // A / D 都视为「回到 prompt」→ 命令结束
           this.handlers.onShellCommand?.('end')
         }
         return true
@@ -457,7 +356,7 @@ export class TerminalTab {
         const semi = data.indexOf(';')
         const marker = (semi >= 0 ? data.slice(0, semi) : data).toUpperCase()
         if (marker === 'E') {
-          // E;<cmdline>  ——  保留全部原文，main.ts 里再做 cc 匹配
+          // 保留命令行全部原文，main.ts 里再做 cc 匹配
           this.pendingShellCmd = semi >= 0 ? data.slice(semi + 1) : ''
         }
         return true
@@ -468,17 +367,13 @@ export class TerminalTab {
   }
 
   private bindContextMenu(): void {
-    // 右键完全交给 app 做复制/粘贴：capture 阶段拦掉右键的 mousedown 并 stopPropagation，
-    // 阻止它向下传到 xterm 的 mousedown 监听 —— 否则 cc 在鼠标追踪模式下会收到右键的
-    // mouse report (\x1b[<2;..M/m) 并把右键当成自己的粘贴，于是"粘贴两次"
-    //（cc 自己右键粘一次 + 下面 contextmenu 再 paste 一次）。
-    // contextmenu 是独立事件，照常冒泡到下面的 handler，不受影响。
+    // capture 阶段拦掉右键 mousedown：否则 cc 在鼠标追踪模式下会收到右键 mouse report
+    // 并当成自己的粘贴，与下面的 contextmenu 粘贴重复两次。contextmenu 独立冒泡不受影响。
     this.host.addEventListener('mousedown', (e) => {
       if (e.button === 2) e.stopPropagation()
     }, true)
 
-    // 滚轮不拦：cc 启用鼠标追踪后，xterm 把 wheel 上报成 mouse report，cc 自己
-    // 处理为行级滚动；普通 pwsh 下 xterm 走本地 scrollback。两套都对，不需要我们插手。
+    // 滚轮不拦：cc 鼠标追踪 / 普通 pwsh 本地 scrollback 两套都对，无需插手
 
     // Windows Terminal 风格：有选区→复制，无选区→粘贴
     this.host.addEventListener('contextmenu', (e) => {
@@ -487,10 +382,8 @@ export class TerminalTab {
     })
   }
 
-  // 浏览器原生 paste 事件兜底（如 Shift+Insert）：capture 阶段拦下来，自己读剪贴板。
-  // Ctrl+V 不走这里 —— 它在 keydown 已被主动拦截（xterm 会 preventDefault 吞掉 paste 事件）。
-  // 主进程能拿到 files 而 xterm 自带 paste handler 只能拿 text，所以接管。
-  // stopPropagation 阻止事件继续传到 xterm 的 textarea listener，避免重复 paste。
+  // 浏览器原生 paste 事件兜底（如 Shift+Insert；Ctrl+V 已在 keydown 拦截不走这里）：
+  // capture 拦下自己读剪贴板（主进程能拿 files），stopPropagation 防 xterm 重复 paste。
   private bindPasteHandler(): void {
     this.host.addEventListener('paste', (e) => {
       e.preventDefault()
@@ -512,22 +405,20 @@ export class TerminalTab {
   }
 
   private bindIMEGuard(): void {
-    // capture 阶段：保证我们的标志在 xterm 自己处理 composition 之前生效
+    // capture 阶段：保证标志在 xterm 处理 composition 之前生效
     this.host.addEventListener('compositionstart', () => {
       this.composing = true
     }, true)
     this.host.addEventListener('compositionend', (e) => {
       const data = (e as CompositionEvent).data ?? ''
       this.composing = false
-      // 100ms 内挡掉 xterm 即将发出的过时 buffer
+      // 100ms 内挡掉 xterm 即将从过时 buffer 发出的假合成串
       this.suppressOnDataUntil = Date.now() + TerminalTab.POST_COMPOSE_SUPPRESS_MS
       if (data) this.sendInput(data)
     }, true)
   }
 
-  // ── 输入子系统 ─ 辅助 ──────────────────────────────────────
-
-  // 实时选区优先；为空时在 1.5s 窗口内回退到缓存（选区可能刚被 clearSelection / 输出刷新清掉）
+  // 实时选区优先；为空时 1.5s 窗口内回退缓存（选区可能刚被 clearSelection / 输出刷新清掉）
   private pickSelection(): string {
     const live = this.term.getSelection()
     if (live) return live
@@ -537,8 +428,7 @@ export class TerminalTab {
     return ''
   }
 
-  // 复制操作的统一入口：返回是否实际复制了内容。
-  // 三个调用点（Ctrl+C / Ctrl+Shift+C / 右键）共用，避免每处都写一遍清选区+缓存。
+  // 复制统一入口（Ctrl+C / Ctrl+Shift+C / 右键共用）：返回是否实际复制了内容
   private copySelectionIfAny(): boolean {
     const sel = this.pickSelection()
     if (!sel) return false
@@ -548,8 +438,7 @@ export class TerminalTab {
     return true
   }
 
-  // 写剪贴板：优先走主进程 Electron clipboard（最稳，不受 webContents 焦点/权限影响）；
-  // 主进程失败再回退到浏览器 Clipboard API
+  // 写剪贴板：优先主进程 Electron clipboard（不受焦点/权限影响），失败回退浏览器 API
   private async writeToClipboard(text: string): Promise<void> {
     try {
       const ok = await window.term.writeClipboard(text)
@@ -558,20 +447,15 @@ export class TerminalTab {
     try { await navigator.clipboard.writeText(text) } catch {}
   }
 
-  // 粘贴统一入口：先把剪贴板读成"待粘贴文本"，再写入终端。
-  // 读 / 写分离很重要 —— 若把 term.paste 放进读取的 try 里，paste 抛错会掉进
-  // catch 触发浏览器回退、把同一份内容再粘一次（重复粘贴）。
+  // 粘贴统一入口。读/写必须分离：若把 term.paste 放进读取的 try，paste 抛错会掉进 catch
+  // 触发浏览器回退、同一内容粘两次。
   private async pasteFromClipboard(): Promise<void> {
     const text = await this.readClipboardText()
     this.pasteText(text)
   }
 
-  // 把剪贴板内容归一成"待粘贴文本"：
-  //   files → 绝对路径串（含空格的路径自动加双引号）
-  //   text  → 原样
-  //   empty → 空串（主进程是权威源，不再回退）
-  // 只有主进程读取异常时才回退到浏览器 Clipboard API。
-  // 优先走主进程：它能识别 CF_HDROP 文件列表，浏览器 readText 拿不到文件。
+  // 剪贴板归一成"待粘贴文本"：files → 绝对路径串（含空格加引号）；text → 原样。
+  // 优先主进程（能识别 CF_HDROP 文件列表），仅读取异常才回退浏览器 Clipboard API。
   private async readClipboardText(): Promise<string> {
     try {
       const data = await window.term.readClipboard()
@@ -580,9 +464,7 @@ export class TerminalTab {
         case 'text': return data.text
         case 'empty': return ''
         default: {
-          // 协议兜底：万一主进程返回了非 discriminated 结构（如 dev 热重载期间
-          // renderer 已更新而主进程仍是旧版本），尽力从 text/files 字段恢复，
-          // 避免静默粘不上。
+          // 协议兜底：主进程返回非 discriminated 结构时（如 dev 热重载版本错位）尽力恢复
           const loose = data as unknown as { text?: string; files?: string[] } | undefined
           if (loose?.files?.length) return formatPathListForShell(loose.files)
           if (loose?.text) return loose.text
@@ -594,8 +476,7 @@ export class TerminalTab {
     }
   }
 
-  // 实际写入终端。cc 开启 bracketed paste(?2004h) 时 xterm 会自动用
-  // \x1b[200~..\x1b[201~ 包裹，cc 据此把整段识别为粘贴内容。
+  // 实际写入终端：cc 开启 bracketed paste 时 xterm 自动用 \x1b[200~..201~ 包裹
   private pasteText(text: string): void {
     if (!text) return
     try {
@@ -619,9 +500,7 @@ export class TerminalTab {
     window.term.send(this.ptyId, d)
   }
 
-  // ═══════════════════════════════════════════════════════════
-  //   PTY 生命周期
-  // ═══════════════════════════════════════════════════════════
+  // ── PTY 生命周期 ──
 
   async startPty(): Promise<void> {
     if (this.disposed) return
@@ -634,8 +513,7 @@ export class TerminalTab {
         tabId: this.id,
         tabName: this.name
       })
-      // create 期间 tab 可能已被 dispose（此时 ptyId 还是 null，dispose 杀不到）：
-      // 立刻 kill 这个新建的 PTY，否则它会变成泄漏的 ConPTY+pwsh 进程。
+      // create 期间 tab 可能已 dispose（ptyId 尚为 null，dispose 杀不到）：立即 kill 防进程泄漏
       if (this.disposed) {
         window.term.kill(id)
         return
@@ -648,7 +526,7 @@ export class TerminalTab {
       }
       this.handlers.onPtyStarted?.()
     } catch (e) {
-      // IPC 报错原文兜底翻译一层（词典缺词条时原样显示）
+      // IPC 报错原文兜底翻译一层
       const msg = t((e as Error)?.message || String(e))
       this.status = 'error'
       this.note = msg
@@ -660,9 +538,6 @@ export class TerminalTab {
   }
 
   writeFromPty(data: string): void {
-    // 调试下打印每个 chunk 的长度 + 头 N 字符预览。控制符转义后看 ANSI 序列。
-    // 切 tab 出问题时拿这些 chunk 跟 setActive/refit 的时间戳比对就能定位"是不是
-    // resize 期间收到错位 chunk"。
     if (typeof window !== 'undefined' && window.__termDebug) {
       dbg(this.id, `data ${data.length}B`, previewData(data))
     }
@@ -670,11 +545,10 @@ export class TerminalTab {
     this.scanForError(data)
   }
 
-  // cc 报 API Error 时不发 Stop hook → busy 卡蓝。只在 busy 时扫（省开销 + 天然去抖：
-  // 命中后 status 变 error，cc TUI 每帧重绘同一错误行也不会重复触发）。
+  // 只在 busy 时扫错误行（省开销 + 天然去抖：命中后 status 变 error 即停）
   private scanForError(data: string): void {
     if (this.status !== 'busy') {
-      this.errScanTail = '' // 非 busy 无需保留跨 chunk 上下文
+      this.errScanTail = ''
       return
     }
     const hay = this.errScanTail + data
@@ -685,7 +559,7 @@ export class TerminalTab {
       this.handlers.onErrorDetected?.(t(hit?.[1] ?? '接口异常'))
       return
     }
-    // 只保留末尾一小段做跨 chunk 拼接，避免无限增长
+    // 只留末尾一小段做跨 chunk 拼接，避免无限增长
     this.errScanTail = hay.length > TerminalTab.ERR_SCAN_TAIL_LEN
       ? hay.slice(-TerminalTab.ERR_SCAN_TAIL_LEN)
       : hay
@@ -699,7 +573,7 @@ export class TerminalTab {
     this.waitingForRestart = true
   }
 
-  // 切换会话：kill 当前 PTY、清屏、重新 spawn（启动后 launchCC 会按新 activeSessionId 走 resume）
+  // 切换会话：kill 当前 PTY、清屏、重新 spawn（launchCC 会按新 activeSessionId 走 resume）
   async restartPty(): Promise<void> {
     if (this.disposed) return
     if (this.ptyId != null) {
@@ -707,9 +581,8 @@ export class TerminalTab {
       this.ptyId = null
     }
     this.term.reset()
-    // reset() 会 new 出全新的 normal/alt Buffer 实例，mount 时打在旧实例上的 reflow 遮蔽随之失效
-    // （_isReflowEnabled 回落到原型 getter → conpty 下恒为 true）。必须对新实例重新遮蔽，否则
-    // 切/删会话后 reflow 静默复活，之后 cc 新产出的宽表历史遇到真·改宽会再次错位。
+    // reset() 会 new 全新的 normal/alt Buffer 实例，mount 时的 reflow 遮蔽随之失效，
+    // 必须重新遮蔽，否则切/删会话后 reflow 静默复活、真·改宽时再次错位。
     this.disableReflow()
     this.waitingForRestart = false
     await this.startPty()
@@ -725,12 +598,9 @@ export class TerminalTab {
     } else {
       dbg(this.id, 'refit: cols/rows unchanged', after)
     }
-    // 只在 xterm 网格真的变化时才把 resize 推给 PTY。
-    // 之前无脑每次 refit 都 resize：切 tab（尺寸没变）也会给 ConPTY 一个 same-size resize，
-    // 惊动 cc 重排并重发历史。ConPTY 有它自己的 reflow（在数据进 xterm 之前就做，xterm 的
-    // disableReflow 管不到），把已滚上去的宽表历史行重折成 sync→sy+nc 的错位灌进 buffer ——
-    // 这就是"关了 xterm reflow 仍在切 tab 时错位"的真凶。尺寸没变就不惊动 PTY；切回来由
-    // setActive 的 term.refresh 从干净的 xterm buffer 重画即可。
+    // 只在网格真变化时才把 resize 推给 PTY：same-size resize 会惊动 ConPTY 自身的 reflow
+    //（在数据进 xterm 之前做，disableReflow 管不到），把宽表历史行重折错位灌进 buffer ——
+    // 这正是"切 tab 时错位"的真凶。尺寸没变就不惊动 PTY，由 setActive 的 refresh 重画。
     if (this.ptyId != null && changed) {
       dbg(this.id, `refit: push PTY resize ptyId=${this.ptyId}`, after)
       window.term.resize(this.ptyId, this.term.cols, this.term.rows)
@@ -750,9 +620,8 @@ export class TerminalTab {
     const before = { cols: this.term.cols, rows: this.term.rows }
     try { this.fit.fit() } catch {}
     const changed = before.cols !== this.term.cols || before.rows !== this.term.rows
-    // 只在网格真的变化时才 resize PTY（改字号才会变；改主题/光标/闪烁不动网格）。
-    // 否则照发一个 same-size resize 会惊动 ConPTY 自己的 reflow，把宽表历史重折成错位
-    // ——与 refit() 是同一道防线。后台 tab（display:none）fit 必 no-op、更是纯 same-size。
+    // 只在网格真变化时 resize PTY：same-size resize 会惊动 ConPTY reflow 错位历史，
+    // 与 refit() 同一道防线。
     if (this.ptyId != null && changed) window.term.resize(this.ptyId, this.term.cols, this.term.rows)
   }
 
@@ -760,20 +629,16 @@ export class TerminalTab {
     dbg(this.id, `setActive(${active})`, { cols: this.term.cols, rows: this.term.rows })
     this.host.classList.toggle('active', active)
     if (!active) return
-    // 调试：把当前 active 的 term 挂到 window，方便在 devtools 里深挖 buffer 状态
-    // （如 __activeTerm._core._bufferService.buffers.normal._isReflowEnabled）
+    // 调试：把当前 active 的 term 挂到 window，devtools 里深挖 buffer 状态
     ;(window as unknown as { __activeTerm?: unknown }).__activeTerm = this.term
-    // display:none → block 后浏览器要 1 帧才 reflow，立刻 refit 会拿到 0 / 旧高度，
-    // 算出错误 cols/rows 推给 PTY → cc 用错尺寸全屏重画 → ANSI 序列在 xterm 边界对不齐。
-    // 推迟到下一帧、布局稳定后再 fit。
+    // display:none→block 后浏览器要 1 帧才 reflow，立刻 refit 会拿旧高度算错 cols/rows
+    // 推给 PTY，cc 按错误尺寸重画；推迟到下一帧、布局稳定后再 fit。
     requestAnimationFrame(() => {
-      // 切到本 tab 后一帧内它可能已被关闭（dispose）：此时 term 已 dispose、host 已 remove，
-      // 下面的 fit/refresh 虽有兜底，但 focus() 会打在已销毁的 textarea 上抛未捕获异常，直接退出。
+      // 一帧内本 tab 可能已 dispose：focus() 会打在已销毁的 textarea 上抛未捕获异常
       if (this.disposed) return
       dbg(this.id, 'setActive rAF: about to refit')
       this.refit()
-      // 切回 active 时强制全量重画：display:none→block 后 xterm 不会自动重绘，
-      // 若 refit 没改变 cols/rows 就不触发 resize 重画，这里兜底刷一次确保内容显示。
+      // display:none→block 后 xterm 不自动重绘；refit 未变尺寸时不触发重画，兜底刷一次
       try { this.term.refresh(0, Math.max(0, this.term.rows - 1)) } catch {}
       this.term.focus()
       dbg(this.id, 'setActive rAF: done')
@@ -791,13 +656,10 @@ export class TerminalTab {
     this.host.remove()
   }
 
-  // ═══════════════════════════════════════════════════════════
-  //   跨窗口迁移（拖出/拖回独立窗口）
-  // ═══════════════════════════════════════════════════════════
+  // ── 跨窗口迁移（拖出/拖回独立窗口） ──
 
-  // 缓冲区序列化：整个 scrollback + 当前视口 + 光标/模式状态打包成 ANSI 序列，
-  // 在目标窗口的新 xterm 上原样 write 即可无损重现画面。失败返回空串（画面丢失但
-  // PTY 照常接管，属可接受降级）。
+  // 整个 scrollback + 视口 + 光标/模式状态打包成 ANSI 序列，目标窗口原样 write 即可重现。
+  // 失败返回空串（画面丢失但 PTY 照常接管，可接受降级）。
   serializeBuffer(): string {
     try {
       return this.serializer.serialize()
@@ -807,8 +669,7 @@ export class TerminalTab {
     }
   }
 
-  // 迁出：销毁 xterm 与 DOM，但**不杀 PTY**（进程要交给目标窗口继续用）。
-  // 与 dispose 的唯一区别就是 PTY 归属——调用前应已把 ptyId 打包进迁移 payload。
+  // 迁出：销毁 xterm 与 DOM，但不杀 PTY（进程交给目标窗口继续用）
   detach(): void {
     if (this.disposed) return
     this.disposed = true
@@ -817,9 +678,8 @@ export class TerminalTab {
     this.host.remove()
   }
 
-  // 迁入：接管一个已存在的 PTY（跳过 startPty 的 create）。调用方需先 write 序列化
-  // 缓冲，再 adopt；adopt 后 refit 一次把新窗口的真实尺寸推给 PTY（迁移前后窗口
-  // 尺寸几乎必然不同，cc 会收 SIGWINCH 按新尺寸重画视口）。
+  // 迁入：接管已存在的 PTY。调用方需先 write 序列化缓冲再 adopt，adopt 后 refit
+  // 一次把新窗口的真实尺寸推给 PTY。
   adoptPty(id: number): void {
     if (this.disposed) return
     this.ptyId = id
@@ -830,9 +690,7 @@ export class TerminalTab {
   }
 }
 
-// 把若干文件路径拼成 PowerShell 命令行风格的字符串。
-// 含空格的路径用双引号包起来（Windows 路径不含 " 字符，最基础转义即够用）。
-// 过滤掉空项，避免拼出多余空格。若以后要支持 bash/zsh，可在这里按 shell 类型分流转义。
+// 把文件路径拼成 PowerShell 命令行串：含空格加双引号（Windows 路径不含 "，基础转义足够）
 function formatPathListForShell(files: string[]): string {
   return files
     .filter((p) => typeof p === 'string' && p.length > 0)

@@ -45,8 +45,7 @@ function effectiveNpmRegistry(): string {
   return s.npmMirrorEnabled ? s.npmRegistry : NPM_OFFICIAL_REGISTRY
 }
 
-// npm 镜像测速：HEAD 请求，测到「响应头到达」的耗时。任何状态码（301/404 都行）
-// 都算通——只关心网络时延，不关心业务；超时/连不上返回 -1。
+// npm 镜像测速：HEAD 请求测响应头到达耗时，任何状态码都算通；超时/连不上返回 -1
 function pingRegistry(rawUrl: string): Promise<number> {
   return new Promise((resolve) => {
     let u: URL
@@ -84,7 +83,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return false
   })
 
-  // 用系统资源管理器打开本地目录/文件。仅接受绝对路径且路径存在，避免被塞相对路径逃出预期目录。
+  // 系统资源管理器打开本地路径；仅接受存在的路径
   ipcMain.handle('shell:openPath', async (_e, p: string) => {
     if (typeof p !== 'string' || !p) return { ok: false, error: '空路径' }
     try {
@@ -96,8 +95,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return err ? { ok: false, error: err } : { ok: true }
   })
 
-  // 多窗口一致性：任一窗口落盘后广播给其余窗口刷新内存副本（sender 自己不用刷）。
-  // savedGroups 并发写仍是"后写覆盖"，但广播把不一致窗口压缩到去抖间隙内，实用上足够。
+  // 多窗口一致性：任一窗口落盘后广播其余窗口刷新内存副本（并发写仍是后写覆盖，实用上足够）
   const broadcastExcept = (sender: Electron.WebContents, channel: string, payload?: unknown): void => {
     for (const wc of allAppWebContents()) {
       if (wc === sender || wc.isDestroyed()) continue
@@ -203,8 +201,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         env.TERMINAL_EVENTS_DIR = hp.eventsDir
         env.TERMINAL_STATE_DIR = hp.stateDir
       }
-      // cct 命令依赖：让 pwsh profile 里的 cct 能直接拿到 hooks 配置 + claude 路径 + tab 名。
-      // tab name 只在 pty 首次 spawn 时快照；用户后续改名 env 不跟进，cct 会用旧名（可接受）。
+      // cct 命令依赖的 env；tab 名只在 spawn 时快照，后续改名不跟进（可接受）
       env.TERMINAL_HOOK_SETTINGS_JSON = hp.ccHooksJson
       if (opts?.tabName) env.TERMINAL_TAB_NAME = opts.tabName
       try {
@@ -214,8 +211,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       if (shouldDisableAutoupdate()) {
         env.DISABLE_AUTOUPDATER = '1'
       }
-      // 多窗口：数据/退出按 ptyId 路由到承载窗口（迁移中自动进暂存队列），
-      // 创建时把路由指向发起请求的窗口。
+      // 多窗口：数据/退出按 ptyId 路由到承载窗口，创建时路由指向发起窗口
       const id = createPty(
         {
           cols: opts?.cols,
@@ -252,8 +248,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     writePty(p.id, p.data)
   })
 
-  // 环境变量开关：启动前 set TERM_DEBUG=1 打开主进程侧日志（resize/kill 时机）。
-  // 跟 renderer 的 window.__termDebug 配合看完整链路。
+  // TERM_DEBUG=1 打开主进程侧 pty 日志
   const ptyDbg = process.env.TERM_DEBUG === '1'
   const ptyDbgLog = (...args: unknown[]): void => {
     if (ptyDbg) console.log('[pty]', ...args)
@@ -288,8 +283,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.on('floater:setEnabled', (_e, on: boolean) => setFloaterEnabled(!!on))
-  // 多窗口聚合：每个窗口只报自己名下标签的计数，这里按窗口记账、求和后推给悬浮窗。
-  // 窗口销毁时把它的份额清零（destroyed 监听），避免残留幽灵计数。
+  // 悬浮窗计数聚合：按窗口记账求和；窗口销毁时清零其份额避免幽灵计数
   const floaterCountsByWc = new Map<Electron.WebContents, { done: number; attention: number; busy: number; total: number }>()
   const pushAggregated = (): void => {
     const sum = { done: 0, attention: 0, busy: 0, total: 0 }
@@ -319,7 +313,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     })
     pushAggregated()
   })
-  // 悬浮窗 focusable:false，自己 click 不能切焦点，转手让主进程把主窗口拉到前台
+  // 悬浮窗 focusable:false，切焦点需转手主进程把主窗口拉前台
   ipcMain.on('floater:focusMain', () => {
     const w = getWindow()
     if (!w || w.isDestroyed()) return
@@ -328,7 +322,6 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     w.focus()
   })
   ipcMain.on('floater:setFocusable', (_e, on: boolean) => setFloaterFocusable(!!on))
-  // 手动拖动：目标坐标 + 拖动起止（拖动中挂起穿透轮询）
   ipcMain.on('floater:moveTo', (_e, p: { x: number; y: number }) => {
     if (!p || typeof p !== 'object') return
     moveFloaterTo(Number(p.x), Number(p.y))
@@ -337,12 +330,11 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.on('floater:hide', () => {
     setFloaterEnabled(false)
-    // 落盘 showFloater=false，下次启动也不会再拉起
+    // 落盘 showFloater=false，并通知主渲染层同步内存 settings
     try {
       const cur = loadSettings()
       saveSettings({ ...cur, showFloater: false } as Settings)
     } catch {}
-    // 通知主渲染层同步内存 settings，免得设置面板还显示"开"
     const mainWin = getWindow()
     if (!mainWin || mainWin.isDestroyed()) return
     const wc = mainWin.webContents
