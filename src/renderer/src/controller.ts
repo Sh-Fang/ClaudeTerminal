@@ -2260,6 +2260,14 @@ export async function initApp(): Promise<void> {
         saveActiveDirtyGroup()
       }
     }
+    // Ctrl+F 兜底：终端聚焦时由 TerminalTab 键处理器开搜索，这里补焦点在侧栏等处的情况
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+      const t = e.target as HTMLElement
+      if (!(t instanceof HTMLInputElement) && !t.closest?.('[contenteditable="true"]')) {
+        e.preventDefault()
+        openSearchOverlay()
+      }
+    }
     if (e.ctrlKey && e.key === 'Tab') {
       e.preventDefault()
       const all = groups.flatMap((g) => g.tabs)

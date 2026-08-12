@@ -43,6 +43,8 @@ export const I18N_EN: Record<string, string> = {
   '左侧点「新建分组」开始，或从「已保存的分组」恢复': 'Click "New Group" on the left to start, or restore a saved group',
   '终端内搜索': 'Search in terminal',
   '搜索（Enter 下一个，Shift+Enter 上一个）': 'Search (Enter: next, Shift+Enter: previous)',
+  '上一个（Shift+Enter）': 'Previous (Shift+Enter)',
+  '下一个（Enter）': 'Next (Enter)',
   '关闭 (Esc)': 'Close (Esc)',
   '关闭搜索': 'Close search',
 

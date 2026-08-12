@@ -1207,7 +1207,7 @@ button.saved-toggle:hover { color: var(--ink); }
   min-width: 36px; text-align: center;
   font-family: var(--mono);
 }
-#search-close {
+#search-close, #search-prev, #search-next {
   background: transparent;
   color: #888; border: none;
   cursor: pointer;
@@ -1217,7 +1217,7 @@ button.saved-toggle:hover { color: var(--ink); }
   line-height: 1;
   border-radius: 3px;
 }
-#search-close:hover { color: #e5e5e5; background: #2a2a2a; }
+#search-close:hover, #search-prev:hover, #search-next:hover { color: #e5e5e5; background: #2a2a2a; }
 
 /* Context menu — z 90 保证浮在 settings scrim (80) 之上；用作设置里 picker 菜单也是它 */
 .ctx {
