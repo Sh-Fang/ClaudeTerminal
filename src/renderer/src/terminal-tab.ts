@@ -565,6 +565,20 @@ export class TerminalTab {
       : hay
   }
 
+  // cc 等全屏 TUI 崩溃退出时不会复位自己开过的鼠标/焦点追踪模式，xterm 仍保持追踪态：
+  // 鼠标一动就朝 pwsh 狂发上报序列（鼠标 [<..M、焦点 [I/[O），pwsh 回显成乱码并误触发
+  // PSReadLine（digit-argument 等），Ctrl+C 治不了、只能关标签重开。cc→pwsh 边沿
+  //（controller 翻 ccActive 处）调用本方法无条件复位这些输入上报模式即可根治：此刻前台
+  // 一定是 pwsh，而 pwsh 提示符永不需要鼠标/焦点追踪，故 cc 正常退出时重发也是纯 no-op。
+  // 刻意只关追踪类：不碰 bracketed paste(?2004，pwsh 粘贴要用) 与备用屏(?1049)。
+  resetInputTrackingModes(): void {
+    // 关鼠标追踪(X10/VT200/button/any-event) + 焦点追踪 + 各上报编码(UTF-8/SGR/urxvt/pixel)。
+    // 写给 xterm（非 PTY）：直接清 xterm 的 CoreMouseService，之后鼠标移动不再生成上报。
+    try {
+      this.term.write('\x1b[?9;1000;1002;1003;1004;1005;1006;1015;1016l')
+    } catch {}
+  }
+
   handlePtyExit(exitCode: number): void {
     this.ptyId = null
     this.term.writeln('')

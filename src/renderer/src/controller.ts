@@ -459,6 +459,8 @@ function makeTab(group: Group, opts: {
         // shell integration OSC 触发 → pwsh 一定在前台（cc 全屏 TUI 会屏蔽这些序列），据此翻回 ccActive
         if (tabRef.ccActive) {
           tabRef.ccActive = false
+          // cc 刚退回 pwsh：无条件复位鼠标/焦点追踪，防 cc 异常退出漏关模式后鼠标移动狂刷乱码
+          tabRef.resetInputTrackingModes()
           refreshUI()
         }
         // cc tab 状态完全交给 cc hooks，shell 事件不参与
