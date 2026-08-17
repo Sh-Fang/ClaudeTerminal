@@ -266,13 +266,20 @@ async function fetchApiUsage(force: boolean): Promise<ClaudeUsage> {
 
 // force=true 跳过缓存。
 export async function getClaudeUsage(force = false): Promise<ClaudeUsage> {
-  // 首选 statusline 快照（无需代理）；rate_limits 常缺 seven_day，用 OAuth API 补周额度
+  // 首选 statusline 快照（无需代理）：账号级 5h / 周额度从这里来
   const snap = readAccountSnapshot()
   if (snap) {
-    if (snap.fiveHour && !snap.sevenDay) {
+    // 快照有两处天然缺口都得靠带缓存的 OAuth API 补：① rate_limits 常缺 seven_day；
+    // ② 快照永远不含模型级细分（sevenDayModel/opus/sonnet，只 OAuth API 有）——后者正是
+    // hover 弹「Fable 额度」卡片的数据源，之前只在缺周额度时才补，快照一旦带上 seven_day 就
+    // 短路直返、模型级永为 undefined，卡片随之消失。两种缺口任一命中即补，但都不覆盖快照已有的
+    // 账号级 sevenDay（statusline 更权威且不依赖代理）。
+    const needWeekly = !snap.sevenDay
+    const needModel = snap.sevenDayModel == null
+    if (snap.fiveHour && (needWeekly || needModel)) {
       const api = await fetchApiUsage(force)
-      if (api.ok && api.sevenDay) {
-        snap.sevenDay = api.sevenDay
+      if (api.ok) {
+        if (needWeekly && api.sevenDay) snap.sevenDay = api.sevenDay
         snap.sevenDayModel = api.sevenDayModel ?? null
         snap.sevenDayOpus = api.sevenDayOpus ?? null
         snap.sevenDaySonnet = api.sevenDaySonnet ?? null
