@@ -12,6 +12,10 @@ let getMainWindow: () => BrowserWindow | null = () => null
 export function setMainWindowGetter(fn: () => BrowserWindow | null): void {
   getMainWindow = fn
 }
+// 供其它主进程模块（如 floater 崩溃自灭时同步设置）拿主窗口做 IPC 推送
+export function mainWindow(): BrowserWindow | null {
+  return getMainWindow()
+}
 
 const secondaryWindows = new Set<BrowserWindow>()
 // 副窗口渲染层 initApp 完成后上报 ready；迁移协调靠它知道何时可以 import

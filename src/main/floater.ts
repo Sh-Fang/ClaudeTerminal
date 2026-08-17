@@ -5,6 +5,7 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
 import { saveSettings, loadSettings } from './settings'
+import { mainWindow } from './windows'
 
 // 胶囊尺寸与窗口内固定偏移（与 floater.html 的 .card 定位一致）；四周留白容纳右键菜单
 export const PILL_W = 130
@@ -15,8 +16,27 @@ const WIN_W = PILL_W + PILL_OFF_X * 2
 const WIN_H = PILL_H + PILL_OFF_Y * 2
 
 let win: BrowserWindow | null = null
+// destroyFloater 主动拆窗时置位，用于在 closed 里区分「计划内关闭」(关开关/App 退出) 与
+// 「崩溃自灭」：只有后者才把 showFloater 同步成 false——若计划内关闭也写 false，App 正常
+// 退出会把设置存成 false，下次启动悬浮窗就不出来了（回归）。
+let intentionalClose = false
 let lastCounts: { done: number; attention: number; busy: number; total: number } = {
   done: 0, attention: 0, busy: 0, total: 0
+}
+
+// 悬浮窗意外消失（崩溃/被系统关掉）时把设置翻成 off：与右键「隐藏」(ipc floater:hide) 同款
+// 同步——落盘 showFloater=false + 给主渲染层发 floater:hidden，让内存 settings 与设置开关 UI
+// 一起变 off，避免开关一直显示「开启」而实际已无窗。
+function syncFloaterOffToSettings(): void {
+  try {
+    const cur = loadSettings()
+    if (cur.showFloater) saveSettings({ ...cur, showFloater: false })
+  } catch {}
+  const mw = mainWindow()
+  if (!mw || mw.isDestroyed()) return
+  const wc = mw.webContents
+  if (!wc || wc.isDestroyed()) return
+  try { wc.send('floater:hidden') } catch {}
 }
 
 export function getFloaterWindow(): BrowserWindow | null {
@@ -208,6 +228,10 @@ export function createFloater(): void {
     screen.off('display-removed', ensureFloaterOnScreen)
     screen.off('display-metrics-changed', ensureFloaterOnScreen)
     win = null
+    // 非计划内关闭（崩溃自灭）→ 设置与实际已不一致，同步成 off；计划内拆窗(destroyFloater)跳过
+    const crashed = !intentionalClose
+    intentionalClose = false
+    if (crashed) syncFloaterOffToSettings()
   })
   // 显示器变化（拔屏/分辨率/缩放）时校正窗口位置
   screen.on('display-removed', ensureFloaterOnScreen)
@@ -216,6 +240,8 @@ export function createFloater(): void {
 
 export function destroyFloater(): void {
   if (!win || win.isDestroyed()) { win = null; return }
+  // 计划内拆窗：置位让 closed 别把 showFloater 同步成 false
+  intentionalClose = true
   win.close()
   win = null
 }
