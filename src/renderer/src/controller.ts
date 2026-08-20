@@ -15,6 +15,7 @@ import {
   closePickTabs,
   confirmDialog,
   isConfirmOpen,
+  openMemoEditor,
   openModal,
   openPickTabs,
   openSearchOverlay,
@@ -103,6 +104,7 @@ interface SavedTab {
   sessions: SessionRecord[]
   activeSessionId?: string
   autoLaunchCC: boolean
+  memo?: string
   savedAt: string
 }
 interface SavedGroup {
@@ -303,7 +305,8 @@ function scheduleSave(): void {
             name: t.name,
             sessions: t.sessions,
             activeSessionId: t.activeSessionId,
-            autoLaunchCC: t.autoLaunchCC
+            autoLaunchCC: t.autoLaunchCC,
+            memo: t.memo
           }))
         }
       })),
@@ -325,7 +328,8 @@ function scheduleSave(): void {
               name: t.name,
               sessions: t.sessions,
               activeSessionId: t.activeSessionId,
-              autoLaunchCC: t.autoLaunchCC
+              autoLaunchCC: t.autoLaunchCC,
+              memo: t.memo
             }))
           })),
           activeTabId: w.snapshot.activeTabId
@@ -418,6 +422,7 @@ function makeTab(group: Group, opts: {
   autoLaunchCC?: boolean
   status?: TerminalTab['status']
   note?: string
+  memo?: string
   dirty?: boolean
   // 跨窗口迁移：迁移前 cc 是否活跃（普通新建/恢复不传，默认 false）
   ccActive?: boolean
@@ -434,6 +439,7 @@ function makeTab(group: Group, opts: {
       autoLaunchCC: opts.autoLaunchCC,
       status: opts.status,
       note: opts.note,
+      memo: opts.memo,
       dirty: opts.dirty,
       settings
     },
@@ -870,6 +876,7 @@ function snapshotTabFromLive(t: TerminalTab, savedAt: string): SavedTab {
     sessions: t.sessions.map((s) => ({ ...s })),
     activeSessionId: t.activeSessionId,
     autoLaunchCC: t.autoLaunchCC,
+    memo: t.memo,
     savedAt
   }
 }
@@ -1083,6 +1090,7 @@ export async function restoreSavedTabs(
       sessions: t.sessions,
       activeSessionId: sessionOverride?.get(t.id) ?? t.activeSessionId,
       autoLaunchCC: t.autoLaunchCC,
+      memo: t.memo,
       dirty: false
     })
     created.push(tab)
@@ -1453,6 +1461,10 @@ export function openTabCtx(tabId: string, x: number, y: number): void {
           })
         }
       },
+      // 添加/删除备注互斥：没备注给「添加」，有备注给「删除」（备注只能在这里删）
+      ctx.tab.memo == null
+        ? { label: t('添加备注'), icon: icon('sticky-note'), act: () => openTabMemoEditor(tabId, x, y) }
+        : { label: t('删除备注'), icon: icon('sticky-note'), danger: true, act: () => deleteTabMemo(tabId) },
       { label: t('在本组新建标签'), icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
       // 刻意不传坐标：主进程会把「落点在现有窗口内」的带坐标请求当误触发拦掉
       { label: t('移到新窗口'), icon: icon('external-link'), act: () => void moveTabToNewWindow(tabId) },
@@ -1462,6 +1474,38 @@ export function openTabCtx(tabId: string, x: number, y: number): void {
     x,
     y
   )
+}
+
+// 备注编辑弹窗：关闭即保存（含首次添加的空文本——空备注也算"有备注"，图标照常显示，删除只走右键）
+export function openTabMemoEditor(tabId: string, x: number, y: number): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  openMemoEditor({
+    x,
+    y,
+    text: ctx.tab.memo ?? '',
+    onSave: (text) => {
+      const c = findTab(tabId)
+      // 没改动不动状态；首次添加时 memo 还是 undefined，空文本也会落成空备注（右键项随之切到「删除备注」）
+      if (!c || c.tab.memo === text) return
+      c.tab.memo = text
+      afterMemoChange(c)
+    }
+  })
+}
+
+function deleteTabMemo(tabId: string): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  ctx.tab.memo = undefined
+  afterMemoChange(ctx)
+}
+
+// 备注变更后的统一收尾：刷 UI + 静默同步进已保存快照（不打 dirty）
+function afterMemoChange(ctx: { group: Group; tab: TerminalTab }): void {
+  refreshUI()
+  autoSyncTabToSaved(ctx.tab, ctx.group)
+  scheduleSave()
 }
 
 function nextWorkspaceDefaultName(): string {
@@ -1504,6 +1548,7 @@ function saveCurrentAsWorkspace(name: string): void {
       sessions: t.sessions,
       activeSessionId: t.activeSessionId,
       autoLaunchCC: t.autoLaunchCC,
+      memo: t.memo,
       savedAt
     }))
   }))
@@ -1543,6 +1588,7 @@ async function restoreSnapshotGroups(
           sessions: t.sessions,
           activeSessionId: t.activeSessionId,
           autoLaunchCC: t.autoLaunchCC,
+          memo: t.memo,
           dirty: false
         }
       })
@@ -1949,6 +1995,7 @@ async function exportTabForTransfer(tabId: string): Promise<TabTransferPayload |
       autoLaunchCC: tab.autoLaunchCC,
       status: tab.status,
       note: tab.note,
+      memo: tab.memo,
       dirty: tab.dirty,
       ccActive: tab.ccActive
     },
@@ -1995,6 +2042,7 @@ function importTransferredTab(p: TabTransferPayload): void {
     autoLaunchCC: p.tab.autoLaunchCC,
     status: p.tab.status as TerminalTab['status'],
     note: p.tab.note,
+    memo: p.tab.memo,
     dirty: p.tab.dirty,
     ccActive: p.tab.ccActive
   })
@@ -2133,6 +2181,7 @@ async function hydrateSavedFromDisk(): Promise<void> {
           sessions: t.sessions,
           activeSessionId: t.activeSessionId,
           autoLaunchCC: t.autoLaunchCC !== false,
+          memo: t.memo,
           savedAt: s.savedAt
         }))
       }
@@ -2159,6 +2208,7 @@ async function hydrateSavedFromDisk(): Promise<void> {
             sessions: t.sessions,
             activeSessionId: t.activeSessionId,
             autoLaunchCC: t.autoLaunchCC !== false,
+            memo: t.memo,
             savedAt: w.savedAt
           }))
         }))

@@ -91,6 +91,8 @@ export class TerminalTab {
   autoLaunchCC: boolean
   status: TabStatus
   note?: string
+  // 用户手写的标签备注（右键添加/删除）；undefined = 没有备注，与 note（cc 报错说明）互不相干
+  memo?: string
   dirty: boolean
   // cc 进程是否活跃：SessionStart hook → true；任意 pwsh shell integration OSC → false
   // （cc 屏蔽 pwsh 序列，触发即证明 pwsh 前台）。不持久化，重启后按事件重新推导。
@@ -135,6 +137,7 @@ export class TerminalTab {
       autoLaunchCC?: boolean
       status?: TabStatus
       note?: string
+      memo?: string
       dirty?: boolean
       settings: Settings
     },
@@ -148,6 +151,7 @@ export class TerminalTab {
     this.autoLaunchCC = opts.autoLaunchCC !== false
     this.status = opts.status ?? 'idle'
     this.note = opts.note
+    this.memo = opts.memo
     this.dirty = opts.dirty ?? true
     this.handlers = handlers
 

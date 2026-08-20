@@ -22,6 +22,7 @@ type IconName =
   | 'external-link'
   | 'expand-all'
   | 'collapse-all'
+  | 'sticky-note'
 
 interface IconOpts {
   size?: number
@@ -71,7 +72,8 @@ const PATHS: Record<IconName, string> = {
   expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
   'external-link': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>',
   'expand-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 8 2-2 2 2M4 16l2 2 2-2"/>',
-  'collapse-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 6 2 2 2-2M4 18l2-2 2 2"/>'
+  'collapse-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 6 2 2 2-2M4 18l2-2 2 2"/>',
+  'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/>'
 }
 
 const FILLED: Partial<Record<IconName, true>> = {

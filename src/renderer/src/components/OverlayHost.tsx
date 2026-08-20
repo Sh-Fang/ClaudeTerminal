@@ -8,8 +8,10 @@ import {
   closeModal,
   closePickTabs,
   closeSessionPicker,
+  closeMemoEditor,
   openSessionPicker,
   resolveConfirm,
+  type MemoEditorOpts,
   type ModalOpts,
   type PickItem,
   type PickOpts,
@@ -641,6 +643,108 @@ function SessionPicker() {
   return sp ? <SessionPickerBody opts={sp} /> : null
 }
 
+// 标签备注编辑弹窗：只有一块可输入文本的圆角便签，没有标题和按钮。
+// 点外部 / Esc 关闭；卸载（关闭或被另一次 open 覆盖）时把最新文本交回 onSave。
+function MemoEditorBody({ opts }: { opts: MemoEditorOpts }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const textRef = useRef(opts.text)
+
+  useEffect(() => {
+    textRef.current = opts.text
+    return () => opts.onSave(textRef.current)
+  }, [opts])
+
+  // 先显示以测尺寸，再夹进屏幕防溢出（同 CtxMenu）
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const pad = 8
+    const lx = Math.min(Math.max(pad, opts.x), window.innerWidth - el.offsetWidth - pad)
+    const ly = Math.min(Math.max(pad, opts.y), window.innerHeight - el.offsetHeight - pad)
+    el.style.left = `${lx}px`
+    el.style.top = `${ly}px`
+    const ta = el.querySelector('textarea')
+    if (ta) {
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    }
+  }, [opts])
+
+  useEffect(() => {
+    const host = ref.current
+    if (!host) return
+    const onDocDown = (e: globalThis.MouseEvent): void => {
+      if (host.contains(e.target as Node)) return
+      closeMemoEditor()
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        closeMemoEditor()
+      }
+    }
+    // 弹窗内滚动（textarea 超长）不关；外部滚动锚点会移位，直接关
+    const onScroll = (e: Event): void => {
+      if (host.contains(e.target as Node)) return
+      closeMemoEditor()
+    }
+    // 延后挂 mousedown，避免打开的这次点击立即关掉它
+    const timer = window.setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('mousedown', onDocDown, true)
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [opts])
+
+  return (
+    <div className="memo-pop" ref={ref}>
+      <textarea
+        defaultValue={opts.text}
+        placeholder={t('输入备注…')}
+        spellCheck={false}
+        onChange={(e) => {
+          textRef.current = e.target.value
+        }}
+      />
+    </div>
+  )
+}
+
+function MemoEditor() {
+  const me = useOverlays((s) => s.memoEdit)
+  const seq = useOverlays((s) => s.memoEditSeq)
+  // key=seq：每次 open 重挂，旧实例卸载即保存旧文本
+  return me ? <MemoEditorBody key={seq} opts={me} /> : null
+}
+
+// 备注 hover 气泡：圆角小卡片展示备注开头一段，纯展示不可交互
+function MemoTip() {
+  const tip = useOverlays((s) => s.memoTip)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || !tip) return
+    const pad = 8
+    const lx = Math.min(Math.max(pad, tip.x), window.innerWidth - el.offsetWidth - pad)
+    const ly = Math.min(Math.max(pad, tip.y), window.innerHeight - el.offsetHeight - pad)
+    el.style.left = `${lx}px`
+    el.style.top = `${ly}px`
+  }, [tip])
+
+  if (!tip) return null
+  const text = tip.text.length > 80 ? tip.text.slice(0, 80) + '…' : tip.text
+  return (
+    <div className="memo-tip" ref={ref}>
+      {text}
+    </div>
+  )
+}
+
 // toast：隐藏时保留文字，让淡出动画期间内容不消失
 export function ToastHost() {
   const msg = useOverlays((s) => s.toastMsg)
@@ -660,6 +764,8 @@ export function OverlayHost() {
       <PickDialog />
       <ConfirmDialog />
       <SessionPicker />
+      <MemoEditor />
+      <MemoTip />
     </>
   )
 }

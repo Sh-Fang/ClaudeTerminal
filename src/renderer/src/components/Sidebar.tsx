@@ -7,7 +7,7 @@ import type {
   MouseEvent as RMouseEvent
 } from 'react'
 import { useAppStore } from '../state/store'
-import { openHistory, openSavedManager } from '../state/overlays'
+import { openHistory, openSavedManager, showMemoTip, hideMemoTip } from '../state/overlays'
 import { statusLabel, statusShort } from '../lib/format'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
@@ -32,6 +32,7 @@ import {
   setAllGroupsCollapsed,
   openGroupCtx,
   openTabCtx,
+  openTabMemoEditor,
   openWorkspacePaneCtx,
   promptNewTabInGroup,
   newGroup,
@@ -297,6 +298,26 @@ export function Sidebar() {
           if (renamingTab !== tab.id) startRename(tab.id, tab.name)
         }}
       >
+        {tab.memo != null && (
+          // 便签图标：点开编辑弹窗，hover 圆角气泡预览备注开头；stopPropagation 挡住行激活/改名
+          <span
+            className="memo-ic"
+            data-memo={tab.id}
+            onClick={(e) => {
+              e.stopPropagation()
+              const r = e.currentTarget.getBoundingClientRect()
+              openTabMemoEditor(tab.id, r.left, r.bottom + 6)
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onMouseEnter={(e) => {
+              if (!tab.memo?.trim()) return
+              const r = e.currentTarget.getBoundingClientRect()
+              showMemoTip(tab.memo, r.left, r.bottom + 6)
+            }}
+            onMouseLeave={() => hideMemoTip()}
+            dangerouslySetInnerHTML={{ __html: icon('sticky-note', { size: 12 }) }}
+          />
+        )}
         <span className={`st-dot st-${st}`} title={dotTitle}></span>
         {renaming ? (
           // 编辑态用独立 key 强制重挂，手输文本节点随元素丢弃，不污染 React 静态节点

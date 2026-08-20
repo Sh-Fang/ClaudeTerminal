@@ -26,6 +26,7 @@ export interface TabRecord {
   autoLaunchCC?: boolean
   status?: TabStatus
   note?: string
+  memo?: string
 }
 
 export interface GroupRecord {
@@ -120,7 +121,8 @@ function normalizeTab(t: unknown): TabRecord | null {
     activeSessionId,
     autoLaunchCC: typeof r.autoLaunchCC === 'boolean' ? r.autoLaunchCC : true,
     status,
-    note: typeof r.note === 'string' ? r.note : undefined
+    note: typeof r.note === 'string' ? r.note : undefined,
+    memo: typeof r.memo === 'string' ? r.memo : undefined
   }
 }
 

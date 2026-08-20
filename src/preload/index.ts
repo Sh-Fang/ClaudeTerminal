@@ -19,6 +19,7 @@ export interface TabRecord {
   autoLaunchCC?: boolean
   status?: TabStatus
   note?: string
+  memo?: string
 }
 
 export interface GroupRecord {
@@ -305,6 +306,7 @@ export interface TabTransferPayload {
     autoLaunchCC: boolean
     status: string
     note?: string
+    memo?: string
     dirty: boolean
     ccActive: boolean
   }

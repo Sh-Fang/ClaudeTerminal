@@ -91,6 +91,21 @@ export interface SessionPickerOpts {
   title?: string
 }
 
+// 标签备注编辑弹窗：无标题无按钮的圆角便签，点外部/Esc 关闭时把最终文本交回 onSave
+export interface MemoEditorOpts {
+  x: number
+  y: number
+  text: string
+  onSave: (text: string) => void
+}
+
+// 备注 hover 气泡（纯展示，不可交互）
+export interface MemoTipState {
+  text: string
+  x: number
+  y: number
+}
+
 export type SavedManagerView = 'groups' | 'workspaces'
 
 interface CtxState {
@@ -114,6 +129,9 @@ interface OverlaysState {
   pick: PickOpts | null
   pickSeq: number
   sessPick: SessionPickerOpts | null
+  memoEdit: MemoEditorOpts | null
+  memoEditSeq: number
+  memoTip: MemoTipState | null
   settingsOpen: boolean
   savedManagerOpen: boolean
   savedManagerView: SavedManagerView | null // 打开时切到的视图；null = 保持当前视图
@@ -131,6 +149,9 @@ export const useOverlays = create<OverlaysState>(() => ({
   pick: null,
   pickSeq: 0,
   sessPick: null,
+  memoEdit: null,
+  memoEditSeq: 0,
+  memoTip: null,
   settingsOpen: false,
   savedManagerOpen: false,
   savedManagerView: null,
@@ -205,6 +226,23 @@ export function openSessionPicker(opts: SessionPickerOpts): void {
 }
 export function closeSessionPicker(): void {
   useOverlays.setState({ sessPick: null })
+}
+
+export function openMemoEditor(opts: MemoEditorOpts): void {
+  // 覆盖式打开：编辑器组件卸载时会先把旧文本交回旧 onSave，不丢输入
+  useOverlays.setState((s) => ({ memoEdit: opts, memoEditSeq: s.memoEditSeq + 1, memoTip: null }))
+}
+export function closeMemoEditor(): void {
+  useOverlays.setState({ memoEdit: null })
+}
+
+export function showMemoTip(text: string, x: number, y: number): void {
+  // 编辑弹窗开着时不弹预览，避免气泡叠在编辑器上
+  if (useOverlays.getState().memoEdit) return
+  useOverlays.setState({ memoTip: { text, x, y } })
+}
+export function hideMemoTip(): void {
+  useOverlays.setState({ memoTip: null })
 }
 
 export function openSettings(): void {

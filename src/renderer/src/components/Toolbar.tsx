@@ -12,6 +12,7 @@ import {
   promptNewTabInGroup,
   newGroup,
   openTabCtx,
+  openTabMemoEditor,
   openSessionCtx,
   startCcInActiveTab,
   switchSession,
@@ -22,7 +23,7 @@ import {
   handleTabDrop,
   TAB_DND_MIME
 } from '../controller'
-import { openSettings, openSavedManager } from '../state/overlays'
+import { openSettings, openSavedManager, showMemoTip, hideMemoTip } from '../state/overlays'
 import { formatTs, sessionTitle, srcLabel, statusLabel } from '../lib/format'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
@@ -273,6 +274,27 @@ export function Toolbar() {
                       if (nameEl) startInlineRename(tb.id, nameEl)
                     }}
                   >
+                    {tb.memo != null && (
+                      // 便签图标：点开编辑弹窗，hover 圆角气泡预览备注开头
+                      <span
+                        className="memo-ic"
+                        data-memo={tb.id}
+                        title=""
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const r = e.currentTarget.getBoundingClientRect()
+                          openTabMemoEditor(tb.id, r.left, r.bottom + 6)
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        onMouseEnter={(e) => {
+                          if (!tb.memo?.trim()) return
+                          const r = e.currentTarget.getBoundingClientRect()
+                          showMemoTip(tb.memo, r.left, r.bottom + 6)
+                        }}
+                        onMouseLeave={() => hideMemoTip()}
+                        dangerouslySetInnerHTML={{ __html: icon('sticky-note', { size: 11 }) }}
+                      />
+                    )}
                     <span className={`st-dot st-${cst}`} title={dotTitle}></span>
                     <span className="tabchip-name">{tb.name}</span>
                     {showDirty && <span className="trow-dirty" title={t('有未保存改动')}></span>}

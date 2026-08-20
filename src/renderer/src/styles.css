@@ -541,6 +541,49 @@ button.saved-toggle:hover { color: var(--ink); }
 .trow-badge.bs-busy { color: #0761d1; }
 .trow-badge.bs-attention { color: var(--warning-deep); font-weight: 600; }
 .trow-badge.bs-done { color: #1a7f37; font-weight: 500; }
+/* 标签备注：便签图标（状态点前），点开编辑弹窗，hover 圆角气泡预览 */
+.memo-ic {
+  flex: 0 0 auto;
+  display: inline-grid; place-items: center;
+  line-height: 1;
+  color: var(--warning-deep);
+  cursor: pointer;
+}
+.memo-ic:hover { color: #f5a623; }
+/* 备注编辑弹窗：无标题无按钮的圆角便签，点外部即关（关闭即保存） */
+.memo-pop {
+  position: fixed; z-index: 92;
+  width: 260px;
+  background: var(--canvas);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-5);
+  padding: 10px 12px;
+  animation: pop 0.12s ease;
+}
+.memo-pop textarea {
+  display: block;
+  width: 100%; min-height: 96px; max-height: 40vh;
+  border: none; outline: none; resize: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit; font-size: 13px; line-height: 1.5;
+}
+.memo-pop textarea::placeholder { color: var(--mute); }
+/* hover 气泡：纯展示，pointer-events 关掉避免抢走 mouseleave */
+.memo-tip {
+  position: fixed; z-index: 92;
+  max-width: 240px;
+  background: var(--canvas);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-5);
+  padding: 6px 10px;
+  font-size: 12px; line-height: 1.5;
+  color: var(--body);
+  white-space: pre-wrap; word-break: break-word;
+  pointer-events: none;
+  animation: pop 0.12s ease;
+}
+
 /* dirty 点：跟 .group-folder.is-dirty 同色，表达"该标签有未保存改动" */
 .trow-dirty {
   width: 6px; height: 6px;
