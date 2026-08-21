@@ -355,6 +355,7 @@ function recordTabHistory(tab: TerminalTab, groupName: string, force = false): v
     autoLaunchCC: tab.autoLaunchCC,
     sessions: tab.sessions.map((s) => ({ ...s })),
     activeSessionId: tab.activeSessionId,
+    memo: tab.memo,
     openedAt: new Date(now).toISOString(),
     lastSeenAt: new Date(now).toISOString()
   })
@@ -1501,11 +1502,12 @@ function deleteTabMemo(tabId: string): void {
   afterMemoChange(ctx)
 }
 
-// 备注变更后的统一收尾：刷 UI + 静默同步进已保存快照（不打 dirty）
+// 备注变更后的统一收尾：刷 UI + 静默同步进已保存快照（不打 dirty）+ 立刻刷标签历史（未保存的标签靠历史找回备注）
 function afterMemoChange(ctx: { group: Group; tab: TerminalTab }): void {
   refreshUI()
   autoSyncTabToSaved(ctx.tab, ctx.group)
   scheduleSave()
+  recordTabHistory(ctx.tab, ctx.group.name, true)
 }
 
 function nextWorkspaceDefaultName(): string {
@@ -1952,6 +1954,7 @@ export async function restoreFromHistory(entry: HistoryEntry): Promise<void> {
     sessions: entry.sessions,
     activeSessionId: entry.activeSessionId,
     autoLaunchCC: entry.autoLaunchCC,
+    memo: entry.memo,
     dirty: !knownInSaved
   })
   if (knownInSaved) autoSyncTabToSaved(tab, g)

@@ -196,6 +196,7 @@ export interface HistoryEntry {
   autoLaunchCC: boolean
   sessions: SessionRecord[]
   activeSessionId?: string
+  memo?: string
   openedAt: string
   lastSeenAt: string
 }

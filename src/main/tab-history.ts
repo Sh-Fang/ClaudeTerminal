@@ -14,6 +14,7 @@ export interface HistoryEntry {
   autoLaunchCC: boolean
   sessions: SessionRecord[]
   activeSessionId?: string
+  memo?: string // 用户手写的标签备注，随历史找回
   openedAt: string // ISO，首次打开
   lastSeenAt: string // ISO，最近一次更新（激活/会话变化）
 }
@@ -61,6 +62,7 @@ function normalizeEntry(e: unknown): HistoryEntry | null {
     autoLaunchCC: r.autoLaunchCC !== false,
     sessions,
     activeSessionId: typeof r.activeSessionId === 'string' ? r.activeSessionId : undefined,
+    memo: typeof r.memo === 'string' ? r.memo : undefined,
     openedAt: typeof r.openedAt === 'string' ? r.openedAt : new Date().toISOString(),
     lastSeenAt: typeof r.lastSeenAt === 'string' ? r.lastSeenAt : new Date().toISOString()
   }
