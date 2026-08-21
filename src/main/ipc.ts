@@ -21,6 +21,7 @@ import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
 import { isSafeExternalUrl } from './url-safety'
+import { checkForUpdate, quitAndInstallUpdate, setUpdateEventSink } from './update-check'
 import { t } from './i18n'
 import {
   clearTabHistory,
@@ -127,6 +128,16 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     applyDisableAutoupdater(!!enabled)
   )
   ipcMain.handle('sysenv:readDisableAutoupdater', () => readUserEnv('DISABLE_AUTOUPDATER'))
+
+  ipcMain.handle('update:check', () => checkForUpdate())
+  ipcMain.handle('update:install', () => { quitAndInstallUpdate(); return true })
+  // 下载进度/完成/出错 → 广播所有窗口（设置面板可能开在任一窗口）
+  setUpdateEventSink((ev) => {
+    for (const wc of allAppWebContents()) {
+      if (wc.isDestroyed()) continue
+      try { wc.send('update:event', ev) } catch {}
+    }
+  })
 
   const winFromEvent = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null =>
     BrowserWindowClass.fromWebContents(e.sender) ?? getWindow()

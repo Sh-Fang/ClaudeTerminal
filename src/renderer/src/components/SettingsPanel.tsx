@@ -183,6 +183,26 @@ export function SettingsPanel() {
   const aboutVerLoadedRef = useRef(false)
   const [aboutChecking, setAboutChecking] = useState(false)
   const [aboutHint, setAboutHint] = useState('')
+  // 新版本下载中 / 已下载完可安装
+  const [aboutDownloading, setAboutDownloading] = useState(false)
+  const [aboutUpdReady, setAboutUpdReady] = useState(false)
+
+  // 订阅主进程的下载进度/完成/出错事件（electron-updater 自动下载）
+  useEffect(() => {
+    return window.term.onUpdateEvent((ev) => {
+      if (ev.kind === 'progress') {
+        setAboutDownloading(true)
+        setAboutHint(t('下载中… {0}%', Math.floor(ev.percent)))
+      } else if (ev.kind === 'downloaded') {
+        setAboutDownloading(false)
+        setAboutUpdReady(true)
+        setAboutHint(t('新版本 {0} 已就绪，重启后生效。', `v${ev.version}`))
+      } else {
+        setAboutDownloading(false)
+        setAboutHint(t('更新出错：{0}', ev.message))
+      }
+    })
+  }, [])
 
   const cc = useRef<CcState>({
     installedSet: new Set(),
@@ -1338,19 +1358,30 @@ export function SettingsPanel() {
                 <div className="about-ver">
                   {t('版本')} <span id="about-version">{aboutVer}</span>
                 </div>
-                {/* 检查更新目前是壳子，更新服务接入后替换 */}
                 <button
                   id="about-check-update"
                   className="btn btn-secondary"
                   type="button"
-                  disabled={aboutChecking}
+                  disabled={aboutChecking || aboutDownloading || aboutUpdReady}
                   onClick={() => {
                     setAboutChecking(true)
                     setAboutHint('')
-                    window.setTimeout(() => {
+                    void window.term.checkUpdate().then((r) => {
                       setAboutChecking(false)
-                      setAboutHint(t('更新服务尚未接入，敬请期待。'))
-                    }, 900)
+                      if (r.status === 'update' && r.latest) {
+                        // autoDownload 已开：检查到即开始下载，进度走 onUpdateEvent
+                        setAboutDownloading(true)
+                        setAboutHint(t('发现新版本 {0}，正在下载…', `v${r.latest}`))
+                      } else if (r.status === 'latest') {
+                        setAboutHint(t('已是最新版本。'))
+                      } else if (r.error === 'notfound') {
+                        setAboutHint(t('暂无可用的发布版本。'))
+                      } else if (r.error === 'dev') {
+                        setAboutHint(t('开发模式下不可用。'))
+                      } else {
+                        setAboutHint(t('检查失败，请检查网络后重试。'))
+                      }
+                    })
                   }}
                 >
                   {aboutChecking ? t('检查中…') : t('检查更新')}
@@ -1358,6 +1389,16 @@ export function SettingsPanel() {
                 <div className="about-hint" id="about-hint">
                   {aboutHint}
                 </div>
+                {aboutUpdReady ? (
+                  <button
+                    id="about-install-update"
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => void window.term.installUpdate()}
+                  >
+                    {t('重启并安装')}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

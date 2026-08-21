@@ -201,6 +201,18 @@ export interface HistoryEntry {
   lastSeenAt: string
 }
 
+// 检查更新结果 / 下载事件（与 main/update-check.ts 保持一致）
+export interface UpdateCheckResult {
+  status: 'latest' | 'update' | 'error'
+  current: string
+  latest?: string
+  error?: 'network' | 'notfound' | 'dev'
+}
+export type UpdateEvent =
+  | { kind: 'progress'; percent: number }
+  | { kind: 'downloaded'; version: string }
+  | { kind: 'error'; message: string }
+
 export interface TermBridge {
   platform: NodeJS.Platform  // 'win32' | 'darwin' | ...：渲染层据此切换 shell 引号/窗口按钮
   create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string }): Promise<number>
@@ -237,6 +249,9 @@ export interface TermBridge {
   readClipboard(): Promise<ClipboardRead>
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
   readDisableAutoupdater(): Promise<string | null>
+  checkUpdate(): Promise<UpdateCheckResult>
+  installUpdate(): Promise<boolean>
+  onUpdateEvent(cb: (e: UpdateEvent) => void): () => void
   winMinimize(): void
   winToggleMaximize(): void
   winClose(): void
@@ -357,6 +372,13 @@ const api: TermBridge = {
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),
   readDisableAutoupdater: () => ipcRenderer.invoke('sysenv:readDisableAutoupdater'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateEvent: (cb) => {
+    const h = (_e: IpcRendererEvent, ev: UpdateEvent): void => cb(ev)
+    ipcRenderer.on('update:event', h)
+    return () => ipcRenderer.off('update:event', h)
+  },
   winMinimize: () => ipcRenderer.send('window:minimize'),
   winToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
   winClose: () => ipcRenderer.send('window:close'),

@@ -9,6 +9,13 @@ directories:
 # 禁掉自动 rebuild：@lydell/node-pty 自带 N-API 预编译二进制，rebuild 反而触发本机现场编译
 npmRebuild: false
 
+# electron-updater 更新源：据此生成 app-update.yml（打进应用）与 latest.yml（CI 上传到 Release）；
+# CI 构建带 --publish never，实际发布由 workflow 的 release action 完成
+publish:
+  provider: github
+  owner: Sh-Fang
+  repo: ClaudeTerminal
+
 # @lydell/node-pty 解到 app.asar.unpacked，require 才能加载 .node / OpenConsole.exe / conpty.dll
 asarUnpack:
   - '**/node_modules/@lydell/**'
@@ -23,7 +30,9 @@ files:
 
 win:
   icon: resources/icon.ico
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # 不用 ${productName}：带空格的文件名上传 GitHub 会被改名（空格→点），
+  # 与 latest.yml 里净化后的 URL（空格→横杠）对不上，electron-updater 下载 404
+  artifactName: Claude-Terminal-${version}-${arch}.${ext}
   target:
     - target: nsis
       arch: x64
@@ -34,7 +43,7 @@ win:
 mac:
   category: public.app-category.developer-tools
   icon: resources/icon.icns
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: Claude-Terminal-${version}-${arch}.${ext}
   identity: null            # 不签名/公证，首次打开需右键→打开绕过 Gatekeeper
   hardenedRuntime: false
   target:
@@ -44,7 +53,7 @@ mac:
       arch: universal
 
 dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: Claude-Terminal-${version}-${arch}.${ext}
 
 nsis:
   oneClick: false
