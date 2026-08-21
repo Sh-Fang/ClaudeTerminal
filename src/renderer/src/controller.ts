@@ -20,6 +20,7 @@ import {
   openPickTabs,
   openSearchOverlay,
   closeSearchOverlay,
+  closeSearchOverlayIfOpen,
   showCtxMenu,
   toast,
   type CtxItem,
@@ -507,6 +508,13 @@ function makeTab(group: Group, opts: {
     {
       copySelectionAsAnswer: () => false,
       openSearch: openSearchOverlay,
+      // Esc 优先收搜索浮层（清高亮/选区，与 SearchBar 显式关闭一致），消费掉则不透传给 cc
+      onEscapeCloseSearch: () => {
+        if (!closeSearchOverlayIfOpen()) return false
+        tabRef.search.clearDecorations()
+        tabRef.term.clearSelection()
+        return true
+      },
       onRequestNewTab: () => promptNewTabInGroup(group.id),
       onRequestCloseSelf: () => closeTab(id),
       onRequestSaveGroup: saveActiveDirtyGroup,

@@ -272,3 +272,9 @@ export function openSearchOverlay(): void {
 export function closeSearchOverlay(): void {
   useOverlays.setState({ searchOpen: false })
 }
+// 开着才关，返回是否真的关了：供 Esc 判断「这次按键已被搜索浮层消费」
+export function closeSearchOverlayIfOpen(): boolean {
+  if (!useOverlays.getState().searchOpen) return false
+  useOverlays.setState({ searchOpen: false })
+  return true
+}

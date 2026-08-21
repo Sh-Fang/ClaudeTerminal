@@ -10,6 +10,8 @@ import { t } from './i18n'
 export interface TermTabHandlers {
   copySelectionAsAnswer: () => boolean
   openSearch: () => void
+  // Esc：搜索浮层开着时优先收起浮层；返回 true 表示已消费，按键不再透传给 PTY
+  onEscapeCloseSearch?: () => boolean
   onRequestNewTab: () => void
   onRequestCloseSelf: () => void
   // Ctrl+S：把当前脏分组保存到"已保存分组"
@@ -302,9 +304,14 @@ export class TerminalTab {
         return false
       }
 
-      // ESC：busy 时 Claude 不发 hook，渲染层兜底降级。按键仍透传给 cc。
-      if (e.key === 'Escape' && this.status === 'busy') {
-        this.handlers.onUserAbort?.()
+      if (e.key === 'Escape') {
+        // 搜索浮层开着：Esc 只收浮层，不透传给 cc（否则会误触中止任务）
+        if (this.handlers.onEscapeCloseSearch?.()) {
+          e.preventDefault()
+          return false
+        }
+        // busy 时 Claude 不发 hook，渲染层兜底降级。按键仍透传给 cc。
+        if (this.status === 'busy') this.handlers.onUserAbort?.()
       }
       return true
     })
