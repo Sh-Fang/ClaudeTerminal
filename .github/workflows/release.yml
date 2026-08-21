@@ -65,8 +65,10 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      # --publish never：electron-builder 在 CI 上会隐式尝试自己发布（要 GH_TOKEN），
+      # 发布统一交给下面的 release action，这里只打包
       - name: 构建并打包
-        run: npm run dist
+        run: npm run dist -- --publish never
 
       - name: 创建 Release 并上传产物
         uses: softprops/action-gh-release@v2
