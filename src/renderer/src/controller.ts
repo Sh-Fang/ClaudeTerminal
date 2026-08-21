@@ -1502,10 +1502,29 @@ function deleteTabMemo(tabId: string): void {
   afterMemoChange(ctx)
 }
 
+// 备注跟标签走：变更写进所有已保存快照（分组 + 工作区）里同 id 的标签，
+// 「先保存工作区/分组、后加备注」的快照恢复也能带回最新备注；删除同理清掉。
+// 只就地改 memo 字段，不往快照里塞新标签（那是 autoSync 的语义）。
+function syncMemoIntoSnapshots(tabId: string, memo: string | undefined): void {
+  for (const s of savedGroups) {
+    for (const t of s.snapshot.tabs) {
+      if (t.id === tabId) t.memo = memo
+    }
+  }
+  for (const w of savedWorkspaces) {
+    for (const g of w.snapshot.groups) {
+      for (const t of g.tabs) {
+        if (t.id === tabId) t.memo = memo
+      }
+    }
+  }
+}
+
 // 备注变更后的统一收尾：刷 UI + 静默同步进已保存快照（不打 dirty）+ 立刻刷标签历史（未保存的标签靠历史找回备注）
 function afterMemoChange(ctx: { group: Group; tab: TerminalTab }): void {
   refreshUI()
   autoSyncTabToSaved(ctx.tab, ctx.group)
+  syncMemoIntoSnapshots(ctx.tab.id, ctx.tab.memo)
   scheduleSave()
   recordTabHistory(ctx.tab, ctx.group.name, true)
 }
