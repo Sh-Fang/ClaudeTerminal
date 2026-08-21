@@ -342,12 +342,25 @@ function scheduleSave(): void {
 
 // 标签历史：打开/激活/会话栈变化时写入（崩溃后找回）；同 tab 1.5s 节流，关键时机 force=true 立刻落。
 const historyFlushAt = new Map<string, number>()
+// 恢复合批：restore 期间每个 makeTab 都强刷一次历史（N 次主进程同步写盘），改为攒进
+// Map（同 tab 留最新）在恢复收尾一次批量 upsert。null = 不在恢复中，走常规单条写。
+let historyBatch: Map<string, HistoryEntry> | null = null
+function beginHistoryBatch(): void {
+  if (!historyBatch) historyBatch = new Map()
+}
+function flushHistoryBatch(): void {
+  const batch = historyBatch
+  historyBatch = null
+  if (!batch || batch.size === 0) return
+  void window.term.tabHistoryUpsertMany([...batch.values()])
+}
+
 function recordTabHistory(tab: TerminalTab, groupName: string, force = false): void {
   const now = Date.now()
   const last = historyFlushAt.get(tab.id) ?? 0
   if (!force && now - last < 1500) return
   historyFlushAt.set(tab.id, now)
-  void window.term.tabHistoryUpsert({
+  const entry: HistoryEntry = {
     tabId: tab.id,
     tabName: tab.name,
     groupName,
@@ -358,24 +371,71 @@ function recordTabHistory(tab: TerminalTab, groupName: string, force = false): v
     memo: tab.memo,
     openedAt: new Date(now).toISOString(),
     lastSeenAt: new Date(now).toISOString()
+  }
+  if (historyBatch) {
+    historyBatch.set(tab.id, entry)
+    return
+  }
+  void window.term.tabHistoryUpsert(entry)
+}
+
+// ── cc 启动并发闸门 ──────────────────────────────────────────────
+// 恢复工作区/分组会在一瞬间为每个标签触发 launchCC，十几个 claude(node) 同时冷启动
+// 会打满磁盘 IO + Defender 扫描，整机卡顿（CPU/内存都不高）。闸门限制同时启动数
+//（每轮突发随机 2 或 3），其余排队；占位在该 tab 的 SessionStart hook 到达（cc 已
+// 起来）或 500~1000ms 随机兜底超时后释放，先到先释放。
+let ccGateActive = 0
+let ccGateLimit = 3
+const ccGateQueue: (() => void)[] = []
+const ccGateHeld = new Set<string>()
+
+function ccGateAcquire(tabId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const grant = (): void => {
+      ccGateActive++
+      ccGateHeld.add(tabId)
+      // 兜底释放：hook 丢失/cc 启动失败也不许永久占坑
+      window.setTimeout(() => ccGateRelease(tabId), 500 + Math.floor(Math.random() * 500))
+      resolve()
+    }
+    if (ccGateActive === 0 && ccGateQueue.length === 0) {
+      ccGateLimit = 2 + (Math.random() < 0.5 ? 0 : 1)
+    }
+    if (ccGateActive < ccGateLimit) grant()
+    else ccGateQueue.push(grant)
   })
+}
+
+function ccGateRelease(tabId: string): void {
+  if (!ccGateHeld.delete(tabId)) return // 未占坑或已释放（超时与 hook 双触发）
+  ccGateActive = Math.max(0, ccGateActive - 1)
+  const next = ccGateQueue.shift()
+  if (next) next()
 }
 
 async function launchCC(tab: TerminalTab): Promise<void> {
   if (!tab.autoLaunchCC) return
   if (tab.ptyId == null) return
+  await ccGateAcquire(tab.id)
+  // 排队期间 tab 可能已关闭 / pty 已退出
+  if (tab.ptyId == null) {
+    ccGateRelease(tab.id)
+    return
+  }
 
   const claudeBin = settings.claudePath.trim()
   if (claudeBin) {
     if (!(await window.term.pathExists(claudeBin))) {
       tab.term.writeln(`\x1b[33m${t('[claude 路径不存在：{0}，跳过自动启动]', claudeBin)}\x1b[0m`)
       tab.term.writeln(`\x1b[90m${t('请到设置 → Claude Code 中重新选择 claude 可执行文件。')}\x1b[0m`)
+      ccGateRelease(tab.id)
       return
     }
   } else {
     const available = await window.term.claudeAvailable()
     if (!available) {
       tab.term.writeln(`\x1b[90m${t('[claude 未在 PATH 中，跳过自动启动 Claude Code]')}\x1b[0m`)
+      ccGateRelease(tab.id)
       return
     }
   }
@@ -1083,43 +1143,48 @@ export async function restoreSavedTabs(
     s.srcId = g.id
   }
   const liveIds = new Set(g.tabs.map((t) => t.id))
-  for (const t of picks) {
-    if (liveIds.has(t.id)) continue
-    const tab = makeTab(g, {
-      id: t.id,
-      name: t.name,
-      sessions: t.sessions,
-      activeSessionId: sessionOverride?.get(t.id) ?? t.activeSessionId,
-      autoLaunchCC: t.autoLaunchCC,
-      memo: t.memo,
-      dirty: false
-    })
-    created.push(tab)
+  beginHistoryBatch()
+  try {
+    for (const t of picks) {
+      if (liveIds.has(t.id)) continue
+      const tab = makeTab(g, {
+        id: t.id,
+        name: t.name,
+        sessions: t.sessions,
+        activeSessionId: sessionOverride?.get(t.id) ?? t.activeSessionId,
+        autoLaunchCC: t.autoLaunchCC,
+        memo: t.memo,
+        dirty: false
+      })
+      created.push(tab)
+    }
+    let blank: TerminalTab | null = null
+    if (addBlank) {
+      const nm = blankName?.trim() || String.fromCharCode(65 + g.tabs.length)
+      const cc = blankAutoLaunchCC ?? settings.defaults.autoLaunchCC
+      blank = makeTab(g, {
+        name: nm,
+        autoLaunchCC: cc,
+        dirty: false
+      })
+      created.push(blank)
+      autoSyncTabToSaved(blank, g)
+    }
+    // 真正带进标签才记恢复时间（卡片顶到侧边栏最前），no-op 不改时间
+    if (created.length > 0) s.lastRestoredAt = new Date().toISOString()
+    const firstCreated = created[0]
+    if (firstCreated) {
+      activeTabId = firstCreated.id
+    } else if (!activeTabId) {
+      const fb = g.tabs[0]
+      if (fb) activeTabId = fb.id
+    }
+    refreshUI()
+    if (activeTabId) activateUI(activeTabId)
+    await spawnTabsBatched(created)
+  } finally {
+    flushHistoryBatch()
   }
-  let blank: TerminalTab | null = null
-  if (addBlank) {
-    const nm = blankName?.trim() || String.fromCharCode(65 + g.tabs.length)
-    const cc = blankAutoLaunchCC ?? settings.defaults.autoLaunchCC
-    blank = makeTab(g, {
-      name: nm,
-      autoLaunchCC: cc,
-      dirty: false
-    })
-    created.push(blank)
-    autoSyncTabToSaved(blank, g)
-  }
-  // 真正带进标签才记恢复时间（卡片顶到侧边栏最前），no-op 不改时间
-  if (created.length > 0) s.lastRestoredAt = new Date().toISOString()
-  const firstCreated = created[0]
-  if (firstCreated) {
-    activeTabId = firstCreated.id
-  } else if (!activeTabId) {
-    const fb = g.tabs[0]
-    if (fb) activeTabId = fb.id
-  }
-  refreshUI()
-  if (activeTabId) activateUI(activeTabId)
-  await spawnTabsBatched(created)
   scheduleSave()
   const restoredN = created.length - (addBlank ? 1 : 0)
   if (created.length === 0) toast(t('分组「{0}」已经打开', s.name))
@@ -1625,19 +1690,24 @@ async function restoreSnapshotGroups(
       : pending[0].spec.id
 
   let activated = false
-  for (let i = 0; i < pending.length; i += RESTORE_BATCH) {
-    if (i > 0) await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const batchTabs = pending.slice(i, i + RESTORE_BATCH).map((p) => makeTab(p.group, p.spec))
-    refreshUI()
-    if (!activated) {
-      const hit = batchTabs.find((t) => t.id === targetActiveId)
-      if (hit) {
-        activeTabId = hit.id
-        activateUI(hit.id)
-        activated = true
+  beginHistoryBatch()
+  try {
+    for (let i = 0; i < pending.length; i += RESTORE_BATCH) {
+      if (i > 0) await new Promise<void>((r) => requestAnimationFrame(() => r()))
+      const batchTabs = pending.slice(i, i + RESTORE_BATCH).map((p) => makeTab(p.group, p.spec))
+      refreshUI()
+      if (!activated) {
+        const hit = batchTabs.find((t) => t.id === targetActiveId)
+        if (hit) {
+          activeTabId = hit.id
+          activateUI(hit.id)
+          activated = true
+        }
       }
+      await Promise.all(batchTabs.map((t) => spawnTabPty(t)))
     }
-    await Promise.all(batchTabs.map((t) => spawnTabPty(t)))
+  } finally {
+    flushHistoryBatch()
   }
   scheduleSave()
   return pending.length
@@ -2259,6 +2329,8 @@ export async function initApp(): Promise<void> {
   // ─── 会话事件压栈 ───────────────────────────────────────────────
   // resume 会让旧 sessionId 再发 SessionStart：按 sessionId 去重，命中只切激活
   const offSession = window.term.onSessionEvent((ev) => {
+    // cc 已起来 → 提前释放启动闸门坑位（晚于兜底超时到达则为 no-op）
+    ccGateRelease(ev.tabId)
     const ctx = findTab(ev.tabId)
     if (!ctx) return
     const { tab } = ctx

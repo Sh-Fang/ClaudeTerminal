@@ -37,6 +37,7 @@ export async function setUserEnv(name: string, value: string): Promise<boolean> 
   if (!IS_WIN) return false
   try {
     await callExecFile('setx', [name, value])
+    envSnapshotCache = null
     return true
   } catch {
     return false
@@ -48,6 +49,7 @@ export async function deleteUserEnv(name: string): Promise<boolean> {
   if (!IS_WIN) return false
   try {
     await callExecFile('reg', ['delete', 'HKCU\\Environment', '/v', name, '/f'])
+    envSnapshotCache = null
     return true
   } catch {
     return false
@@ -97,9 +99,17 @@ function readRegistryEnv(path: string): Record<string, string> {
   }
 }
 
+// 快照短 TTL 缓存：每次读要同步 spawn 两个 reg.exe，恢复工作区一秒内连建十几个 pty 时
+// 会把主进程堵成串行等子进程；一次突发共用一份快照即可。setx/reg delete 落地后主动失效。
+let envSnapshotCache: { at: number; env: Record<string, string> } | null = null
+const ENV_SNAPSHOT_TTL_MS = 5000
+
 export function snapshotCurrentEnv(): Record<string, string> {
   // 非 Windows 直接返回主进程 env（pty 走登录 shell 自行补全 PATH）
   if (!IS_WIN) return { ...(process.env as Record<string, string>) }
+  if (envSnapshotCache && Date.now() - envSnapshotCache.at < ENV_SNAPSHOT_TTL_MS) {
+    return { ...envSnapshotCache.env }
+  }
   const env: Record<string, string> = { ...(process.env as Record<string, string>) }
   const machine = readRegistryEnv(
     'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
@@ -122,7 +132,8 @@ export function snapshotCurrentEnv(): Record<string, string> {
   if (userPath) parts.push(expandVars(userPath, env))
   if (parts.length) envSet(env, 'Path', parts.join(';'))
 
-  return env
+  envSnapshotCache = { at: Date.now(), env }
+  return { ...env }
 }
 
 export async function applyDisableAutoupdater(enabled: boolean): Promise<{

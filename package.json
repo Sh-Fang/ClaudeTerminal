@@ -1,6 +1,6 @@
 {
   "name": "claude-terminal",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "description": "适配 Claude Code 的多窗口管理终端",
   "license": "GPL-3.0-only",
   "author": "Sh-Fang",

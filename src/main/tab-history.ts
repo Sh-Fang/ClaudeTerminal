@@ -113,17 +113,27 @@ export function listTabHistory(): HistoryEntry[] {
 }
 
 export function upsertTabHistory(entry: HistoryEntry): void {
-  const norm = normalizeEntry(entry)
-  if (!norm) return
+  upsertManyTabHistory([entry])
+}
+
+// 批量 upsert，一次写盘：恢复工作区/分组时 N 个标签逐个写会连着 N 次同步落盘
+export function upsertManyTabHistory(entries: HistoryEntry[]): void {
+  if (!Array.isArray(entries) || entries.length === 0) return
   const data = load()
-  const idx = data.entries.findIndex((e) => e.tabId === norm.tabId)
-  if (idx >= 0) {
-    const old = data.entries[idx]
-    // 保留首次 openedAt；其余字段以新值为准
-    data.entries[idx] = { ...norm, openedAt: old.openedAt }
-  } else {
-    data.entries.push(norm)
+  let changed = false
+  for (const entry of entries) {
+    const norm = normalizeEntry(entry)
+    if (!norm) continue
+    const idx = data.entries.findIndex((e) => e.tabId === norm.tabId)
+    if (idx >= 0) {
+      // 保留首次 openedAt；其余字段以新值为准
+      data.entries[idx] = { ...norm, openedAt: data.entries[idx].openedAt }
+    } else {
+      data.entries.push(norm)
+    }
+    changed = true
   }
+  if (!changed) return
   try { writeFileAtomic(data) } catch {}
 }
 

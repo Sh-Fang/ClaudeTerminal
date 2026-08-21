@@ -28,6 +28,7 @@ import {
   deleteTabHistory,
   listTabHistory,
   upsertTabHistory,
+  upsertManyTabHistory,
   type HistoryEntry
 } from './tab-history'
 import { moveFloaterTo, pushCountsToFloater, setFloaterDragging, setFloaterEnabled, setFloaterFocusable } from './floater'
@@ -267,6 +268,10 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('tabHistory:list', () => listTabHistory())
   ipcMain.handle('tabHistory:upsert', (_e, entry: HistoryEntry) => {
     upsertTabHistory(entry)
+    return true
+  })
+  ipcMain.handle('tabHistory:upsertMany', (_e, entries: HistoryEntry[]) => {
+    upsertManyTabHistory(entries)
     return true
   })
   ipcMain.handle('tabHistory:delete', (_e, tabId: string) => {

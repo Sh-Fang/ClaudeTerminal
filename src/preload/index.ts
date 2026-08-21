@@ -250,6 +250,7 @@ export interface TermBridge {
   onStateEvent(cb: (e: StateEvent) => void): () => void
   tabHistoryList(): Promise<HistoryEntry[]>
   tabHistoryUpsert(entry: HistoryEntry): Promise<boolean>
+  tabHistoryUpsertMany(entries: HistoryEntry[]): Promise<boolean>
   tabHistoryDelete(tabId: string): Promise<boolean>
   tabHistoryDeleteMany(tabIds: string[]): Promise<boolean>
   tabHistoryClear(): Promise<boolean>
@@ -393,6 +394,7 @@ const api: TermBridge = {
   },
   tabHistoryList: () => ipcRenderer.invoke('tabHistory:list'),
   tabHistoryUpsert: (entry) => ipcRenderer.invoke('tabHistory:upsert', entry),
+  tabHistoryUpsertMany: (entries) => ipcRenderer.invoke('tabHistory:upsertMany', entries),
   tabHistoryDelete: (tabId) => ipcRenderer.invoke('tabHistory:delete', tabId),
   tabHistoryDeleteMany: (tabIds) => ipcRenderer.invoke('tabHistory:deleteMany', tabIds),
   tabHistoryClear: () => ipcRenderer.invoke('tabHistory:clear'),
