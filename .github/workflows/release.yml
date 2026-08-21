@@ -1,0 +1,79 @@
+# 自动发布：推送到 main 后，若 package.json 的版本号还没有对应的 v<version> tag，
+# 就在 Windows 跑器上打包（NSIS 安装包 + 便携 zip），并创建同名 GitHub Release。
+# 一次推多个提交只会以最终版本号发一次。也可在 Actions 页面手动触发。
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 连续推送时只保留最新一轮构建
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 检查版本号
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      should_release: ${{ steps.ver.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读版本号并比对已有 tag
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            echo "v$VERSION 已发布过，跳过"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "发现新版本 v$VERSION，开始打包"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
+    name: 打包 Windows 并发布
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # electron / electron-builder 的二进制下载缓存，跨次运行复用
+      - name: 缓存 Electron 二进制
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-cache-${{ runner.os }}-
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建并打包
+        run: npm run dist
+
+      - name: 创建 Release 并上传产物
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: v${{ needs.check.outputs.version }}
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.zip

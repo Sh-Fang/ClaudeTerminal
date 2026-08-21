@@ -298,6 +298,7 @@ export function Sidebar() {
           if (renamingTab !== tab.id) startRename(tab.id, tab.name)
         }}
       >
+        <span className={`st-dot st-${st}`} title={dotTitle}></span>
         {tab.memo != null && (
           // 便签图标：点开编辑弹窗，hover 圆角气泡预览备注开头；stopPropagation 挡住行激活/改名
           <span
@@ -318,7 +319,6 @@ export function Sidebar() {
             dangerouslySetInnerHTML={{ __html: icon('sticky-note', { size: 12 }) }}
           />
         )}
-        <span className={`st-dot st-${st}`} title={dotTitle}></span>
         {renaming ? (
           // 编辑态用独立 key 强制重挂，手输文本节点随元素丢弃，不污染 React 静态节点
           <span
