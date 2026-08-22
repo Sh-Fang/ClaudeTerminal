@@ -4,8 +4,6 @@
 
 # Claude Terminal
 
-
-
 <p>
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="platform" />
   <img src="https://img.shields.io/github/package-json/v/Sh-Fang/ClaudeTerminal?label=version&color=orange" alt="version" />
@@ -15,6 +13,8 @@
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome" />
 </p>
 
+<img src="docs/screenshots/hero.png" alt="Claude Terminal 主界面" width="880" />
+
 </div>
 
 > **非官方项目**：本项目与 Anthropic 无关联。"Claude" 与 "Claude Code" 是 Anthropic 的商标，本项目仅是配合 Claude Code CLI 使用的第三方终端工具。
@@ -23,18 +23,17 @@
 
 **为 [Claude Code](https://claude.com/claude-code) 重度用户准备的多会话管理终端，如果你也有这些痛点，不妨来试试 ：**
 
+- 系统崩溃或者不小心把终端关闭了，需要一个个的把刚才的会话手动/resume回来
 
+- 同时开了很多个会话，但是不知道哪个会话做完了，哪个会话正在跑，哪个会话需要决策
 
-- vibe coding 得正 high 呢，不小心把终端关闭了，然后一个一个的自己把刚才的会话/resume回来
+- 切换到其他界面，必须要切换到终端挨个查看才能知道现在做到什么情况了
 
-- 同时开了七八个会话，不知道哪个会话做完了，哪个会话正在跑，哪个会话需要决策
+- 想直观的看到这个目录下有多少会话
 
-- 后台跑着cc，切换到其他界面，必须要切换到终端挨个查看才能知道现在做到什么情况了
-
-- 想直观的看到这个目录下有多少会话，想方便的切换会话
+- 想方便的切换会话
 
 - 突然想到和某个会话有关的点子，需要记录下来，用记事本又太繁琐
-
 
 ## 功能
 
@@ -49,6 +48,48 @@
 - **不修改你的配置** — 基于 PowerShell 7 和 Windows 原生伪终端（ConPTY），不修改你的全局 shell 和 cc 配置
 - **会话标签** - 在标签上添加备注，提醒自己别忘了
 - **界面** — 中英文双语支持，浅色/深色主题支持
+
+## 功能介绍
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/floater.png" alt="桌面悬浮窗" /><br/>
+      <sub><b>桌面悬浮窗</b> — 三色状态计数常驻桌面，右键唤回主窗口</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/session-menu.png" alt="会话列表" /><br/>
+      <sub><b>会话列表</b> — 本标签的历史会话：时间、ID、来源一目了然</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/restore-dialog.png" alt="恢复标签" /><br/>
+      <sub><b>恢复标签</b> — 勾选要恢复的标签，还能指定接上哪个会话</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/saved-manager.png" alt="分组/工作区管理" /><br/>
+      <sub><b>分组/工作区管理</b> — 保存的分组集中管理，按会话级恢复</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/history-dialog.png" alt="标签历史" /><br/>
+      <sub><b>标签历史</b> — 关掉的标签按今天/昨天/更早分桶，随时找回</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/settings.png" alt="Claude Code 版本管理" /><br/>
+      <sub><b>版本管理</b> — 锁定 cc 版本、多版本共存切换，npm 镜像自动测速</sub>
+    </td>
+  </tr>
+</table>
+
+## 下载
+
+前往 [最新 Release](https://github.com/Sh-Fang/ClaudeTerminal/releases/latest) 下载：
+
+- **安装版** — `Claude-Terminal-x.y.z-x64.exe`，安装后自动接收应用内更新
+- **绿色版** — `Claude-Terminal-x.y.z-x64.zip`，解压即用
 
 ## 快速开始
 
