@@ -428,7 +428,7 @@ export function Sidebar() {
             <span
               className="group-add"
               data-addtab={g.id}
-              title={t('新建会话标签')}
+              title={t('新建标签')}
               onClick={(e) => {
                 e.stopPropagation()
                 promptNewTabInGroup(g.id)
@@ -583,7 +583,7 @@ export function Sidebar() {
               id="historyOpenBtn"
               className="side-head-btn"
               type="button"
-              title={t('标签历史（7 天内）')}
+              title={t('标签历史')}
               aria-label={t('标签历史')}
               onClick={() => openHistory()}
             >
@@ -759,7 +759,7 @@ export function Sidebar() {
         id="sidebarHandle"
         className="sidebar-handle"
         hidden={!settings.sidebarCollapsed}
-        title={t('展开侧边栏（hover 预览）')}
+        title={t('展开侧边栏')}
         onClick={() => {
           updateSettings({ ...getSettings(), sidebarCollapsed: false })
           setTimeout(() => refitActive(), 180)

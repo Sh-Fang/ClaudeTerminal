@@ -224,9 +224,19 @@ export function formatTs(iso?: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
 }
 
+// 超长文本中间省略：保留开头与结尾、中间折叠成 …（CSS 的 ellipsis 只能截尾部）
+export function midEllipsis(s: string, max = 24): string {
+  if (s.length <= max) return s
+  const head = Math.ceil((max - 1) / 2)
+  const tail = max - 1 - head
+  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`
+}
+
 export function srcLabel(s: string): string {
+  // clear 来源不标注（返回空串，调用方据此省略整段）：会话大多由 /clear 产生，标了全是噪音
   // resume 用 '恢复||来源' 消歧：'恢复' 已被按钮（Restore）占用，此处应译 Resumed
-  const v = ({ clear: '/clear 后', startup: '初始', compact: 'compact', resume: '恢复||来源' } as Record<string, string>)[s]
+  if (s === 'clear') return ''
+  const v = ({ startup: '初始', compact: 'compact', resume: '恢复||来源' } as Record<string, string>)[s]
   return v ? t(v) : s
 }
 

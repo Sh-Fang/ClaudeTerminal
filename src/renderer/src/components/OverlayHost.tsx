@@ -154,6 +154,22 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
     else if (e.key === 'Escape') closeModal()
   }
 
+  // Enter 全局兜底：焦点不在文本框（文本框自行处理）时也能直接回车提交，
+  // 比如勾完 CC 复选框或点完「浏览」后；按钮聚焦时交给按钮原生行为
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Enter') return
+      const el = e.target as HTMLElement | null
+      if (el instanceof HTMLButtonElement) return
+      if (el instanceof HTMLInputElement && el.type === 'text') return
+      submitRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const pickCwd = (): void => {
     const cb = cfg.onPickCwd
     if (!cb) return
@@ -174,9 +190,9 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <h2 id="modal-title">{cfg.title}</h2>
-      <p className="sub" id="modal-sub">{cfg.sub}</p>
+      <p className="sub" id="modal-sub" style={cfg.sub ? undefined : { display: 'none' }}>{cfg.sub}</p>
       <div className="field" id="modal-name-field">
-        <label>{t('名称')}</label>
+        <label>{t(cfg.kind === 'new-group' ? '分组名称' : '名称')}</label>
         <input
           id="modal-name"
           ref={nameRef}
@@ -193,7 +209,7 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
       </div>
       {/* cwd 字段：仅 cfg.cwd !== undefined 时可见（新建场景传 ''，重命名场景不传） */}
       <div className="field" id="modal-cwd-field" style={cfg.cwd !== undefined ? undefined : { display: 'none' }}>
-        <label>{t('路径 (cwd)')}</label>
+        <label>{t('项目路径')}</label>
         <div className="row-with-btn">
           <input
             id="modal-cwd"
@@ -226,7 +242,7 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
       </div>
       {/* 首个标签名与 CC 开关相互独立，字段是否出现由调用方 showTabName 决定 */}
       <div className="field" id="modal-tabname-field" style={cfg.showTabName ? undefined : { display: 'none' }}>
-        <label>{t('首个标签名')}</label>
+        <label>{t('标签名')}</label>
         <input
           id="modal-tabname"
           type="text"
@@ -240,10 +256,7 @@ function ModalBody({ cfg }: { cfg: ModalOpts }) {
       <div className="field-check" id="modal-cc-field" style={cfg.showCC ? undefined : { display: 'none' }}>
         <span className="fc-line">
           <input id="modal-cc" type="checkbox" checked={cc} onChange={(e) => setCc(e.target.checked)} />
-          <span>
-            {t('自动启动 Claude Code（首次绑定 UUID，之后')} <code>--resume</code>
-            {t('）')}
-          </span>
+          <span>{t('启动 Claude Code')}</span>
         </span>
       </div>
       <div className="actions">
@@ -327,10 +340,24 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
     cb(selectedIds, inputsOut, togglesOut)
   }
 
+  // Enter = 确认：没选任何行时 ok() 自带空守卫；按钮聚焦时交给按钮原生行为
+  const okRef = useRef(ok)
+  okRef.current = ok
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Enter') return
+      const el = e.target as HTMLElement | null
+      if (el instanceof HTMLButtonElement) return
+      okRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const renderRow = (it: PickItem) => {
     const chosen = sessChosen[it.id]
-    // meta：会话可点时渲染成徽标按钮，否则普通静态文本；entries 上游已过滤为重命名过的会话
-    const canPickSess = !!it.sessionPick && it.sessionPick.entries.length >= 1
+    // meta：会话可点时渲染成徽标按钮，否则普通静态文本；只有 1 条会话时没得选，不渲染成按钮
+    const canPickSess = !!it.sessionPick && it.sessionPick.entries.length > 1
 
     const onCheckChange = (nowChecked: boolean): void => {
       setChecked((prev) => ({ ...prev, [it.id]: nowChecked }))
@@ -359,14 +386,6 @@ function PickBody({ cfg }: { cfg: PickOpts }) {
           setSessChosen((prev) => ({ ...prev, [it.id]: { sid, title: ent?.title ?? sid.slice(0, 8) } }))
           setChecked((prev) => ({ ...prev, [it.id]: true }))
           it.sessionPick!.onPick(sid)
-        },
-        onClear: () => {
-          setSessChosen((prev) => {
-            const n = { ...prev }
-            delete n[it.id]
-            return n
-          })
-          it.sessionPick!.onPick(null) // 清除指定，仍按默认会话恢复该标签（不改勾选态）
         }
       })
     }
@@ -601,7 +620,8 @@ function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
       {opts.title ? <div className="sesspick-head">{opts.title}</div> : null}
       {opts.entries.map((e) => {
         const sel = !!opts.selectedId && e.sessionId === opts.selectedId
-        const meta = `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
+        const src = srcLabel(e.source)
+        const meta = `${escapeHtml(formatTs(e.ts))}${src ? ` · <span class="src">${escapeHtml(src)}</span>` : ''} · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
         return (
           <div
             key={e.sessionId}
@@ -619,21 +639,6 @@ function SessionPickerBody({ opts }: { opts: SessionPickerOpts }) {
           </div>
         )
       })}
-      {opts.onClear ? (
-        <div
-          className="sesspick-item sesspick-clear"
-          onClick={() => {
-            const cb = opts.onClear
-            closeSessionPicker()
-            cb?.()
-          }}
-        >
-          <div className="sess-body">
-            <div className="sess-title">{t('用默认会话恢复')}</div>
-            <div className="sess-meta">{t('清除指定，按标签原活跃会话')}</div>
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }

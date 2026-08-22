@@ -253,13 +253,12 @@ export function HistoryDialog() {
           <div className="mg-head">
             <div>
               <h2 id="hist-title">{t('标签历史')}</h2>
-              <p className="sub">{t('最近 7 天内打开过的标签，按最近使用时间排序。')}</p>
             </div>
             <input
               id="hist-search"
               className="mg-search"
               type="search"
-              placeholder={t('搜索：分组名 / 路径 / 标签名（支持模糊匹配）')}
+              placeholder={t('搜索：分组名 / 路径 / 标签名')}
               autoComplete="off"
               spellCheck={false}
               ref={searchRef}

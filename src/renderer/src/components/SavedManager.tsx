@@ -74,7 +74,8 @@ interface SessPickState {
 }
 
 function sessMetaHtml(e: SessPickEntry): string {
-  return `${escapeHtml(formatTs(e.ts))} · <span class="src">${escapeHtml(srcLabel(e.source))}</span> · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
+  const src = srcLabel(e.source)
+  return `${escapeHtml(formatTs(e.ts))}${src ? ` · <span class="src">${escapeHtml(src)}</span>` : ''} · ${escapeHtml(e.sessionId.slice(0, 8))}${e.isDefault ? ` · <span class="cur">${t('默认')}</span>` : ''}`
 }
 
 function SessPickFloat(props: {
@@ -596,7 +597,6 @@ export function SavedManager() {
   }
 
   const q = searchQuery.trim()
-  let subText = ''
   let placeholder = ''
   let rowsNode: ReactNode = null
   let empty: { title: string; sub: string } | null = null
@@ -604,8 +604,7 @@ export function SavedManager() {
 
   if (isOpen) {
     if (activeTab === 'workspaces') {
-      subText = t('整份工作区快照：点击展开分组，右键可重命名 / 恢复 / 删除。')
-      placeholder = t('搜索：工作区名（支持模糊匹配）')
+      placeholder = t('搜索：工作区名')
       const all = getManageWorkspaceViews()
       const list: Array<{ w: ManageWorkspaceView; hl: Range[][] }> = q
         ? all
@@ -626,8 +625,7 @@ export function SavedManager() {
         initials = list.map(({ w }) => nameInitial(w.name))
       }
     } else {
-      subText = t('按名称自动排序。点击展开标签，右键可重命名 / 恢复 / 删除。')
-      placeholder = t('搜索：分组名 / 路径 / 标签名 / 会话名（支持模糊匹配）')
+      placeholder = t('搜索：分组名 / 路径 / 标签名 / 会话名')
       const list = matchGroups(getManageGroupViews(), q)
       if (list.length === 0) {
         empty = {
@@ -665,9 +663,6 @@ export function SavedManager() {
           <div className="mg-head">
             <div>
               <h2 id="mg-title">{t('分组/工作区管理')}</h2>
-              <p className="sub" id="mg-sub">
-                {subText}
-              </p>
             </div>
             <input
               id="mg-search"

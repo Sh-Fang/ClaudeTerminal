@@ -28,3 +28,6 @@ Thumbs.db
 
 # smoke-test artifact
 .smoke-electron.json
+
+# claude code 鏈�鍦伴厤缃�锛堝惈鎸囧悜鏈�鏈虹殑杞�閾撅級
+.claude/

@@ -189,8 +189,8 @@ export function SessionInfoBar() {
     const tip =
       hasCtx && u!.ctxTokens != null
         ? t('上下文 {0} / {1} tokens', u!.ctxTokens!.toLocaleString(), (u!.ctxWindow ?? 0).toLocaleString()) +
-          (u!.ctxApprox ? t('（窗口为估算，未读到会话快照）') : '')
-        : t('新会话，等待 cc 上报上下文用量')
+          (u!.ctxApprox ? t('（估算值）') : '')
+        : t('新会话，暂无上下文用量')
     if (usageStyle === 'ring') {
       const R = 6
       const C = 2 * Math.PI * R
@@ -246,7 +246,7 @@ export function SessionInfoBar() {
         <span
           key="effort"
           className="sbi-effort"
-          title={t('点击切换思考强度 (effort)')}
+          title={t('点击切换思考强度')}
           onClick={(e) => {
             e.stopPropagation()
             openEffortMenu(e.currentTarget)

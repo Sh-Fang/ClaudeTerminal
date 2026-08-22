@@ -87,7 +87,6 @@ export interface SessionPickerOpts {
   entries: SessPickEntry[]
   selectedId?: string
   onPick: (sessionId: string) => void
-  onClear?: () => void
   title?: string
 }
 

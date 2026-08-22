@@ -129,6 +129,15 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   )
   ipcMain.handle('sysenv:readDisableAutoupdater', () => readUserEnv('DISABLE_AUTOUPDATER'))
 
+  // 开机自启：系统登录项（注册表 Run 键）即唯一事实源，不落 settings.json
+  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('app:setAutoLaunch', (_e, enabled: boolean) => {
+    // 开发模式下登录项会指向 electron.exe，写了也没意义
+    if (!app.isPackaged) return { ok: false }
+    app.setLoginItemSettings({ openAtLogin: !!enabled })
+    return { ok: true }
+  })
+
   ipcMain.handle('update:check', () => checkForUpdate())
   ipcMain.handle('update:install', () => { quitAndInstallUpdate(); return true })
   // 下载进度/完成/出错 → 广播所有窗口（设置面板可能开在任一窗口）

@@ -83,14 +83,14 @@ function readToken(): { token: string } | { error: string } {
   try {
     raw = readFileSync(CRED_FILE(), 'utf8')
   } catch {
-    return { error: '未找到 cc 凭据，请先在 cc 内登录' }
+    return { error: '未找到登录凭据，请先在 Claude Code 里登录' }
   }
   try {
     const oauth = (JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } })
       .claudeAiOauth
-    if (!oauth?.accessToken) return { error: '凭据缺少 accessToken' }
+    if (!oauth?.accessToken) return { error: '登录凭据无效，请在 Claude Code 里重新登录' }
     if (typeof oauth.expiresAt === 'number' && Date.now() > oauth.expiresAt) {
-      return { error: 'token 已过期，在 cc 内发一条消息会自动刷新' }
+      return { error: '登录状态已过期，在 Claude Code 里发一条消息即可自动刷新' }
     }
     return { token: oauth.accessToken }
   } catch {
@@ -224,7 +224,7 @@ async function fetchFresh(): Promise<ClaudeUsage> {
   const sevenDay = overall || wk.scoped
   const sevenDayModel = wk.scoped
   if (!fiveHour && !sevenDay) {
-    return fail('返回里没有用量字段', body.slice(0, 300))
+    return fail('未获取到用量数据', body.slice(0, 300))
   }
 
   debugLog(
@@ -249,7 +249,7 @@ let lastApiFailAt = 0
 async function fetchApiUsage(force: boolean): Promise<ClaudeUsage> {
   if (!force && cache && Date.now() - cache.fetchedAt < TTL_MS) return cache
   if (!force && Date.now() - lastApiFailAt < FAIL_BACKOFF_MS) {
-    return { ok: false, error: 'usage API 冷却中', fetchedAt: Date.now() }
+    return { ok: false, error: '刷新太频繁，稍后自动重试', fetchedAt: Date.now() }
   }
   if (inflight) return inflight
   inflight = fetchFresh()

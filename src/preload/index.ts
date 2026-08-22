@@ -250,6 +250,8 @@ export interface TermBridge {
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
   readDisableAutoupdater(): Promise<string | null>
   checkUpdate(): Promise<UpdateCheckResult>
+  getAutoLaunch(): Promise<boolean>
+  setAutoLaunch(enabled: boolean): Promise<{ ok: boolean }>
   installUpdate(): Promise<boolean>
   onUpdateEvent(cb: (e: UpdateEvent) => void): () => void
   winMinimize(): void
@@ -373,6 +375,8 @@ const api: TermBridge = {
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),
   readDisableAutoupdater: () => ipcRenderer.invoke('sysenv:readDisableAutoupdater'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('app:setAutoLaunch', enabled),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   onUpdateEvent: (cb) => {
     const h = (_e: IpcRendererEvent, ev: UpdateEvent): void => cb(ev)

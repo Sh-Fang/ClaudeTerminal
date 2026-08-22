@@ -873,6 +873,8 @@ button.saved-toggle:hover { color: var(--ink); }
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
+  /* 高度封顶：条数多时固定在这个高度内滚动（滚动条隐藏），不随内容无限拉长 */
+  max-height: 384px;
 }
 .session-menu #sessList::-webkit-scrollbar { width: 0; height: 0; }
 @keyframes pop {
@@ -889,7 +891,7 @@ button.saved-toggle:hover { color: var(--ink); }
 }
 .sess-item {
   display: flex; align-items: flex-start; gap: 10px;
-  padding: 9px 10px; border-radius: var(--r-sm);
+  padding: 5px 10px; border-radius: var(--r-sm);
   cursor: pointer; transition: background 0.1s;
 }
 .sess-item:hover { background: var(--canvas-soft); }
@@ -910,9 +912,13 @@ button.saved-toggle:hover { color: var(--ink); }
   font-size: 13px; color: var(--ink); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sess-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 2px; }
+.sess-meta { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 1px; }
 .sess-meta .src { color: var(--cyan-deep); }
 .sess-item.current .sess-meta .cur { color: var(--violet); font-weight: 500; }
+/* 会话菜单：标题一行；第二行 时间 / 会话ID / 状态 三栏均分（左/中/右对齐）填满整行 */
+#sessionMenu .sess-meta { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+#sessionMenu .sess-meta > span:nth-child(2) { text-align: center; }
+#sessionMenu .sess-meta > span:nth-child(3) { text-align: right; }
 
 /* 会话选择浮层：点「N 会话」徽标弹出的小列表（两个恢复入口共用）。
    内部行复用 .sess-item / .sdot / .sess-title / .sess-meta 的外观。 */
@@ -941,8 +947,6 @@ button.saved-toggle:hover { color: var(--ink); }
   padding: 4px 8px 6px;
 }
 .sesspick-item.selected { background: var(--canvas-soft); outline: 1px solid var(--violet); }
-.sesspick-clear { border-top: 1px solid var(--hairline); margin-top: 4px; padding-top: 10px; }
-.sesspick-clear .sess-title { color: var(--mute); font-weight: 400; }
 .menu-foot {
   border-top: 1px solid var(--hairline);
   margin-top: 4px; padding: 8px 10px 6px;

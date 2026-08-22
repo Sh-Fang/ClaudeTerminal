@@ -24,7 +24,7 @@ import {
   TAB_DND_MIME
 } from '../controller'
 import { openSettings, openSavedManager, showMemoTip, hideMemoTip } from '../state/overlays'
-import { formatTs, sessionTitle, srcLabel, statusLabel } from '../lib/format'
+import { formatTs, midEllipsis, sessionTitle, srcLabel, statusLabel } from '../lib/format'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
 import type { TerminalTab, SessionRecord, TabStatus } from '../terminal-tab'
@@ -130,12 +130,11 @@ export function Toolbar() {
   // 会话栈下拉菜单：垂直模式挂 .toolbar、水平模式挂 .tabstrip
   const sessionMenu = (
     <div className={'session-menu' + (menuOpen ? ' open' : '')} id="sessionMenu">
-      <div className="menu-eyebrow">{t('本标签的会话（栈顶 = 当前）')}</div>
       <div id="sessList">
         {tab &&
           (tab.sessions.length === 0 ? (
             <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--mute)' }}>
-              {t('没有会话记录。激活标签后 cc 会自动创建首个会话。')}
+              {t('没有会话记录。激活标签后 Claude Code 会自动创建首个会话。')}
             </div>
           ) : (
             // 倒序展示，栈顶在最上面
@@ -158,16 +157,19 @@ export function Toolbar() {
                 >
                   <span className="sdot"></span>
                   <div className="sess-body">
-                    <div className="sess-title">{sessionTitle(s, tab.sessions)}</div>
+                    {/* 超长标题保留头尾、中间省略 */}
+                    <div className="sess-title">{midEllipsis(sessionTitle(s, tab.sessions))}</div>
+                    {/* 三栏均分：时间 / 会话ID / 状态（当前 > 来源标注；clear 来源为空） */}
                     <div className="sess-meta">
-                      {formatTs(s.lastTs || s.createdAt)} · <span className="src">{srcLabel(s.source)}</span> ·{' '}
-                      {s.sessionId.slice(0, 8)}
-                      {isCurrent && (
-                        <>
-                          {' '}
-                          · <span className="cur">{t('当前')}</span>
-                        </>
-                      )}
+                      <span>{formatTs(s.lastTs || s.createdAt)}</span>
+                      <span>{s.sessionId.slice(0, 8)}</span>
+                      <span>
+                        {isCurrent ? (
+                          <span className="cur">{t('当前')}</span>
+                        ) : (
+                          <span className="src">{srcLabel(s.source)}</span>
+                        )}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -176,14 +178,7 @@ export function Toolbar() {
           ))}
       </div>
       <div className="menu-foot">
-        <span className="dot">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </span>
-        <span>
-          {t('终端里')} <code>/clear</code> {t('会自动在此新增一条会话')}
-        </span>
+        <span>{t('本标签的会话')}</span>
       </div>
     </div>
   )
@@ -396,7 +391,7 @@ export function Toolbar() {
             className={'start-cc-btn' + (pureNonCc ? ' show' : '')}
             id="startCcBtn"
             type="button"
-            title={t('在当前 pwsh 会话中启动 Claude Code（等效命令 cct）')}
+            title={t('在当前标签启动 Claude Code')}
             onClick={() => startCcInActiveTab()}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

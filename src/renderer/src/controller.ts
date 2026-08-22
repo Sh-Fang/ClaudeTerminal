@@ -616,7 +616,7 @@ export async function newGroup(): Promise<void> {
   openModal({
     kind: 'new-group',
     title: t('新建分组'),
-    sub: t('分组以路径为单位。组内可挂多个标签。'),
+    sub: '',
     name: t('新分组'),
     cwd: prefilledCwd,
     showCC: true,
@@ -692,7 +692,7 @@ export async function promptNewTabInGroup(groupId: string): Promise<void> {
   openModal({
     kind: 'new-tab',
     title: t('在「{0}」新建标签', g.name),
-    sub: t('同分组共用 cwd。'),
+    sub: '',
     name: nm,
     cwd: undefined,
     showCC: true,
@@ -722,7 +722,7 @@ export function addTabToSavedGroup(savedId: string): void {
   openModal({
     kind: 'new-tab',
     title: t('在「{0}」新增标签页', s.name),
-    sub: t('确认后会在后台打开该分组和新标签页，并自动保存到该分组。'),
+    sub: t('将在后台打开并保存到该分组。'),
     name: String.fromCharCode(65 + Math.min(25, s.snapshot.tabs.length)),
     cwd: undefined,
     showCC: true,
@@ -926,7 +926,7 @@ function renameGroup(groupId: string): void {
   openModal({
     kind: 'rename',
     title: t('重命名分组'),
-    sub: t('只改名字，cwd 与标签保持不变。'),
+    sub: '',
     name: g.name,
     okLabel: t('保存'),
     onOk: (v) => {
@@ -1232,9 +1232,8 @@ export function openRestoreSelect(savedId: string): void {
       sessionPick: inLive
         ? undefined
         : {
-            // 只列重命名过的会话，默认名「会话 N」不参与选择；仍可用"用默认会话恢复"回退
+            // 列出全部会话（含默认名「会话 N」），恢复哪个由用户自己选
             entries: st.sessions
-              .filter((se) => se.userTitle)
               .map((se) => ({
                 sessionId: se.sessionId,
                 title: sessionTitle(se, st.sessions),
@@ -1253,16 +1252,15 @@ export function openRestoreSelect(savedId: string): void {
     id: PICK_ACTION_NEW_BLANK,
     label: '',
     defaultChecked: false,
-    inputPlaceholder: t('+ 新建空白标签（直接输入名字）'),
+    inputPlaceholder: t('+ 新建标签页'),
     sideToggle: {
       defaultChecked: settings.defaults.autoLaunchCC,
       label: t('启动 CC'),
-      title: t('新建标签是否自动启动 Claude Code；默认值来自「设置 → 新建默认值」')
+      title: t('新建标签是否自动启动 Claude Code；默认值来自「设置 → 通用」')
     }
   })
   openPickTabs({
-    title: t('恢复「{0}」的标签', s.name),
-    sub: t('勾选要恢复的标签。已在当前分组中的标签会被跳过。'),
+    title: t('恢复标签'),
     items,
     okLabel: t('恢复'),
     onOk: (ids, inputs, toggles) =>
@@ -1326,7 +1324,7 @@ export function renameSaved(savedId: string): void {
   openModal({
     kind: 'rename',
     title: t('重命名已保存的分组'),
-    sub: t('只改保存项的名字。'),
+    sub: '',
     name: s.name,
     okLabel: t('保存'),
     onOk: (v) => {
@@ -1414,7 +1412,7 @@ function renameSession(sessionId: string, forceText?: string): void {
   openModal({
     kind: 'rename',
     title: t('重命名会话'),
-    sub: t('不填就用默认名「会话 N」（N 按创建顺序）。右键菜单可「清除自定义标题」回到默认名。'),
+    sub: t('留空则恢复默认名。'),
     name: current,
     okLabel: t('保存'),
     onOk: (v) => apply(v.name)
@@ -1434,8 +1432,8 @@ async function deleteSession(sessionId: string): Promise<void> {
   confirmDialog({
     title: t('删除会话「{0}」？', title),
     message: wasActive
-      ? t('这是当前激活的会话，删除后会切到栈顶并重启 shell。<br/>已在磁盘的 cc 历史不会被删，只是从此标签的栈里移除。')
-      : t('只把该会话从栈里移除。磁盘上的 cc 历史不受影响。'),
+      ? t('这是当前激活的会话，删除后会切回最近的会话并重启 shell。<br/>会话记录仍保留在磁盘，只是不再显示在这个标签里。')
+      : t('只从这个标签的列表里移除，磁盘上的会话记录不受影响。'),
     okLabel: t('删除'),
     onOk: () => {
       tab.sessions.splice(idx, 1)
@@ -1469,7 +1467,7 @@ export function openGroupCtx(groupId: string, x: number, y: number): void {
   if (!g) return
   showCtxMenu(
     [
-      { label: t('新建会话标签'), icon: icon('plus'), act: () => promptNewTabInGroup(g.id) },
+      { label: t('新建标签'), icon: icon('plus'), act: () => promptNewTabInGroup(g.id) },
       { label: t('重命名分组'), icon: icon('edit'), act: () => renameGroup(g.id) },
       { sep: true },
       { label: t('保存分组'), icon: icon('save'), act: () => saveGroup(g.id) },
