@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
 import { useAppStore } from '../state/store'
-import { useOverlays, closeSavedManager, confirmDialog, showCtxMenu, type CtxItem } from '../state/overlays'
+import { useOverlays, closeSavedManager, confirmDialog, showCtxMenu, showMemoTip, hideMemoTip, type CtxItem } from '../state/overlays'
 import { escapeHtml, formatTs, shortPath, fuzzySearch, highlightRanges, nameInitial, srcLabel, type Range } from '../lib/format'
 import { getManageGroupViews, getManageWorkspaceViews, savedManagerApi } from '../controller'
 import type { ManageGroupView, ManageTabView, ManageWorkspaceView } from '../app-types'
@@ -433,6 +433,20 @@ export function SavedManager() {
     return (
       <Fragment key={tab.id}>
         <div className="mg-tab" data-saved={g.id} data-tab={tab.id} onContextMenu={(e) => onTabCtx(e, g, tab)}>
+          {tab.memo != null && (
+            // 备注便签：hover 气泡预览，与侧栏同款；管理页只展示不编辑
+            <span
+              className="memo-ic"
+              onClick={(e) => e.stopPropagation()}
+              onMouseEnter={(e) => {
+                if (!tab.memo?.trim()) return
+                const r = e.currentTarget.getBoundingClientRect()
+                showMemoTip(tab.memo, r.left, r.bottom + 6)
+              }}
+              onMouseLeave={() => hideMemoTip()}
+              dangerouslySetInnerHTML={{ __html: icon('sticky-note', { size: 12 }) }}
+            />
+          )}
           <span
             className="mg-tab-name"
             data-rename-tab={`${g.id}::${tab.id}`}

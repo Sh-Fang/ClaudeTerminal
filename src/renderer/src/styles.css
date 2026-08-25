@@ -1797,6 +1797,8 @@ button.saved-toggle:hover { color: var(--ink); }
   max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* 历史行：名称 + 备注便签图标同行，图标不参与截断 */
+.mg-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* 搜索命中高亮：分组/工作区/历史 三个面板共用，复用告警软/深色（明暗自适应） */
 mark.hl {
   background: var(--warning-soft);

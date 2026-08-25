@@ -1927,7 +1927,8 @@ export function getManageGroupViews(): ManageGroupView[] {
             isActive: se.sessionId === activeId
           })),
           savedAt: t.savedAt,
-          lastTs: lastTsOf(t)
+          lastTs: lastTsOf(t),
+          memo: t.memo
         }
       })
     }))

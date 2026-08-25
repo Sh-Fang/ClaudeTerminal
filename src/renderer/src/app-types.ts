@@ -44,6 +44,7 @@ export interface ManageTabView {
   sessions: ManageSessionView[]
   savedAt?: string
   lastTs?: string
+  memo?: string
 }
 
 export interface ManageGroupView {

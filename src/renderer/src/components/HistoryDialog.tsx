@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { icon } from '../svg-icons'
 import { t } from '../i18n'
-import { useOverlays, closeHistory, confirmDialog } from '../state/overlays'
+import { useOverlays, closeHistory, confirmDialog, showMemoTip, hideMemoTip } from '../state/overlays'
 import { escapeHtml, formatTs, shortPath, fuzzySearch, highlightRanges, type Range } from '../lib/format'
 import { restoreFromHistory } from '../controller'
 import type { HistoryEntry } from '../app-types'
@@ -175,12 +175,28 @@ export function HistoryDialog() {
         <div className="mg-head-row">
           <span className="mg-folder" dangerouslySetInnerHTML={{ __html: icon('folder') }} />
           <div className="mg-info">
-            <div
-              className="mg-name"
-              dangerouslySetInnerHTML={{
-                __html: `${highlightRanges(e.groupName, hl[0])} <span class="mg-group-name">· ${highlightRanges(e.tabName, hl[1])}</span>`
-              }}
-            />
+            <div className="mg-name-line">
+              <div
+                className="mg-name"
+                dangerouslySetInnerHTML={{
+                  __html: `${highlightRanges(e.groupName, hl[0])} <span class="mg-group-name">· ${highlightRanges(e.tabName, hl[1])}</span>`
+                }}
+              />
+              {e.memo != null && (
+                // 备注便签：hover 气泡预览，与侧栏同款；点击不触发行恢复
+                <span
+                  className="memo-ic"
+                  onClick={(ev) => ev.stopPropagation()}
+                  onMouseEnter={(ev) => {
+                    if (!e.memo?.trim()) return
+                    const r = ev.currentTarget.getBoundingClientRect()
+                    showMemoTip(e.memo, r.left, r.bottom + 6)
+                  }}
+                  onMouseLeave={() => hideMemoTip()}
+                  dangerouslySetInnerHTML={{ __html: icon('sticky-note', { size: 12 }) }}
+                />
+              )}
+            </div>
             <div className="mg-meta">
               {e.cwd ? shortPath(e.cwd) : <span className="path-placeholder">{t('(默认目录)')}</span>}
               {' · '}
