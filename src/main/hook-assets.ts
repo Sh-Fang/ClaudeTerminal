@@ -36,10 +36,14 @@ process.stdin.on('end', () => {
       const sz = cw.context_window_size || 0;
       pct = sz > 0 ? Math.round(tokens / sz * 100) : 0;
     }
-    const raw_model = (j.model && (j.model.display_name || j.model.id)) || '';
+    const raw_id = (j.model && j.model.id) || '';
+    const raw_label = (j.model && (j.model.display_name || j.model.id)) || '';
     const out = {
       sessionId: sid,
-      model: String(raw_model).replace(/\\s*\\([^)]*context[^)]*\\)/i, '').trim(),
+      modelId: String(raw_id).trim(),
+      modelLabel: String(raw_label).replace(/\\s*\\([^)]*context[^)]*\\)/i, '').trim(),
+      // 旧版 statusline 字段保留，方便旧读取器和已有状态文件平滑过渡。
+      model: String(raw_label).replace(/\\s*\\([^)]*context[^)]*\\)/i, '').trim(),
       // 当前思考强度（low/medium/high/xhigh/max）。cc 仅在模型支持 effort 时给该字段，
       // 不支持时为空串 → 渲染层据此隐藏 effort 芯片。
       effort: (j.effort && j.effort.level) || '',

@@ -38,6 +38,12 @@ import type {
   ManageWorkspaceView,
   HistoryEntry
 } from './app-types'
+import {
+  isKnownModel,
+  isSafeModelValue,
+  prettyModelLabel,
+  type LearnedModel
+} from '../../shared/claude-models'
 
 export type {
   GroupView,
@@ -147,8 +153,29 @@ let activeTabId: string | null = null
 let saveDebounceTimer: number | null = null
 let settings: Settings = DEFAULT_SETTINGS
 let settingsSaveTimer: number | null = null
+
 export function getSettings(): Settings {
   return settings
+}
+
+export function getLearnedModels(): LearnedModel[] {
+  return settings.learnedModels ?? []
+}
+
+// cc statusline 报的当前会话模型即「set 成功」的证据：内置候选里没有就补进列表并落盘，
+// 两处模型选择器随即能选到它（如内置只到 opus-4-8，用户手动切到了 opus-5）。
+export function learnModelFromSession(id: string, label?: string): void {
+  if (!isSafeModelValue(id)) return
+  const learned = getLearnedModels()
+  if (isKnownModel(id, learned)) return
+  const entry: LearnedModel = {
+    id,
+    label: label?.trim() || prettyModelLabel(id),
+    learnedAt: new Date().toISOString()
+  }
+  settings = { ...settings, learnedModels: [entry, ...learned] }
+  persistSettings()
+  refreshUI()
 }
 
 function pushFloaterCounts(): void {
@@ -274,10 +301,10 @@ export function getToolbarCtx(): { tab: TerminalTab; groupName: string; groupCwd
   return { tab: ctx.tab, groupName: ctx.group.name, groupCwd: ctx.group.cwd }
 }
 
-export function getSessionInfoCtx(): { sessionId: string | null; cwd: string } | null {
+export function getSessionInfoCtx(): { sessionId: string | null; cwd: string; ptyId: number | null; tabId: string } | null {
   const ctx = activeContext()
   if (!ctx) return null
-  return { sessionId: ctx.tab.activeSessionId ?? null, cwd: ctx.group.cwd }
+  return { sessionId: ctx.tab.activeSessionId ?? null, cwd: ctx.group.cwd, ptyId: ctx.tab.ptyId, tabId: ctx.tab.id }
 }
 
 // 轻量持久化：只写已保存条目，当前打开的分组不落盘，随窗口关闭即销毁。
@@ -414,8 +441,13 @@ function ccGateRelease(tabId: string): void {
   if (next) next()
 }
 
+// 「重新加载标签」重建 PTY 后要恢复手动起的 cc（autoLaunchCC=false 但 reload 前 cc 正活跃）：
+// 这些 tabId 的下一次 onPtyStarted 破例走一次 launchCC，用完即消费。
+const resumeCcOnNextStart = new Set<string>()
+
 async function launchCC(tab: TerminalTab): Promise<void> {
-  if (!tab.autoLaunchCC) return
+  const forced = resumeCcOnNextStart.delete(tab.id)
+  if (!tab.autoLaunchCC && !forced) return
   if (tab.ptyId == null) return
   await ccGateAcquire(tab.id)
   // 排队期间 tab 可能已关闭 / pty 已退出
@@ -457,9 +489,10 @@ async function launchCC(tab: TerminalTab): Promise<void> {
     const newId = crypto.randomUUID()
     tab.activeSessionId = newId
     scheduleSave()
-    // 新会话带 --model；--resume 分支刻意不带，避免覆盖旧会话原有模型。白名单校验防注入。
+    // 新会话带 --model；--resume 分支刻意不带，避免覆盖旧会话原有模型。
+    // 统一走 isSafeModelValue 校验后再 quoteShell，支持 [1m] 等完整 id，同时防注入。
     const model = settings.defaults.model
-    const modelArg = /^[A-Za-z0-9._-]+$/.test(model) ? ` --model ${model}` : ''
+    const modelArg = isSafeModelValue(model) ? ` --model ${quoteShell(model)}` : ''
     cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quoteShell(tab.name)}${modelArg}${settingsArg}`
   }
   window.term.send(tab.ptyId, cmd + '\r')
@@ -850,6 +883,64 @@ export function closeTab(tabId: string): void {
       (isLast ? t('<br/>这是分组「{0}」的最后一个标签，关闭后<b>分组也会被关闭</b>。', escapeHtml(group.name)) : ''),
     okLabel: t('关闭标签'),
     onOk: finalize
+  })
+}
+
+// ── 重新加载标签 ────────────────────────────────────────────────
+// 等价于「就地关掉再原样恢复」：标签本身、分组、顺序、会话栈、备注、窗口归属全部保留，
+// 只把 PTY 连同其中的前台进程换成新的 —— 于是新 shell 重新继承系统环境变量，
+// 新起的 cc 也重新读 ~/.claude 配置（改完配置不必手动 Ctrl+C 再敲 --resume）。
+// 刻意不走 closeTab + 历史恢复：那会换 tabId、改标签顺序、重走 tabRelease/tabClaim，
+// 副窗口最后一个标签还会把窗口关掉。
+const reloadingTabs = new Set<string>()
+
+async function doReloadTab(tabId: string): Promise<void> {
+  const ctx = findTab(tabId)
+  if (!ctx || reloadingTabs.has(tabId)) return
+  const { tab } = ctx
+  // reload 前 cc 活跃（含手敲 cct 起的）→ 新 PTY 里按原 activeSessionId 续上
+  if (tab.autoLaunchCC || tab.ccActive) resumeCcOnNextStart.add(tab.id)
+  reloadingTabs.add(tabId)
+  // 进程态全部归零：旧 PTY 的 busy/报错说明和 cc 活跃标记都不该带到新进程
+  tab.status = 'idle'
+  tab.note = undefined
+  tab.ccActive = false
+  refreshUI()
+  try {
+    await tab.reloadPty()
+  } catch (e) {
+    console.error('[reload] failed', e)
+  } finally {
+    reloadingTabs.delete(tabId)
+    // 重载期间标签可能已被关掉/拖到别的窗口：重新定位再决定收尾
+    const after = findTab(tabId)
+    if (after) recordTabHistory(after.tab, after.group.name, true)
+    else resumeCcOnNextStart.delete(tabId)
+    refreshUI()
+  }
+}
+
+export function reloadTab(tabId: string): void {
+  const ctx = findTab(tabId)
+  if (!ctx) return
+  if (reloadingTabs.has(tabId)) {
+    toast(t('标签「{0}」正在重新加载', ctx.tab.name))
+    return
+  }
+  const { tab } = ctx
+  // 空闲的纯 shell 直接重来；正在跑东西（cc 回合中/待决策，或前台命令）先确认，重载会打断它
+  const busyish = tab.status === 'busy' || tab.status === 'attention'
+  if (!busyish) {
+    void doReloadTab(tabId)
+    return
+  }
+  confirmDialog({
+    title: t('重新加载标签「{0}」？', tab.name),
+    message: isCcTab(tab)
+      ? t('当前有正在进行的 Claude 回合，重新加载会<b>中断</b>它。<br/>标签与会话记录保留，之后会用当前会话继续。')
+      : t('当前有正在运行的命令，重新加载会<b>中断</b>它。'),
+    okLabel: t('重新加载'),
+    onOk: () => void doReloadTab(tabId)
   })
 }
 
@@ -1538,6 +1629,8 @@ export function openTabCtx(tabId: string, x: number, y: number): void {
         ? { label: t('添加备注'), icon: icon('sticky-note'), act: () => openTabMemoEditor(tabId, x, y) }
         : { label: t('删除备注'), icon: icon('sticky-note'), danger: true, act: () => deleteTabMemo(tabId) },
       { label: t('在本组新建标签'), icon: icon('plus'), act: () => promptNewTabInGroup(ctx.group.id) },
+      // 环境变量/cc 配置改完后就地换个新 PTY 生效，标签与会话都不动
+      { label: t('重新加载标签页'), icon: icon('rotate-ccw'), act: () => reloadTab(tabId) },
       // 刻意不传坐标：主进程会把「落点在现有窗口内」的带坐标请求当误触发拦掉
       { label: t('移到新窗口'), icon: icon('external-link'), act: () => void moveTabToNewWindow(tabId) },
       { sep: true },
@@ -1871,6 +1964,7 @@ function injectSlash(tab: TerminalTab, line: string): void {
 
 // /model 带参直接切；cc 会存成新会话默认，切一次即持久。
 export function switchActiveModel(arg: string, label: string): void {
+  if (!isSafeModelValue(arg)) return
   const tab = activeCcTabForInject()
   if (!tab) return
   injectSlash(tab, '/model ' + arg)
@@ -2076,6 +2170,8 @@ type TabTransferPayload = Parameters<Parameters<typeof window.term.onTabImport>[
 // 源端：打包 tab 完整状态 + serialize 终端画面 + 本地摘除（不杀 PTY）。
 // 时序关键：先 ptyHold（主进程开始暂存该 PTY 输出）再 serialize——快照与队列无缝衔接不丢字节。
 async function exportTabForTransfer(tabId: string): Promise<TabTransferPayload | null> {
+  // 重载正在换 PTY 时禁止 detach/adopt；否则目标窗口可能接到已经失效的旧 ptyId
+  if (reloadingTabs.has(tabId)) return null
   const ctx = findTab(tabId)
   if (!ctx) return null
   const { group, tab } = ctx
@@ -2163,6 +2259,10 @@ function importTransferredTab(p: TabTransferPayload): void {
 
 // UI 入口①：拖出窗口外松手 / 右键「移到新窗口」。松手点落在现有窗口内时主进程静默忽略。
 export async function moveTabToNewWindow(tabId: string, screenX?: number, screenY?: number): Promise<void> {
+  if (reloadingTabs.has(tabId)) {
+    toast(t('标签「{0}」正在重新加载', findTab(tabId)?.tab.name ?? tabId))
+    return
+  }
   try {
     const res = await window.term.tabMoveToWindow({ tabId, screenX, screenY })
     if (!res.ok && res.error && res.error !== 'inside window' && res.error !== 'migrating') {

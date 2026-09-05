@@ -3,29 +3,16 @@ import type { ReactNode } from 'react'
 import { useAppStore } from '../state/store'
 import { busOn } from '../state/bus'
 import { showCtxMenu, toast } from '../state/overlays'
-import { getSessionInfoCtx, getSettings, switchActiveModel, switchActiveEffort } from '../controller'
+import {
+  getLearnedModels,
+  getSessionInfoCtx,
+  getSettings,
+  learnModelFromSession,
+  switchActiveModel,
+  switchActiveEffort
+} from '../controller'
 import { t } from '../i18n'
-
-// 模型芯片候选，模型上新/退役时改这里。arg = 注入给 `/model` 的实参（alias 或完整 id）；
-// match = 用当前模型名（小写）子串匹配给当前项打勾。
-export interface ModelRow { label: string; arg: string; match: string }
-export const MODEL_GROUPS: { family: string; rows: ModelRow[] }[] = [
-  { family: 'Opus', rows: [
-    { label: 'Opus 4.8', arg: 'claude-opus-4-8', match: 'opus 4.8' },
-    { label: 'Opus 4.7', arg: 'claude-opus-4-7', match: 'opus 4.7' },
-    { label: 'Opus 4.6', arg: 'claude-opus-4-6', match: 'opus 4.6' }
-  ] },
-  { family: 'Sonnet', rows: [
-    { label: 'Sonnet 4.6', arg: 'claude-sonnet-4-6', match: 'sonnet 4.6' },
-    { label: 'Sonnet 4.5', arg: 'claude-sonnet-4-5', match: 'sonnet 4.5' }
-  ] },
-  { family: 'Haiku', rows: [
-    { label: 'Haiku 4.5', arg: 'haiku', match: 'haiku' }
-  ] },
-  { family: 'Fable', rows: [
-    { label: 'Fable 5', arg: 'fable', match: 'fable' }
-  ] }
-]
+import { isRowActive, modelGroupsWithLearned } from '../../../shared/claude-models'
 
 // 思考强度候选；cc 仅在模型支持 effort 时上报，芯片会自动隐藏
 const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -64,8 +51,8 @@ function cap(s: string): string {
 interface Snap {
   hasActive: boolean // 有活跃会话 → 展示 ctx / 模型骨架
   usage: SessionUsage | null
-  // 上一次成功拿到的模型名，cc 还没上报 usage 时兜底
-  stickyModel: string | null
+  // 上一次成功拿到的模型身份，cc 还没上报 usage 时兜底
+  stickyModel: { id?: string; label?: string } | null
   branch: string | null
 }
 
@@ -79,7 +66,7 @@ export function SessionInfoBar() {
     let lastKey = ''
     let branch: string | null = null
     let usage: SessionUsage | null = null
-    let stickyModel: string | null = null
+    let stickyModel: { id?: string; label?: string } | null = null
     let tick = 0
     let polling = false
 
@@ -92,13 +79,14 @@ export function SessionInfoBar() {
         setSnap({ hasActive: false, usage: null, stickyModel, branch: null })
         return
       }
-      const key = `${a.sessionId ?? ''}::${a.cwd}`
+      const key = `${a.tabId}::${a.ptyId ?? ''}::${a.sessionId ?? ''}::${a.cwd}`
       const changed = key !== lastKey
       if (changed) {
         lastKey = key
         tick = 0
         branch = null
         usage = null
+        stickyModel = null
       }
       try {
         if (changed || tick % BRANCH_EVERY === 0) {
@@ -107,7 +95,11 @@ export function SessionInfoBar() {
         if (a.sessionId) {
           const u = await window.term.claudeSessionUsage(a.sessionId)
           usage = u.exists ? u : null
-          if (u.exists && u.modelLabel) stickyModel = u.modelLabel
+          if (u.exists && (u.model || u.modelLabel)) {
+            stickyModel = { id: u.model, label: u.modelLabel }
+            // cc 正跑着这个模型 = 用户切成功了：内置候选里没有就补进列表（如 opus-5）
+            if (u.model) learnModelFromSession(u.model, u.modelLabel)
+          }
         } else {
           usage = null
         }
@@ -117,7 +109,7 @@ export function SessionInfoBar() {
       tick++
       // poll 期间可能又切了标签；仍是同一目标才绘制，避免串台
       const now = getSessionInfoCtx()
-      if (now && `${now.sessionId ?? ''}::${now.cwd}` === key) {
+      if (now && `${now.tabId}::${now.ptyId ?? ''}::${now.sessionId ?? ''}::${now.cwd}` === key) {
         setSnap({ hasActive: !!now.sessionId, usage, stickyModel, branch })
       }
     }
@@ -144,15 +136,17 @@ export function SessionInfoBar() {
   }, [])
 
   const openModelMenu = (anchor: HTMLElement): void => {
-    const cur = (snap.usage?.modelLabel ?? snap.stickyModel ?? '').toLowerCase()
+    const activeId = snap.usage?.model ?? snap.stickyModel?.id
+    const activeLabel = snap.usage?.modelLabel ?? snap.stickyModel?.label
     const r = anchor.getBoundingClientRect()
-    // showCtxMenu 会把菜单夹在视口内，芯片贴底时自动向上弹；各家族间插分隔线
+    // showCtxMenu 会把菜单夹在视口内，芯片贴底时自动向上弹；各家族间插分隔线。
+    // 候选 = 内置列表 + 运行时学到的模型（用户手动切成功过的新模型）
     showCtxMenu(
-      MODEL_GROUPS.flatMap((g, gi) => [
+      modelGroupsWithLearned(getLearnedModels()).flatMap((g, gi) => [
         ...(gi > 0 ? [{ sep: true }] : []),
         ...g.rows.map((row) => ({
           label: row.label,
-          icon: cur.includes(row.match) ? '✓' : '',
+          icon: isRowActive(row, activeId, activeLabel) ? '✓' : '',
           act: () => switchActiveModel(row.arg, row.label)
         }))
       ]),
@@ -224,7 +218,7 @@ export function SessionInfoBar() {
         </span>
       )
     }
-    const model = u?.modelLabel ?? snap.stickyModel ?? 'Claude'
+    const model = u?.modelLabel ?? snap.stickyModel?.label ?? snap.stickyModel?.id ?? 'Claude'
     parts.push(
       <span
         key="model"

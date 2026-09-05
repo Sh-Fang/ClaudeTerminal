@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { LearnedModel } from '../shared/claude-models'
+
+export type { LearnedModel }
 
 export type SessionSource = 'startup' | 'clear' | 'compact' | 'resume'
 export type TabStatus = 'busy' | 'attention' | 'done' | 'idle' | 'error'
@@ -123,6 +126,7 @@ export interface Settings {
   floaterY: number | null
   tabBarMode: TabBarMode
   language: AppLanguage
+  learnedModels: LearnedModel[]
 }
 
 export interface FloaterCounts {
@@ -215,10 +219,12 @@ export type UpdateEvent =
 
 export interface TermBridge {
   platform: NodeJS.Platform  // 'win32' | 'darwin' | ...：渲染层据此切换 shell 引号/窗口按钮
-  create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string }): Promise<number>
+  create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string; freshEnv?: boolean }): Promise<number>
   send(id: number, data: string): void
   resize(id: number, cols: number, rows: number): void
   kill(id: number): void
+  // 杀掉并等待进程真正退出（重新加载标签用）；超时也会 resolve
+  killWait(id: number): Promise<boolean>
   openExternal(url: string): Promise<boolean>
   openPath(path: string): Promise<{ ok: boolean; error?: string }>
   loadWorkspace(): Promise<Workspace>
@@ -341,6 +347,7 @@ const api: TermBridge = {
   send: (id, data) => ipcRenderer.send('pty:input', { id, data }),
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
   kill: (id) => ipcRenderer.send('pty:kill', { id }),
+  killWait: (id) => ipcRenderer.invoke('pty:killWait', { id }),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
   loadWorkspace: () => ipcRenderer.invoke('workspace:load'),

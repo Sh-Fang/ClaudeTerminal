@@ -1,6 +1,11 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import {
+  isSafeModelValue,
+  normalizeLearnedModels,
+  type LearnedModel
+} from '../shared/claude-models'
 
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
@@ -50,6 +55,8 @@ export interface Settings {
   floaterY: number | null
   tabBarMode: TabBarMode       // 标签栏布局：vertical = 左栏分组（默认）；horizontal = 顶部平铺
   language: AppLanguage        // 界面语言：zh = 简体中文（默认）；en = English。重启后生效
+  // 运行时从 cc statusline 学到的模型（内置候选之外的，如 opus-5）；两处模型选择器都会展示
+  learnedModels: LearnedModel[]
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -80,7 +87,8 @@ export const DEFAULT_SETTINGS: Settings = {
   floaterX: null,
   floaterY: null,
   tabBarMode: 'vertical',
-  language: 'zh'
+  language: 'zh',
+  learnedModels: []
 }
 
 const FILE = (): string => join(app.getPath('userData'), 'settings.json')
@@ -137,11 +145,8 @@ function normalize(raw: unknown): Settings {
     defaults: {
       cwd: typeof def.cwd === 'string' ? def.cwd : DEFAULT_SETTINGS.defaults.cwd,
       autoLaunchCC: typeof def.autoLaunchCC === 'boolean' ? def.autoLaunchCC : DEFAULT_SETTINGS.defaults.autoLaunchCC,
-      // 白名单字符，防手改 settings.json 注入 spawn 命令
-      model:
-        typeof def.model === 'string' && /^[A-Za-z0-9._-]*$/.test(def.model)
-          ? def.model
-          : DEFAULT_SETTINGS.defaults.model
+      // 允许 cc 完整模型 id（含 [1m] 等后缀），同时限定字符集防手改 settings.json 注入命令
+      model: isSafeModelValue(def.model) ? def.model : DEFAULT_SETTINGS.defaults.model
     },
     claudePath: typeof r.claudePath === 'string' ? r.claudePath : DEFAULT_SETTINGS.claudePath,
     npmRegistry:
@@ -171,7 +176,8 @@ function normalize(raw: unknown): Settings {
     floaterX: coord(r.floaterX),
     floaterY: coord(r.floaterY),
     tabBarMode: pick(r.tabBarMode, TABBAR_MODES, DEFAULT_SETTINGS.tabBarMode),
-    language: pick(r.language, LANGUAGES, DEFAULT_SETTINGS.language)
+    language: pick(r.language, LANGUAGES, DEFAULT_SETTINGS.language),
+    learnedModels: normalizeLearnedModels(r.learnedModels)
   }
 }
 

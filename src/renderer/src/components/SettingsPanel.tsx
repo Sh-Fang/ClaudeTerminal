@@ -21,9 +21,9 @@ import {
   type CtxItem,
 } from "../state/overlays";
 import { icon } from "../svg-icons";
-import { MODEL_GROUPS } from "./SessionInfoBar";
 import { t } from "../i18n";
-import { getSettings, updateSettings } from "../controller";
+import { getLearnedModels, getSettings, updateSettings } from "../controller";
+import { modelGroupsWithLearned } from "../../../shared/claude-models";
 import { useAppStore } from "../state/store";
 
 // 与 preload 的 InstalledCcVersion 同构；跨 tsconfig import 会报 TS6307，手抄一份
@@ -125,12 +125,8 @@ interface Form {
   language: AppLanguage;
 }
 
-// Settings → 控件值（老配置缺字段/存了已退役 model id 时各自兜底）
+// Settings → 控件值；动态目录尚未返回时也保留已保存的模型值，避免静默丢配置。
 function formFromSettings(s: Settings): Form {
-  const known = new Set<string>([
-    "",
-    ...MODEL_GROUPS.flatMap((g) => g.rows.map((r) => r.arg)),
-  ]);
   return {
     family: s.font.family,
     size: String(s.font.size),
@@ -150,7 +146,7 @@ function formFromSettings(s: Settings): Form {
     disableUpd: s.disableAutoupdater,
     showUsage: s.showClaudeUsage,
     showFloater: s.showFloater,
-    model: known.has(s.defaults.model) ? s.defaults.model : "",
+    model: s.defaults.model || "",
     language: s.language || "zh",
   };
 }
@@ -601,7 +597,7 @@ export function SettingsPanel() {
       return;
     }
     const cur = formRef.current.model;
-    // arg = '' 视为"跟随 cc 默认"；共享 MODEL_GROUPS 与左下芯片候选一致
+    // arg = '' 视为"跟随 cc 默认"；候选与左下芯片一致 = 内置列表 + 运行时学到的模型
     const setVal = (v: string): void => {
       if (formRef.current.model === v) return;
       commit({ model: v });
@@ -614,9 +610,10 @@ export function SettingsPanel() {
       },
       { sep: true },
     ];
-    MODEL_GROUPS.forEach((g, gi) => {
+    modelGroupsWithLearned(getLearnedModels()).forEach((g, gi) => {
       if (gi > 0) items.push({ sep: true });
-      items.push({ eyebrow: g.family });
+      // Opus/Sonnet 等专有名词无词条 → t() 原样回退；只有「已发现」会被翻译
+      items.push({ eyebrow: t(g.family) });
       for (const r of g.rows) {
         items.push({
           label: r.label,
@@ -946,11 +943,13 @@ export function SettingsPanel() {
     </>
   );
 
+  // 认不出的已存值（老配置里手填的）直接显示原值，不静默回退成"跟随默认"
   const modelLabel =
     form.model === ""
       ? t(FOLLOW_CC_LABEL)
-      : MODEL_GROUPS.flatMap((g) => g.rows).find((r) => r.arg === form.model)
-          ?.label ?? t(FOLLOW_CC_LABEL);
+      : modelGroupsWithLearned(getLearnedModels())
+          .flatMap((g) => g.rows)
+          .find((r) => r.arg === form.model)?.label ?? form.model;
 
   return (
     <div

@@ -103,11 +103,13 @@ function readRegistryEnv(path: string): Record<string, string> {
 // 会把主进程堵成串行等子进程；一次突发共用一份快照即可。setx/reg delete 落地后主动失效。
 let envSnapshotCache: { at: number; env: Record<string, string> } | null = null
 const ENV_SNAPSHOT_TTL_MS = 5000
+// 见过的注册表环境变量键：后续被用户删掉时，也要从冻结的 process.env 基底移除。
+const knownRegistryKeys = new Set<string>()
 
-export function snapshotCurrentEnv(): Record<string, string> {
+export function snapshotCurrentEnv(force = false): Record<string, string> {
   // 非 Windows 直接返回主进程 env（pty 走登录 shell 自行补全 PATH）
   if (!IS_WIN) return { ...(process.env as Record<string, string>) }
-  if (envSnapshotCache && Date.now() - envSnapshotCache.at < ENV_SNAPSHOT_TTL_MS) {
+  if (!force && envSnapshotCache && Date.now() - envSnapshotCache.at < ENV_SNAPSHOT_TTL_MS) {
     return { ...envSnapshotCache.env }
   }
   const env: Record<string, string> = { ...(process.env as Record<string, string>) }
@@ -115,6 +117,12 @@ export function snapshotCurrentEnv(): Record<string, string> {
     'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
   )
   const user = readRegistryEnv('HKCU\\Environment')
+  const currentRegistryKeys = new Set([...Object.keys(machine), ...Object.keys(user)].map((k) => k.toLowerCase()))
+  // process.env 是 Electron 启动时的冻结快照：已从注册表删除的变量不能继续泄漏进新 PTY。
+  for (const key of Object.keys(env)) {
+    if (knownRegistryKeys.has(key.toLowerCase()) && !currentRegistryKeys.has(key.toLowerCase())) delete env[key]
+  }
+  for (const key of currentRegistryKeys) knownRegistryKeys.add(key)
 
   for (const [k, v] of Object.entries(machine)) {
     if (k.toLowerCase() === 'path') continue

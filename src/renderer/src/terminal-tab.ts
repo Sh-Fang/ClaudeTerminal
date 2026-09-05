@@ -109,6 +109,8 @@ export class TerminalTab {
   ptyId: number | null = null
   private pendingInput = ''
   private waitingForRestart = false
+  // 重新加载中：等旧 PTY 退出的这段时间丢弃键入，否则会先于自动启动命令写进新 shell 把命令拼坏
+  private reloading = false
   private disposed = false
   private handlers: TermTabHandlers
 
@@ -499,6 +501,7 @@ export class TerminalTab {
 
   // 唯一出口：统一处理 waitingForRestart / pendingInput / 实际发送
   private sendInput(d: string): void {
+    if (this.reloading) return
     if (this.waitingForRestart) {
       this.waitingForRestart = false
       void this.startPty()
@@ -513,7 +516,7 @@ export class TerminalTab {
 
   // ── PTY 生命周期 ──
 
-  async startPty(): Promise<void> {
+  async startPty(freshEnv = false): Promise<void> {
     if (this.disposed) return
     dbg(this.id, 'startPty: requesting create', { cols: this.term.cols, rows: this.term.rows, cwd: this.cwd })
     try {
@@ -522,7 +525,8 @@ export class TerminalTab {
         rows: this.term.rows,
         cwd: this.cwd,
         tabId: this.id,
-        tabName: this.name
+        tabName: this.name,
+        freshEnv
       })
       // create 期间 tab 可能已 dispose（ptyId 尚为 null，dispose 杀不到）：立即 kill 防进程泄漏
       if (this.disposed) {
@@ -611,6 +615,39 @@ export class TerminalTab {
     this.disableReflow()
     this.waitingForRestart = false
     await this.startPty()
+  }
+
+  // 重新加载：等旧 PTY 真退出再建新的，中间清空画面。与 restartPty 的区别是
+  // 先把 ptyId 置空再等待 —— 旧进程退出前的残余输出/退出提示都不该再落到这块新画面上。
+  async reloadPty(): Promise<void> {
+    if (this.disposed || this.reloading) return
+    this.reloading = true
+    try {
+      const oldId = this.ptyId
+      // 置空后 handlePtyExit 找不到该 tab（controller 按 ptyId 派发），不会打印"按任意键重启"
+      this.ptyId = null
+      this.waitingForRestart = false
+      this.pendingInput = ''
+      if (oldId != null) {
+        try {
+          await window.term.killWait(oldId)
+        } catch {
+          window.term.kill(oldId)
+        }
+      }
+      if (this.disposed) return
+      this.term.reset()
+      // reset() 换了 Buffer 实例，mount 时的 reflow 遮蔽随之失效，必须重新遮蔽
+      this.disableReflow()
+      // cc 异常退出可能漏关鼠标/焦点追踪，新 shell 前无条件复位
+      this.resetInputTrackingModes()
+    } finally {
+      // startPty 之前解锁：pendingInput 已清空，且 onPtyStarted 要能正常发自动启动命令
+      this.reloading = false
+    }
+    if (this.disposed) return
+    // 重新加载的核心目的之一就是吃到刚改过的系统环境，不能复用 5s 快照缓存
+    await this.startPty(true)
   }
 
   refit(): void {
