@@ -2300,12 +2300,6 @@ mark.hl {
   gap: 12px;
   margin-bottom: 8px;
 }
-.cc-account-title-wrap {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
 .cc-account-title {
   margin: 0;
   color: var(--ink);
@@ -2313,67 +2307,95 @@ mark.hl {
   font-weight: 600;
   line-height: 22px;
 }
-.cc-account-current {
+
+/* 下拉选择：收起时只显示当前生效账户，展开后选中即切换 */
+.cc-account-select { position: relative; }
+.cc-account-trigger {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.cc-account-trigger:hover:not(:disabled) { border-color: var(--hairline-strong); }
+.cc-account-trigger.open { border-color: var(--ink); }
+.cc-account-trigger:disabled { opacity: .55; cursor: default; }
+.cc-account-trigger-text {
   min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cc-account-trigger-name {
   overflow: hidden;
-  color: var(--mute);
-  font-family: var(--mono);
-  font-size: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cc-account-icon-btn,
-.cc-account-delete-btn,
-.cc-account-eye-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  flex: 0 0 28px;
+.cc-account-trigger-meta,
+.cc-account-option-meta {
+  overflow: hidden;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-account-trigger-caret {
+  flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
-  background: var(--canvas);
   color: var(--mute);
-  cursor: pointer;
-  transition: color .12s, border-color .12s, background .12s;
+  transition: transform .14s;
 }
-.cc-account-icon-btn:hover:not(:disabled),
-.cc-account-eye-btn:hover:not(:disabled) {
-  color: var(--ink);
-  border-color: var(--hairline-strong);
-  background: var(--canvas-soft);
-}
-.cc-account-icon-btn:disabled,
-.cc-account-delete-btn:disabled,
-.cc-account-eye-btn:disabled {
-  opacity: .45;
-  cursor: default;
-}
-.cc-account-list {
-  max-height: 146px;
-  overflow-y: auto;
+.cc-account-trigger.open .cc-account-trigger-caret { transform: rotate(180deg); }
+
+.cc-account-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
   background: var(--canvas);
+  box-shadow: var(--sh-5);
+  overflow: hidden;
+}
+/* 固定高度 + 内部滚动，滚动条隐藏 */
+.cc-account-menu-scroll {
+  max-height: 148px;
+  overflow-y: auto;
   scrollbar-width: none;
 }
-.cc-account-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.cc-account-item {
-  min-height: 45px;
+.cc-account-menu-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.cc-account-option {
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px 0 12px;
+  gap: 6px;
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--hairline);
   position: relative;
   transition: background .1s;
 }
-.cc-account-item:last-child { border-bottom: none; }
-.cc-account-item:hover,
-.cc-account-item.selected { background: var(--canvas-soft); }
-.cc-account-item.active::before {
+.cc-account-option:last-child { border-bottom: none; }
+.cc-account-option:hover { background: var(--canvas-soft); }
+.cc-account-option.active::before {
   content: '';
   position: absolute;
   left: 0;
@@ -2383,7 +2405,7 @@ mark.hl {
   border-radius: 2px;
   background: var(--ink);
 }
-.cc-account-item-main {
+.cc-account-option-main {
   min-width: 0;
   flex: 1;
   align-self: stretch;
@@ -2399,11 +2421,12 @@ mark.hl {
   text-align: left;
   cursor: pointer;
 }
-.cc-account-item-main:focus-visible {
+.cc-account-option-main:disabled { cursor: default; }
+.cc-account-option-main:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: -2px;
 }
-.cc-account-item-name {
+.cc-account-option-name {
   max-width: 100%;
   overflow: hidden;
   color: var(--ink);
@@ -2413,42 +2436,65 @@ mark.hl {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cc-account-item-meta {
-  max-width: 100%;
+.cc-account-option.active .cc-account-option-name { font-weight: 600; }
+.cc-account-option-ops {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
-  overflow: hidden;
+  gap: 4px;
+}
+.cc-account-op-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
   color: var(--mute);
-  font-family: var(--mono);
-  font-size: 10px;
-  line-height: 14px;
-  white-space: nowrap;
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
 }
-.cc-account-item-meta span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cc-account-badge {
-  height: 20px;
-  padding: 0 7px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--ink);
-  border-radius: 3px;
+.cc-account-op-btn:hover:not(:disabled) {
   color: var(--ink);
-  font-size: 10px;
-  white-space: nowrap;
+  border-color: var(--hairline);
+  background: var(--canvas);
 }
-.cc-account-badge.muted {
-  border-color: var(--hairline-strong);
-  color: var(--mute);
+.cc-account-op-btn.danger:hover:not(:disabled) {
+  color: var(--danger, #d33);
+  border-color: var(--danger, #d33);
 }
+.cc-account-op-btn:disabled { opacity: .45; cursor: default; }
+
+/* 下拉最后一项：新增账户 */
+.cc-account-add-option {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--body);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.cc-account-add-option:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--canvas-soft);
+}
+.cc-account-add-option:disabled { opacity: .45; cursor: default; }
+.cc-account-add-icon { display: inline-grid; place-items: center; }
+
 .cc-account-empty,
 .cc-account-state {
-  padding: 20px 12px;
+  padding: 18px 12px;
   color: var(--mute);
   font-size: 12px;
   line-height: 18px;
@@ -2461,21 +2507,20 @@ mark.hl {
   gap: 8px;
   color: var(--danger, #d33);
 }
-.cc-account-form {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+.cc-account-hint {
+  min-height: 14px;
+  margin-top: 7px;
+  color: var(--mute);
+  font-size: 11px;
+  line-height: 14px;
 }
-.cc-account-field { min-width: 0; }
-.cc-account-field:nth-child(2) {
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-.cc-account-field:nth-child(3) {
-  grid-column: 2;
-  grid-row: 1;
-}
+.cc-account-hint.error { color: var(--danger, #d33); }
+
+/* 新增 / 编辑账户弹窗 */
+.cc-account-scrim { z-index: 88; }
+.modal.cc-account-modal { width: 420px; padding: 24px 28px; }
+.modal.cc-account-modal h2 { margin-bottom: 16px; }
+.cc-account-field { min-width: 0; margin-bottom: 12px; }
 .cc-account-field label {
   display: block;
   margin-bottom: 5px;
@@ -2518,75 +2563,30 @@ mark.hl {
 .cc-account-eye-btn {
   width: 34px;
   height: 34px;
-  flex-basis: 34px;
-}
-.cc-account-actions {
-  grid-column: 1 / -1;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.cc-account-action-spacer { flex: 1; }
-.cc-account-delete-btn {
-  width: 30px;
-  height: 30px;
-  flex-basis: 30px;
-}
-.cc-account-delete-btn:hover:not(:disabled) {
-  color: var(--danger, #d33);
-  border-color: var(--danger, #d33);
-  background: var(--canvas);
-}
-.cc-account-action-btn {
-  height: 30px;
-  padding: 0 11px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  flex: 0 0 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
-  font-family: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s, opacity .12s;
-}
-.cc-account-action-btn.secondary {
   background: var(--canvas);
-  color: var(--body);
-}
-.cc-account-action-btn.secondary:hover:not(:disabled) {
-  border-color: var(--ink);
-  color: var(--ink);
-}
-.cc-account-action-btn.primary {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--on-primary);
-}
-.cc-account-action-btn.primary:hover:not(:disabled) { opacity: .88; }
-.cc-account-action-btn:disabled { opacity: .42; cursor: default; }
-.cc-account-action-icon { display: inline-grid; place-items: center; }
-.cc-account-hint {
-  min-height: 14px;
-  margin-top: 7px;
   color: var(--mute);
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.cc-account-eye-btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+  background: var(--canvas-soft);
+}
+.cc-account-eye-btn:disabled { opacity: .45; cursor: default; }
+.cc-account-modal-error {
+  min-height: 14px;
+  color: var(--danger, #d33);
   font-size: 11px;
   line-height: 14px;
 }
-.cc-account-hint.error { color: var(--danger, #d33); }
-.cc-account-hint.ok { color: #1a7f37; }
-
-@media (max-width: 620px) {
-  .cc-account-form { grid-template-columns: minmax(0, 1fr); }
-  .cc-account-field:nth-child(2),
-  .cc-account-field:nth-child(3) {
-    grid-column: auto;
-    grid-row: auto;
-  }
-}
+.modal.cc-account-modal .actions { margin-top: 14px; }
 
 /* ─────────────────────────────────────────────
    CC 版本管理
