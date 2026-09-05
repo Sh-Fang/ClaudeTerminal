@@ -50,6 +50,8 @@ export interface CreateOpts {
   rows?: number
   cwd?: string
   env?: Record<string, string>
+  // 重新加载标签时跳过 5s 环境快照缓存，立刻读取当前系统环境变量
+  freshEnv?: boolean
   // 各平台 shell-integration 脚本路径；createPty 按 resolveShell() 选中的 shell 取用。
   profiles?: Partial<Record<ProfileKey, string>>
 }
@@ -76,7 +78,7 @@ export function createPty(
   const cwd = opts.cwd || (IS_WIN ? process.env.USERPROFILE : process.env.HOME) || process.cwd()
 
   // 用 snapshotCurrentEnv：Windows 主进程 env 启动时冻结，感知不到 setx/注册表改动
-  const env: Record<string, string> = { ...snapshotCurrentEnv(), ...(opts.env ?? {}) }
+  const env: Record<string, string> = { ...snapshotCurrentEnv(!!opts.freshEnv), ...(opts.env ?? {}) }
 
   const shellInfo = resolveShell()
   const profilePath = shellInfo.profileKey ? opts.profiles?.[shellInfo.profileKey] : undefined
@@ -135,6 +137,37 @@ export function killPty(id: number): void {
     s.proc.kill()
   } catch {}
   sessions.delete(id)
+}
+
+// 「重新加载标签」用：kill 后等进程真正退出再 resolve，渲染层据此串行化「杀旧 → 建新」。
+// 不等的话新 cc 可能与尚未退出的旧 cc 短暂并存、同时 --resume 同一个会话，写坏 transcript。
+// 超时（进程卡死收不掉）也照常 resolve，调用方按正常流程继续建新 PTY。
+export function killPtyAndWait(id: number, timeoutMs = 3000): Promise<void> {
+  const s = sessions.get(id)
+  if (!s) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    let settled = false
+    const done = (): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      sessions.delete(id)
+      resolve()
+    }
+    const timer = setTimeout(done, timeoutMs)
+    // onExit 里已有的 handler 照常跑（会推 pty:exit 并清路由），这里只额外等一个信号
+    try {
+      s.proc.onExit(() => done())
+    } catch {
+      done()
+      return
+    }
+    try {
+      s.proc.kill()
+    } catch {
+      done()
+    }
+  })
 }
 
 export function killAll(): void {

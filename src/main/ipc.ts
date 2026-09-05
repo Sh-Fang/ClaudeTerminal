@@ -2,7 +2,7 @@ import { app, BrowserWindow as BrowserWindowClass, dialog, ipcMain, shell, type 
 import { existsSync, statSync } from 'node:fs'
 import { request as httpsRequest } from 'node:https'
 import { request as httpRequest } from 'node:http'
-import { createPty, killPty, resizePty, writePty } from './pty-manager'
+import { createPty, killPty, killPtyAndWait, resizePty, writePty } from './pty-manager'
 import { loadWorkspace, saveWorkspace, type Workspace } from './workspace'
 import { detectClaudePath, isClaudeAvailable, sessionExists } from './claude-helper'
 import {
@@ -206,7 +206,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle(
     'pty:create',
-    (_e, opts: { cols?: number; rows?: number; cwd?: string; tabId?: string; tabName?: string }) => {
+    (_e, opts: { cols?: number; rows?: number; cwd?: string; tabId?: string; tabName?: string; freshEnv?: boolean }) => {
       if (opts?.cwd) {
         try {
           if (!existsSync(opts.cwd)) throw new Error(`目录不存在: ${opts.cwd}`)
@@ -239,6 +239,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
           rows: opts?.rows,
           cwd: opts?.cwd,
           env,
+          freshEnv: opts?.freshEnv === true,
           profiles: { pwsh: hp.pwshProfilePs1, zsh: hp.zshProfile, bash: hp.bashProfile }
         },
         (sid, data) => routePtyData(sid, 'pty:data', { id: sid, data }),
@@ -283,6 +284,14 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.on('pty:kill', (_e, p: { id: number }) => {
     ptyDbgLog(`kill id=${p.id}`)
     killPty(p.id)
+  })
+
+  // 重新加载标签：等旧 PTY 真退出再建新的（避免两个 cc 同时 --resume 同一会话）
+  ipcMain.handle('pty:killWait', async (_e, p: { id: number }) => {
+    ptyDbgLog(`killWait id=${p?.id}`)
+    if (!p || !Number.isInteger(p.id)) return false
+    await killPtyAndWait(p.id)
+    return true
   })
 
   ipcMain.handle('tabHistory:list', () => listTabHistory())

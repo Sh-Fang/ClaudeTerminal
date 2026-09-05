@@ -1,4 +1,5 @@
 import type { ITheme } from '@xterm/xterm'
+import type { LearnedModel } from '../../shared/claude-models'
 
 export type ThemePreset = 'vscode-dark' | 'vercel-dark' | 'one-dark'
 export type AppTheme = 'light' | 'dark'
@@ -36,6 +37,8 @@ export interface Settings {
   floaterY: number | null
   tabBarMode: TabBarMode       // 标签栏布局：垂直（左栏分组）/ 水平（顶部平铺）
   language: AppLanguage        // 界面语言：zh = 简体中文（默认）；en = English。重启后生效
+  // 运行时从 cc statusline 学到的模型（内置候选之外的）；两处模型选择器都会展示
+  learnedModels: LearnedModel[]
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -66,7 +69,8 @@ export const DEFAULT_SETTINGS: Settings = {
   floaterX: null,
   floaterY: null,
   tabBarMode: 'vertical',
-  language: 'zh'
+  language: 'zh',
+  learnedModels: []
 }
 
 export const THEMES: Record<ThemePreset, ITheme & { label: string; backgroundCss: string }> = {

@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { findSessionJsonl as findJsonl } from './claude-paths'
+import { prettyModelLabel } from '../shared/claude-models'
 
 export interface SessionMeta {
   exists: boolean
@@ -70,13 +71,8 @@ export interface SessionUsage {
   ctxApprox?: boolean // true = transcript 兜底估算（窗口靠猜）
 }
 
-// claude-opus-4-8 → Opus 4.8 ；claude-sonnet-4-6 → Sonnet 4.6
-function prettyModel(id: string): string {
-  const m = /(opus|sonnet|haiku)-(\d+)(?:-(\d+))?/i.exec(id)
-  if (!m) return id
-  const fam = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()
-  return `${fam} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`
-}
+// claude-opus-4-8 → Opus 4.8 ；claude-sonnet-4-6 → Sonnet 4.6（与渲染层共用同一套推导）
+const prettyModel = prettyModelLabel
 
 // statusline 探针落的快照（session-status/<sessionId>.json）：cc 自算的百分比/窗口/模型，最准
 const STATUS_DIR = (): string => join(app.getPath('userData'), 'session-status')
@@ -85,7 +81,9 @@ interface OwnStatus {
   percent: number
   window: number
   tokens: number
-  model?: string // 已是 display_name（去掉 "(...context)" 后缀），如 Opus 4.8
+  modelId?: string
+  modelLabel?: string
+  model?: string // 旧版字段：已是 display_name
   effort?: string // low/medium/high/xhigh/max；模型不支持 effort 时为空
 }
 
@@ -96,6 +94,8 @@ function readOwnStatus(sessionId: string): OwnStatus | null {
       percent?: number
       window?: number
       tokens?: number
+      modelId?: string
+      modelLabel?: string
       model?: string
       effort?: string
     }
@@ -104,6 +104,8 @@ function readOwnStatus(sessionId: string): OwnStatus | null {
       percent: Math.min(100, Math.max(0, Math.round(c.percent))),
       window: c.window,
       tokens: typeof c.tokens === 'number' ? c.tokens : 0,
+      modelId: typeof c.modelId === 'string' && c.modelId ? c.modelId : undefined,
+      modelLabel: typeof c.modelLabel === 'string' && c.modelLabel ? c.modelLabel : undefined,
       model: typeof c.model === 'string' && c.model ? c.model : undefined,
       effort: typeof c.effort === 'string' && c.effort ? c.effort : undefined
     }
@@ -150,15 +152,12 @@ export function readSessionUsage(sessionId: string): SessionUsage {
 
   const ctx = snap ?? estimateFromTranscript(tail())
 
-  let modelLabel = snap?.model
-  if (!modelLabel) {
-    const id = lastMainModel(tail())
-    modelLabel = id ? prettyModel(id) : undefined
-  }
+  const modelId = snap?.modelId || lastMainModel(tail())
+  const modelLabel = snap?.modelLabel || snap?.model || (modelId ? prettyModel(modelId) : undefined)
 
   return {
     exists: true,
-    model: modelLabel,
+    model: modelId,
     modelLabel,
     effort: snap?.effort, // 仅探针快照有
     ctxTokens: ctx?.tokens,

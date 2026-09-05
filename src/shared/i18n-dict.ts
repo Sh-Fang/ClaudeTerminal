@@ -298,6 +298,13 @@ export const I18N_EN: Record<string, string> = {
   '输入备注…': 'Type a note…',
   '重命名标签': 'Rename Tab',
   '在本组新建标签': 'New Tab in This Group',
+  '重新加载标签页': 'Reload Tab',
+  '重新加载标签「{0}」？': 'Reload tab "{0}"?',
+  '当前有正在进行的 Claude 回合，重新加载会<b>中断</b>它。<br/>标签与会话记录保留，之后会用当前会话继续。':
+    'A Claude turn is in progress — reloading will <b>interrupt</b> it.<br/>The tab and its sessions are kept, and the current session resumes afterwards.',
+  '当前有正在运行的命令，重新加载会<b>中断</b>它。': 'A command is running — reloading will <b>interrupt</b> it.',
+  '重新加载': 'Reload',
+  '标签「{0}」正在重新加载': 'Tab "{0}" is already reloading',
   '工作区{0}': 'Workspace {0}',
   '当前工作区为空，没什么可保存的': 'The workspace is empty — nothing to save',
   '保存该工作区': 'Save This Workspace',
@@ -350,6 +357,8 @@ export const I18N_EN: Record<string, string> = {
   '新会话，暂无上下文用量': 'New session — no context usage yet',
   '点击切换模型': 'Click to switch model',
   '点击切换思考强度': 'Click to change thinking effort',
+  // 模型选择器里「运行时学到的模型」分组标题
+  '已发现': 'Discovered',
 
   // 标签历史
   '今天': 'Today',

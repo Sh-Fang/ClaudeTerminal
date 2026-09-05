@@ -1269,6 +1269,9 @@ button.saved-toggle:hover { color: var(--ink); }
 /* Context menu — z 90 保证浮在 settings scrim (80) 之上；用作设置里 picker 菜单也是它 */
 .ctx {
   position: fixed; z-index: 90; min-width: 188px;
+  /* 模型候选会随「学到」的新模型增长，超出视口时内部滚动而不是顶出屏幕 */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   background: var(--canvas);
   border-radius: var(--r-md);
   box-shadow: var(--sh-5);
