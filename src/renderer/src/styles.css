@@ -1346,6 +1346,49 @@ button.saved-toggle:hover { color: var(--ink); }
 .cf-body::-webkit-scrollbar { width: 6px; }
 .cf-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
 .cf-body::-webkit-scrollbar-track { background: transparent; }
+
+#updateProgressScrim { z-index: 95; }
+.modal.modal-update-progress {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: 24px 28px;
+}
+.modal.modal-update-progress h2 {
+  margin-bottom: 6px;
+  letter-spacing: 0;
+}
+.update-progress-version {
+  color: var(--body);
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+.modal-update-progress progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--hairline);
+}
+.modal-update-progress progress::-webkit-progress-bar {
+  background: var(--hairline);
+  border-radius: 4px;
+}
+.modal-update-progress progress::-webkit-progress-value {
+  background: var(--ink);
+  border-radius: 4px;
+  transition: width 0.18s ease;
+}
+.update-progress-status {
+  margin-top: 10px;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+
 .field { margin-bottom: 14px; }
 /* 标题就是标题：纯文字可选中，不关联控件（HTML 侧不写 for） */
 .field label {

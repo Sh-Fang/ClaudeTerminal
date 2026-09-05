@@ -6,13 +6,17 @@ import type {
   ClaudeAccountsSnapshot,
   SaveClaudeAccountInput
 } from '../shared/claude-accounts'
+import type { UpdateActionResult, UpdateCheckResult, UpdateEvent } from '../shared/update'
 
 export type {
   LearnedModel,
   ClaudeAccountDetail,
   ClaudeAccountResult,
   ClaudeAccountsSnapshot,
-  SaveClaudeAccountInput
+  SaveClaudeAccountInput,
+  UpdateActionResult,
+  UpdateCheckResult,
+  UpdateEvent
 }
 
 export type SessionSource = 'startup' | 'clear' | 'compact' | 'resume'
@@ -217,18 +221,6 @@ export interface HistoryEntry {
   lastSeenAt: string
 }
 
-// 检查更新结果 / 下载事件（与 main/update-check.ts 保持一致）
-export interface UpdateCheckResult {
-  status: 'latest' | 'update' | 'error'
-  current: string
-  latest?: string
-  error?: 'network' | 'notfound' | 'dev'
-}
-export type UpdateEvent =
-  | { kind: 'progress'; percent: number }
-  | { kind: 'downloaded'; version: string }
-  | { kind: 'error'; message: string }
-
 export interface TermBridge {
   platform: NodeJS.Platform  // 'win32' | 'darwin' | ...：渲染层据此切换 shell 引号/窗口按钮
   create(opts: { cols: number; rows: number; cwd?: string; tabId?: string; tabName?: string; freshEnv?: boolean }): Promise<number>
@@ -274,9 +266,11 @@ export interface TermBridge {
   applyDisableAutoupdater(enabled: boolean): Promise<{ ok: boolean; systemWide: boolean; message?: string }>
   readDisableAutoupdater(): Promise<string | null>
   checkUpdate(): Promise<UpdateCheckResult>
+  downloadUpdate(): Promise<UpdateActionResult>
+  deferUpdate(): Promise<boolean>
   getAutoLaunch(): Promise<boolean>
   setAutoLaunch(enabled: boolean): Promise<{ ok: boolean }>
-  installUpdate(): Promise<boolean>
+  installUpdate(): Promise<UpdateActionResult>
   onUpdateEvent(cb: (e: UpdateEvent) => void): () => void
   winMinimize(): void
   winToggleMaximize(): void
@@ -410,6 +404,8 @@ const api: TermBridge = {
   applyDisableAutoupdater: (enabled) => ipcRenderer.invoke('sysenv:applyDisableAutoupdater', enabled),
   readDisableAutoupdater: () => ipcRenderer.invoke('sysenv:readDisableAutoupdater'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  deferUpdate: () => ipcRenderer.invoke('update:defer'),
   getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('app:setAutoLaunch', enabled),
   installUpdate: () => ipcRenderer.invoke('update:install'),

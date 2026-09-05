@@ -36,9 +36,16 @@ export interface ConfirmOpts {
   title: string
   message: string // HTML 字符串（含 <b> 等），渲染侧用 dangerouslySetInnerHTML
   okLabel?: string
+  cancelLabel?: string
+  testIdPrefix?: string
   danger?: boolean
   onOk: () => void
   onCancel?: () => void
+}
+
+export interface UpdateProgressState {
+  version: string
+  percent: number
 }
 
 // 会话选择浮层条目（勾选恢复弹窗 / 管理页共用）
@@ -121,6 +128,7 @@ interface OverlaysState {
   modal: ModalOpts | null
   modalSeq: number
   confirm: ConfirmOpts | null
+  updateProgress: UpdateProgressState | null
   ctx: CtxState | null
   // toast 隐藏时保留 msg，淡出过程中文字不消失
   toastMsg: string
@@ -142,6 +150,7 @@ export const useOverlays = create<OverlaysState>(() => ({
   modal: null,
   modalSeq: 0,
   confirm: null,
+  updateProgress: null,
   ctx: null,
   toastMsg: '',
   toastShow: false,
@@ -201,6 +210,20 @@ export function resolveConfirm(ok: boolean): void {
   useOverlays.setState({ confirm: null })
   if (ok) cur.onOk()
   else cur.onCancel?.()
+}
+
+export function showUpdateProgress(version: string): void {
+  useOverlays.setState({ updateProgress: { version, percent: 0 } })
+}
+export function setUpdateProgress(percent: number): void {
+  const next = Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0
+  useOverlays.setState((state) => state.updateProgress
+    ? { updateProgress: { ...state.updateProgress, percent: next } }
+    : {}
+  )
+}
+export function closeUpdateProgress(): void {
+  useOverlays.setState({ updateProgress: null })
 }
 
 export function openModal(cfg: ModalOpts): void {

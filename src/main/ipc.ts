@@ -29,7 +29,13 @@ import {
 } from './claude-accounts'
 import type { SaveClaudeAccountInput } from '../shared/claude-accounts'
 import { isSafeExternalUrl } from './url-safety'
-import { checkForUpdate, quitAndInstallUpdate, setUpdateEventSink } from './update-check'
+import {
+  checkForUpdate,
+  quitAndInstallUpdate,
+  setUpdateEventSink,
+  startUpdateDownload
+} from './update-check'
+import type { UpdateActionResult } from '../shared/update'
 import { t } from './i18n'
 import {
   clearTabHistory,
@@ -76,7 +82,15 @@ function pingRegistry(rawUrl: string): Promise<number> {
   })
 }
 
-export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
+interface UpdateInstallLifecycle {
+  prepare: () => void
+  rollback: () => void
+}
+
+export function registerPtyIpc(
+  getWindow: () => BrowserWindow | null,
+  updateInstallLifecycle: UpdateInstallLifecycle
+): void {
   let hookPaths: HookPaths | null = null
   const getHookPaths = (): HookPaths => {
     if (!hookPaths) hookPaths = ensureHookAssets()
@@ -146,14 +160,65 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return { ok: true }
   })
 
-  ipcMain.handle('update:check', () => checkForUpdate())
-  ipcMain.handle('update:install', () => { quitAndInstallUpdate(); return true })
-  // 下载进度/完成/出错 → 广播所有窗口（设置面板可能开在任一窗口）
-  setUpdateEventSink((ev) => {
-    for (const wc of allAppWebContents()) {
-      if (wc.isDestroyed()) continue
-      try { wc.send('update:event', ev) } catch {}
+  // 更新流程只由一个窗口驱动，避免多个常驻 SettingsPanel 重复弹窗或重复发起操作。
+  let updateOwner: Electron.WebContents | null = null
+  const activeUpdateOwner = (): Electron.WebContents | null => {
+    if (updateOwner?.isDestroyed()) updateOwner = null
+    return updateOwner
+  }
+  const claimUpdateOwner = (sender: Electron.WebContents): boolean => {
+    const owner = activeUpdateOwner()
+    if (owner && owner !== sender) return false
+    updateOwner = sender
+    return true
+  }
+  const releaseUpdateOwner = (sender?: Electron.WebContents): void => {
+    const owner = activeUpdateOwner()
+    if (!sender || owner === sender) updateOwner = null
+  }
+
+  ipcMain.handle('update:check', async (e) => {
+    if (!claimUpdateOwner(e.sender)) {
+      return { status: 'busy', current: app.getVersion() } as const
     }
+    const result = await checkForUpdate()
+    if (result.status === 'latest' || result.status === 'error') releaseUpdateOwner(e.sender)
+    return result
+  })
+  ipcMain.handle('update:download', (e): UpdateActionResult => {
+    if (activeUpdateOwner() !== e.sender) return { ok: false, error: 'not-owner' }
+    return startUpdateDownload()
+  })
+  ipcMain.handle('update:defer', (e) => {
+    releaseUpdateOwner(e.sender)
+    return true
+  })
+  ipcMain.handle('update:install', (e): UpdateActionResult => {
+    if (!claimUpdateOwner(e.sender)) return { ok: false, error: 'not-owner' }
+    let prepared = false
+    const result = quitAndInstallUpdate(() => {
+      updateInstallLifecycle.prepare()
+      prepared = true
+    })
+    if (!result.ok) {
+      if (prepared) updateInstallLifecycle.rollback()
+      releaseUpdateOwner(e.sender)
+    }
+    return result
+  })
+  setUpdateEventSink((event) => {
+    let owner = activeUpdateOwner()
+    if (!owner) {
+      const main = getWindow()?.webContents
+      if (main && !main.isDestroyed()) {
+        updateOwner = main
+        owner = main
+      }
+    }
+    if (owner) {
+      try { owner.send('update:event', event) } catch {}
+    }
+    if (event.kind === 'error') releaseUpdateOwner()
   })
 
   const winFromEvent = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null =>

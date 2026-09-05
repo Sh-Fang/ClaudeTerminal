@@ -18,6 +18,10 @@ export function mainWindow(): BrowserWindow | null {
 }
 
 const secondaryWindows = new Set<BrowserWindow>()
+let allowSecondaryWindowsClose = false
+export function setSecondaryWindowsCloseAllowed(allowed: boolean): void {
+  allowSecondaryWindowsClose = allowed
+}
 // 副窗口渲染层 initApp 完成后上报 ready；迁移协调靠它知道何时可以 import
 const secondaryReady = new Map<number, { promise: Promise<void>; resolve: () => void }>()
 
@@ -79,7 +83,7 @@ export function createSecondaryWindow(at?: { x: number; y: number }): BrowserWin
 
   // 副窗口关闭：还有标签 → 渲染层弹确认（复用 close-request 流程）；空了 → 静默放行
   win.on('close', (e) => {
-    if (win.isDestroyed()) return
+    if (win.isDestroyed() || allowSecondaryWindowsClose) return
     if (!wcHasTabs(win.webContents)) return
     e.preventDefault()
     try { win.webContents.send('window:close-request') } catch {}

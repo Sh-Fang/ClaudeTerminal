@@ -529,23 +529,78 @@ function PickDialog() {
 function ConfirmDialog() {
   const cf = useOverlays((s) => s.confirm)
   const dismiss = useScrimDismiss(() => resolveConfirm(false))
+  const testId = cf?.testIdPrefix
   return (
-    <div id="confirmScrim" className="scrim" hidden={!cf} {...dismiss}>
-      <div className="modal modal-confirm">
-        <h2 id="cf-title">{cf?.title ?? ''}</h2>
+    <div
+      id="confirmScrim"
+      className="scrim"
+      hidden={!cf}
+      data-testid={testId ? `${testId}-overlay` : undefined}
+      {...dismiss}
+    >
+      <div className="modal modal-confirm" data-testid={testId ? `${testId}-dialog` : undefined}>
+        <h2 id="cf-title" data-testid={testId ? `${testId}-title` : undefined}>{cf?.title ?? ''}</h2>
         {/* message 是调用方拼好的 HTML，调用方负责转义 */}
-        <div className="cf-body" id="cf-msg" dangerouslySetInnerHTML={{ __html: cf?.message ?? '' }} />
-        <div className="actions">
-          <button id="cf-cancel" className="btn btn-secondary" onClick={() => resolveConfirm(false)}>
-            {t('取消')}
+        <div
+          className="cf-body"
+          id="cf-msg"
+          data-testid={testId ? `${testId}-message` : undefined}
+          dangerouslySetInnerHTML={{ __html: cf?.message ?? '' }}
+        />
+        <div className="actions" data-testid={testId ? `${testId}-actions` : undefined}>
+          <button
+            id="cf-cancel"
+            className="btn btn-secondary"
+            data-testid={testId ? `${testId}-cancel-button` : undefined}
+            onClick={() => resolveConfirm(false)}
+          >
+            {cf?.cancelLabel ?? t('取消')}
           </button>
           <button
             id="cf-ok"
             className={`btn ${cf?.danger === false ? 'btn-primary' : 'btn-danger'}`}
+            data-testid={testId ? `${testId}-confirm-button` : undefined}
             onClick={() => resolveConfirm(true)}
           >
             {cf?.okLabel ?? t('确认')}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UpdateProgressDialog() {
+  const progress = useOverlays((state) => state.updateProgress)
+  const percent = Math.floor(progress?.percent ?? 0)
+  return (
+    <div
+      id="updateProgressScrim"
+      className="scrim"
+      hidden={!progress}
+      data-testid="update-download-progress-overlay"
+    >
+      <div
+        className="modal modal-update-progress"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-progress-title"
+        data-testid="update-download-progress-dialog"
+      >
+        <h2 id="update-progress-title" data-testid="update-download-progress-title">
+          {t('正在下载更新')}
+        </h2>
+        <div className="update-progress-version" data-testid="update-download-progress-version">
+          {progress ? t('新版本 {0}', `v${progress.version}`) : ''}
+        </div>
+        <progress
+          max={100}
+          value={progress?.percent ?? 0}
+          aria-label={t('更新下载进度')}
+          data-testid="update-download-progress-bar"
+        />
+        <div className="update-progress-status" data-testid="update-download-progress-value">
+          {t('下载中… {0}%', percent)}
         </div>
       </div>
     </div>
@@ -768,6 +823,7 @@ export function OverlayHost() {
       <ModalDialog />
       <PickDialog />
       <ConfirmDialog />
+      <UpdateProgressDialog />
       <SessionPicker />
       <MemoEditor />
       <MemoTip />

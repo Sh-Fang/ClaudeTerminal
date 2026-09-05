@@ -17,6 +17,9 @@ import {
   confirmDialog,
   showCtxMenu,
   closeCtxMenu,
+  showUpdateProgress,
+  setUpdateProgress,
+  closeUpdateProgress,
   toast,
   type CtxItem,
 } from "../state/overlays";
@@ -26,6 +29,7 @@ import { getLearnedModels, getSettings, updateSettings } from "../controller";
 import { modelGroupsWithLearned } from "../../../shared/claude-models";
 import { useAppStore } from "../state/store";
 import { ClaudeAccountSection } from "./ClaudeAccountSection";
+import { escapeHtml } from "../lib/format";
 
 // 与 preload 的 InstalledCcVersion 同构；跨 tsconfig import 会报 TS6307，手抄一份
 interface InstalledCcVersion {
@@ -204,28 +208,170 @@ export function SettingsPanel() {
   const aboutVerLoadedRef = useRef(false);
   const [aboutChecking, setAboutChecking] = useState(false);
   const [aboutHint, setAboutHint] = useState("");
+  const [aboutDownloading, setAboutDownloading] = useState(false);
+  const [aboutUpdReady, setAboutUpdReady] = useState(false);
+  const [aboutInstalling, setAboutInstalling] = useState(false);
+  const [aboutUpdateVersion, setAboutUpdateVersion] = useState("");
+  const updateActionRef = useRef<"idle" | "checking" | "downloading" | "installing">("idle");
+
   // 开机自启：状态在系统登录项里，打开面板时读一次
   const [autoLaunch, setAutoLaunchState] = useState(false);
   useEffect(() => {
     void window.term.getAutoLaunch().then(setAutoLaunchState);
   }, []);
-  // 新版本下载中 / 已下载完可安装
-  const [aboutDownloading, setAboutDownloading] = useState(false);
-  const [aboutUpdReady, setAboutUpdReady] = useState(false);
 
-  // 订阅主进程的下载进度/完成/出错事件（electron-updater 自动下载）
-  useEffect(() => {
-    return window.term.onUpdateEvent((ev) => {
-      if (ev.kind === "progress") {
-        setAboutDownloading(true);
-        setAboutHint(t("下载中… {0}%", Math.floor(ev.percent)));
-      } else if (ev.kind === "downloaded") {
-        setAboutDownloading(false);
-        setAboutUpdReady(true);
-        setAboutHint(t("新版本 {0} 已就绪，重启后生效。", `v${ev.version}`));
+  function deferCurrentUpdate(hint: string): void {
+    setAboutHint(hint);
+    void window.term.deferUpdate().catch(() => {});
+  }
+
+  function promptUpdateDownload(version: string): void {
+    setAboutUpdateVersion(version);
+    confirmDialog({
+      title: t("发现新版本"),
+      message: t("发现新版本 {0}，是否现在下载？", escapeHtml(`v${version}`)),
+      okLabel: t("下载更新"),
+      cancelLabel: t("暂不下载"),
+      testIdPrefix: "update-download",
+      danger: false,
+      onOk: () => startUpdateDownload(version),
+      onCancel: () => deferCurrentUpdate(
+        t("已发现新版本 {0}，可稍后下载。", `v${version}`)
+      ),
+    });
+  }
+
+  function startUpdateDownload(version: string): void {
+    if (updateActionRef.current !== "idle") return;
+    updateActionRef.current = "downloading";
+    setAboutUpdateVersion(version);
+    setAboutDownloading(true);
+    setAboutUpdReady(false);
+    setAboutHint(t("下载中… {0}%", 0));
+    showUpdateProgress(version);
+    void window.term.downloadUpdate().then((result) => {
+      if (result.ok || updateActionRef.current !== "downloading") return;
+      updateActionRef.current = "idle";
+      closeUpdateProgress();
+      setAboutDownloading(false);
+      const message = result.error === "not-owner" || result.error === "busy"
+        ? t("更新操作正在其他窗口中进行。")
+        : t("下载失败，请检查网络后重试。");
+      setAboutHint(message);
+      toast(message);
+    }).catch(() => {
+      if (updateActionRef.current !== "downloading") return;
+      updateActionRef.current = "idle";
+      closeUpdateProgress();
+      setAboutDownloading(false);
+      const message = t("下载失败，请检查网络后重试。");
+      setAboutHint(message);
+      toast(message);
+    });
+  }
+
+  function promptUpdateRestart(version: string): void {
+    setAboutUpdateVersion(version);
+    setAboutUpdReady(true);
+    confirmDialog({
+      title: t("更新已下载"),
+      message: t(
+        "新版本 {0} 已下载完成。立即重启将终止所有终端会话，并打开安装程序。",
+        escapeHtml(`v${version}`)
+      ),
+      okLabel: t("立即重启"),
+      cancelLabel: t("稍后"),
+      testIdPrefix: "update-restart",
+      danger: false,
+      onOk: requestUpdateInstall,
+      onCancel: () => deferCurrentUpdate(
+        t("新版本 {0} 已就绪，重启后生效。", `v${version}`)
+      ),
+    });
+  }
+
+  function requestUpdateInstall(): void {
+    if (updateActionRef.current !== "idle") return;
+    updateActionRef.current = "installing";
+    setAboutInstalling(true);
+    setAboutHint(t("正在启动安装程序…"));
+    void window.term.installUpdate().then((result) => {
+      if (result.ok || updateActionRef.current !== "installing") return;
+      updateActionRef.current = "idle";
+      setAboutInstalling(false);
+      setAboutUpdReady(true);
+      const message = result.error === "not-owner" || result.error === "busy"
+        ? t("更新操作正在其他窗口中进行。")
+        : t("安装程序启动失败，请重试。");
+      setAboutHint(message);
+      toast(message);
+    }).catch(() => {
+      updateActionRef.current = "idle";
+      setAboutInstalling(false);
+      setAboutUpdReady(true);
+      const message = t("安装程序启动失败，请重试。");
+      setAboutHint(message);
+      toast(message);
+    });
+  }
+
+  async function handleCheckUpdate(): Promise<void> {
+    if (updateActionRef.current !== "idle") return;
+    updateActionRef.current = "checking";
+    setAboutChecking(true);
+    setAboutHint("");
+    try {
+      const result = await window.term.checkUpdate();
+      if (result.status === "update") {
+        promptUpdateDownload(result.latest);
+      } else if (result.status === "downloaded") {
+        promptUpdateRestart(result.latest);
+      } else if (result.status === "latest") {
+        setAboutHint(t("已是最新版本。"));
+      } else if (result.status === "busy") {
+        setAboutHint(t("更新操作正在其他窗口中进行。"));
+      } else if (result.error === "notfound") {
+        setAboutHint(t("暂无可用的发布版本。"));
+      } else if (result.error === "dev") {
+        setAboutHint(t("开发模式下不可用。"));
       } else {
+        setAboutHint(t("检查失败，请检查网络后重试。"));
+      }
+    } catch {
+      setAboutHint(t("检查失败，请检查网络后重试。"));
+    } finally {
+      updateActionRef.current = "idle";
+      setAboutChecking(false);
+    }
+  }
+
+  useEffect(() => {
+    return window.term.onUpdateEvent((event) => {
+      if (event.kind === "progress") {
+        updateActionRef.current = "downloading";
+        setAboutUpdateVersion(event.version);
+        setAboutDownloading(true);
+        if (!useOverlays.getState().updateProgress) showUpdateProgress(event.version);
+        setUpdateProgress(event.percent);
+        setAboutHint(t("下载中… {0}%", Math.floor(event.percent)));
+      } else if (event.kind === "downloaded") {
+        updateActionRef.current = "idle";
+        closeUpdateProgress();
         setAboutDownloading(false);
-        setAboutHint(t("更新出错：{0}", ev.message));
+        setAboutInstalling(false);
+        setAboutHint(t("新版本 {0} 已就绪，重启后生效。", `v${event.version}`));
+        promptUpdateRestart(event.version);
+      } else {
+        updateActionRef.current = "idle";
+        closeUpdateProgress();
+        setAboutDownloading(false);
+        setAboutInstalling(false);
+        if (event.stage === "install") setAboutUpdReady(true);
+        const message = event.stage === "download"
+          ? t("下载失败，请检查网络后重试。")
+          : t("安装程序启动失败，请重试。");
+        setAboutHint(t("更新出错：{0}", event.message));
+        toast(message);
       }
     });
   }, []);
@@ -1777,33 +1923,13 @@ export function SettingsPanel() {
                   id="about-check-update"
                   className="btn btn-secondary"
                   type="button"
+                  data-testid="about-check-update-button"
                   disabled={aboutChecking || aboutDownloading || aboutUpdReady}
-                  onClick={() => {
-                    setAboutChecking(true);
-                    setAboutHint("");
-                    void window.term.checkUpdate().then((r) => {
-                      setAboutChecking(false);
-                      if (r.status === "update" && r.latest) {
-                        // autoDownload 已开：检查到即开始下载，进度走 onUpdateEvent
-                        setAboutDownloading(true);
-                        setAboutHint(
-                          t("发现新版本 {0}，正在下载…", `v${r.latest}`)
-                        );
-                      } else if (r.status === "latest") {
-                        setAboutHint(t("已是最新版本。"));
-                      } else if (r.error === "notfound") {
-                        setAboutHint(t("暂无可用的发布版本。"));
-                      } else if (r.error === "dev") {
-                        setAboutHint(t("开发模式下不可用。"));
-                      } else {
-                        setAboutHint(t("检查失败，请检查网络后重试。"));
-                      }
-                    });
-                  }}
+                  onClick={() => void handleCheckUpdate()}
                 >
                   {aboutChecking ? t("检查中…") : t("检查更新")}
                 </button>
-                <div className="about-hint" id="about-hint">
+                <div className="about-hint" id="about-hint" data-testid="about-update-status">
                   {aboutHint}
                 </div>
                 {aboutUpdReady ? (
@@ -1811,9 +1937,11 @@ export function SettingsPanel() {
                     id="about-install-update"
                     className="btn btn-primary"
                     type="button"
-                    onClick={() => void window.term.installUpdate()}
+                    data-testid="about-install-update-button"
+                    disabled={aboutInstalling}
+                    onClick={() => promptUpdateRestart(aboutUpdateVersion)}
                   >
-                    {t("重启并安装")}
+                    {aboutInstalling ? t("正在启动安装程序…") : t("重启并安装")}
                   </button>
                 ) : null}
               </div>

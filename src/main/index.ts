@@ -14,7 +14,11 @@ import { setLanguage, t } from './i18n'
 import { setFallbackWcGetter, dropWc } from './tab-router'
 import { killPty } from './pty-manager'
 import {
-  setMainWindowGetter, registerWindowIpc, isSecondaryWindow, destroyAllSecondary
+  setMainWindowGetter,
+  registerWindowIpc,
+  isSecondaryWindow,
+  destroyAllSecondary,
+  setSecondaryWindowsCloseAllowed
 } from './windows'
 
 // 界面语言启动时定死，切换走 app:relaunch 重启生效
@@ -22,7 +26,20 @@ try { setLanguage(loadSettings().language) } catch {}
 
 let mainWindow: BrowserWindow | null = null
 let allowClose = false
+let updateInstallQuit = false
 let tray: Tray | null = null
+
+function prepareUpdateInstallQuit(): void {
+  updateInstallQuit = true
+  allowClose = true
+  setSecondaryWindowsCloseAllowed(true)
+}
+
+function rollbackUpdateInstallQuit(): void {
+  updateInstallQuit = false
+  allowClose = false
+  setSecondaryWindowsCloseAllowed(false)
+}
 
 // 常驻托盘：closeBehavior='tray' 时点关闭不弹确认，窗口 hide、会话保留，从托盘唤回。
 function destroyTray(): void {
@@ -320,7 +337,10 @@ app.whenReady().then(() => {
   setFallbackWcGetter(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null))
   setMainWindowGetter(() => mainWindow)
   registerWindowIpc()
-  registerPtyIpc(() => mainWindow)
+  registerPtyIpc(() => mainWindow, {
+    prepare: prepareUpdateInstallQuit,
+    rollback: rollbackUpdateInstallQuit
+  })
   // renderer 启动完成后 invoke 一次，取走首次启动 argv 里的路径
   ipcMain.handle('app:consumePendingOpenHere', () => {
     const out = [...pendingOpenHere]
@@ -383,6 +403,8 @@ app.on('window-all-closed', () => {
   stopWatchers()
   destroyFloater()
   stopLogging('window-all-closed')
+  // quitAndInstall 已启动安装器并调用 app.quit；这里不能用 SIGKILL 截断退出时序。
+  if (updateInstallQuit) return
   if (process.platform !== 'darwin') {
     // Windows/Linux 硬退（理由见 hardExit）
     hardExit()
