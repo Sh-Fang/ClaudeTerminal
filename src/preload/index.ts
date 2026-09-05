@@ -1,7 +1,19 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LearnedModel } from '../shared/claude-models'
+import type {
+  ClaudeAccountDetail,
+  ClaudeAccountResult,
+  ClaudeAccountsSnapshot,
+  SaveClaudeAccountInput
+} from '../shared/claude-accounts'
 
-export type { LearnedModel }
+export type {
+  LearnedModel,
+  ClaudeAccountDetail,
+  ClaudeAccountResult,
+  ClaudeAccountsSnapshot,
+  SaveClaudeAccountInput
+}
 
 export type SessionSource = 'startup' | 'clear' | 'compact' | 'resume'
 export type TabStatus = 'busy' | 'attention' | 'done' | 'idle' | 'error'
@@ -245,6 +257,12 @@ export interface TermBridge {
   ccCurrentVersion(): Promise<string | null>
   onCcInstallPhase(cb: (p: { version: string; phase: string }) => void): () => void
   claudeUsage(force?: boolean): Promise<ClaudeUsage>
+  claudeAccountsLoad(): Promise<ClaudeAccountResult<ClaudeAccountsSnapshot>>
+  claudeAccountGet(id: string | null): Promise<ClaudeAccountResult<ClaudeAccountDetail>>
+  claudeAccountSave(input: SaveClaudeAccountInput): Promise<ClaudeAccountResult<ClaudeAccountsSnapshot>>
+  claudeAccountActivate(id: string): Promise<ClaudeAccountResult<ClaudeAccountsSnapshot>>
+  claudeAccountDelete(id: string): Promise<ClaudeAccountResult<ClaudeAccountsSnapshot>>
+  onClaudeAccountsChanged(cb: () => void): () => void
   gitBranch(cwd: string): Promise<string | null>
   hookPaths(): Promise<HookPaths>
   pickDirectory(defaultPath?: string): Promise<string | null>
@@ -371,6 +389,16 @@ const api: TermBridge = {
     return () => ipcRenderer.off('cc:install:phase', h)
   },
   claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
+  claudeAccountsLoad: () => ipcRenderer.invoke('claude-accounts:load'),
+  claudeAccountGet: (id) => ipcRenderer.invoke('claude-accounts:get', id),
+  claudeAccountSave: (input) => ipcRenderer.invoke('claude-accounts:save', input),
+  claudeAccountActivate: (id) => ipcRenderer.invoke('claude-accounts:activate', id),
+  claudeAccountDelete: (id) => ipcRenderer.invoke('claude-accounts:delete', id),
+  onClaudeAccountsChanged: (cb) => {
+    const h = (): void => cb()
+    ipcRenderer.on('claude-accounts:changed', h)
+    return () => ipcRenderer.off('claude-accounts:changed', h)
+  },
   gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   hookPaths: () => ipcRenderer.invoke('hooks:paths'),
   pickDirectory: (defaultPath) => ipcRenderer.invoke('dialog:pickDirectory', defaultPath),

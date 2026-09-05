@@ -23,6 +23,9 @@ type IconName =
   | 'expand-all'
   | 'collapse-all'
   | 'sticky-note'
+  | 'eye'
+  | 'eye-off'
+  | 'arrow-left-right'
 
 interface IconOpts {
   size?: number
@@ -73,7 +76,10 @@ const PATHS: Record<IconName, string> = {
   'external-link': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>',
   'expand-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 8 2-2 2 2M4 16l2 2 2-2"/>',
   'collapse-all': '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m4 6 2 2 2-2M4 18l2-2 2 2"/>',
-  'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/>'
+  'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off': '<path d="m3 3 18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a16.4 16.4 0 0 1-3 4.1M6.6 6.6C3.6 8.6 2 12 2 12s3.5 7 10 7c1.7 0 3.1-.5 4.4-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  'arrow-left-right': '<path d="m8 3-5 5 5 5"/><path d="M3 8h18"/><path d="m16 21 5-5-5-5"/><path d="M21 16H3"/>'
 }
 
 const FILLED: Partial<Record<IconName, true>> = {

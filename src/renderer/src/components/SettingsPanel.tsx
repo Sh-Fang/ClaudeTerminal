@@ -25,6 +25,7 @@ import { t } from "../i18n";
 import { getLearnedModels, getSettings, updateSettings } from "../controller";
 import { modelGroupsWithLearned } from "../../../shared/claude-models";
 import { useAppStore } from "../state/store";
+import { ClaudeAccountSection } from "./ClaudeAccountSection";
 
 // 与 preload 的 InstalledCcVersion 同构；跨 tsconfig import 会报 TS6307，手抄一份
 interface InstalledCcVersion {
@@ -1474,6 +1475,7 @@ export function SettingsPanel() {
               data-section="claude"
               hidden={section !== "claude"}
             >
+              <ClaudeAccountSection active={open && section === "claude"} />
               <div className="set-row">
                 <label>{t("默认模型")}</label>
                 <button

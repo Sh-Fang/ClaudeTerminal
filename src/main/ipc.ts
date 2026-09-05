@@ -20,6 +20,14 @@ import { loadSettings, saveSettings, type Settings } from './settings'
 import { applyDisableAutoupdater, readUserEnv } from './sys-env'
 import { readClipboardSelection, writeClipboardText } from './clipboard'
 import { getClaudeUsage } from './claude-usage'
+import {
+  activateClaudeAccount,
+  deleteClaudeAccount,
+  getClaudeAccount,
+  loadClaudeAccounts,
+  saveClaudeAccount
+} from './claude-accounts'
+import type { SaveClaudeAccountInput } from '../shared/claude-accounts'
 import { isSafeExternalUrl } from './url-safety'
 import { checkForUpdate, quitAndInstallUpdate, setUpdateEventSink } from './update-check'
 import { t } from './i18n'
@@ -196,6 +204,25 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     try { return ccVersionFromPath(loadSettings().claudePath) } catch { return null }
   })
   ipcMain.handle('claude:usage', (_e, force?: boolean) => getClaudeUsage(!!force))
+  ipcMain.handle('claude-accounts:load', () => loadClaudeAccounts())
+  ipcMain.handle('claude-accounts:get', (_e, id: unknown) =>
+    getClaudeAccount(typeof id === 'string' ? id : null)
+  )
+  ipcMain.handle('claude-accounts:save', (e, input: unknown) => {
+    const saved = saveClaudeAccount(input as SaveClaudeAccountInput)
+    if (saved.ok) broadcastExcept(e.sender, 'claude-accounts:changed')
+    return saved
+  })
+  ipcMain.handle('claude-accounts:activate', (e, id: unknown) => {
+    const activated = activateClaudeAccount(typeof id === 'string' ? id : '')
+    if (activated.ok) broadcastExcept(e.sender, 'claude-accounts:changed')
+    return activated
+  })
+  ipcMain.handle('claude-accounts:delete', (e, id: unknown) => {
+    const deleted = deleteClaudeAccount(typeof id === 'string' ? id : '')
+    if (deleted.ok) broadcastExcept(e.sender, 'claude-accounts:changed')
+    return deleted
+  })
   ipcMain.handle('claude:sessionUsage', (_e, sessionId: string) => readSessionUsage(sessionId))
   ipcMain.handle('git:branch', (_e, cwd: string) => readGitBranch(cwd))
 
