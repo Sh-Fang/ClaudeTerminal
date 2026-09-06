@@ -12,7 +12,7 @@ import {
   switchActiveEffort
 } from '../controller'
 import { t } from '../i18n'
-import { isRowActive, modelGroupsWithLearned } from '../../../shared/claude-models'
+import { isRowActive, MODEL_MENU_MAX_H, modelGroupsWithLearned } from '../../../shared/claude-models'
 
 // 思考强度候选；cc 仅在模型支持 effort 时上报，芯片会自动隐藏
 const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -151,7 +151,10 @@ export function SessionInfoBar() {
         }))
       ]),
       r.left,
-      r.top
+      r.top,
+      undefined,
+      // 候选随「已发现」增长，固定高度 + 内部滚动
+      { maxHeight: MODEL_MENU_MAX_H }
     )
   }
 

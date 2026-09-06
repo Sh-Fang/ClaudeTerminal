@@ -121,6 +121,8 @@ interface CtxState {
   onClose: (() => void) | null
   // 下拉式用法（语言/模型 picker）可指定最小宽度对齐触发按钮
   minWidth: number | null
+  // 候选会随「学到」的模型无限增长的菜单可固定高度，超出内部滚动
+  maxHeight: number | null
 }
 
 interface OverlaysState {
@@ -172,11 +174,18 @@ export function showCtxMenu(
   x: number,
   y: number,
   onClose?: () => void,
-  opts?: { minWidth?: number }
+  opts?: { minWidth?: number; maxHeight?: number }
 ): void {
   // 覆盖式打开：已开着时直接换内容/位置，旧 onClose 不触发
   useOverlays.setState({
-    ctx: { items, x, y, onClose: onClose ?? null, minWidth: opts?.minWidth ?? null }
+    ctx: {
+      items,
+      x,
+      y,
+      onClose: onClose ?? null,
+      minWidth: opts?.minWidth ?? null,
+      maxHeight: opts?.maxHeight ?? null
+    }
   })
 }
 export function closeCtxMenu(): void {

@@ -49,11 +49,21 @@ export function isSafeModelValue(value: unknown): value is string {
 }
 
 // claude-opus-5 → Opus 5；claude-sonnet-4-6 → Sonnet 4.6；认不出的原样返回。
+// 上下文后缀由 withContextSuffix 统一补，避免两条路径各写一份。
 export function prettyModelLabel(id: string): string {
   const m = /(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?/i.exec(id)
   if (!m) return id
   const family = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()
   return `${family} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`
+}
+
+// claude-opus-5 与 claude-opus-5[1m] 是两个不同的选择值，但 cc 上报的 display_name
+// 都是「Opus 5」——不把上下文后缀补进显示名，选择器里就是两行一模一样的候选。
+export function withContextSuffix(label: string, id: string): string {
+  const ctx = /\[(\d+m)\]/i.exec(id)
+  if (!ctx) return label
+  const suffix = `(${ctx[1].toUpperCase()})`
+  return label.includes(suffix) ? label : `${label} ${suffix}`
 }
 
 // 是否已被内置行精确覆盖。完整 id、alias、[1m] 变体都是不同选择值，不能按显示名合并。
@@ -79,7 +89,9 @@ export function normalizeLearnedModels(raw: unknown): LearnedModel[] {
     const key = r.id.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const label = typeof r.label === 'string' && r.label.trim() ? r.label.trim().slice(0, 64) : prettyModelLabel(r.id)
+    const raw = typeof r.label === 'string' && r.label.trim() ? r.label.trim().slice(0, 64) : prettyModelLabel(r.id)
+    // 存量条目也在这里补后缀：早先学到的 [1m] 变体不必等重新学习就能区分
+    const label = withContextSuffix(raw, r.id)
     const learnedAt = typeof r.learnedAt === 'string' && r.learnedAt ? r.learnedAt : new Date(0).toISOString()
     out.push({ id: r.id, label, learnedAt })
   }
@@ -88,6 +100,10 @@ export function normalizeLearnedModels(raw: unknown): LearnedModel[] {
 }
 
 export const LEARNED_FAMILY = '已发现'
+
+// 模型下拉的固定高度：内置候选之外还会追加「已发现」，不封顶会长到撑满整屏。
+// 设置页与底部状态栏两个选择器共用。
+export const MODEL_MENU_MAX_H = 320
 
 // 内置分组 + 「已发现」分组（learnedModels 非空时才追加）
 export function modelGroupsWithLearned(

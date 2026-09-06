@@ -26,7 +26,7 @@ import {
 import { icon } from "../svg-icons";
 import { t } from "../i18n";
 import { getLearnedModels, getSettings, updateSettings } from "../controller";
-import { modelGroupsWithLearned } from "../../../shared/claude-models";
+import { MODEL_MENU_MAX_H, modelGroupsWithLearned } from "../../../shared/claude-models";
 import { useAppStore } from "../state/store";
 import { ClaudeAccountSection } from "./ClaudeAccountSection";
 import { escapeHtml } from "../lib/format";
@@ -773,8 +773,10 @@ export function SettingsPanel() {
     if (!btn) return;
     const r = btn.getBoundingClientRect();
     setModelOpen(true);
+    // 候选随「已发现」增长，固定高度 + 内部滚动，不让菜单撑满整屏
     showCtxMenu(items, r.left, r.bottom + 4, () => setModelOpen(false), {
       minWidth: r.width,
+      maxHeight: MODEL_MENU_MAX_H,
     });
   }
 
@@ -1320,34 +1322,6 @@ export function SettingsPanel() {
                   ]
                 )}
               </div>
-              <div className="set-row set-row-usage">
-                <div className="usage-cell set-row-toggle">
-                  <label>{t("显示剩余额度")}</label>
-                  <input
-                    id="set-show-usage"
-                    type="checkbox"
-                    checked={form.showUsage}
-                    onChange={(e) => commit({ showUsage: e.target.checked })}
-                  />
-                </div>
-                <div
-                  className="usage-cell"
-                  id="set-usage-style-wrap"
-                  hidden={!form.showUsage}
-                >
-                  <label>{t("额度显示样式")}</label>
-                  {seg(
-                    "set-usage-style",
-                    t("额度显示样式"),
-                    form.usageStyle,
-                    (v) => commit({ usageStyle: v }),
-                    [
-                      { v: "bar", label: t("进度条") },
-                      { v: "ring", label: t("圆环") },
-                    ]
-                  )}
-                </div>
-              </div>
             </div>
 
             <div
@@ -1392,15 +1366,6 @@ export function SettingsPanel() {
                     {t("立即重启")}
                   </button>
                 </div>
-              </div>
-              <div className="set-row set-row-toggle">
-                <label>{t("新建标签默认启动 Claude Code")}</label>
-                <input
-                  id="set-default-cc"
-                  type="checkbox"
-                  checked={form.defaultCC}
-                  onChange={(e) => commit({ defaultCC: e.target.checked })}
-                />
               </div>
               <div className="set-row">
                 <label>{t("状态点停留时间")}</label>
@@ -1651,6 +1616,45 @@ export function SettingsPanel() {
                 </button>
               </div>
               <div className="set-row set-row-toggle">
+                <label>{t("新建标签默认启动 Claude Code")}</label>
+                <input
+                  id="set-default-cc"
+                  type="checkbox"
+                  checked={form.defaultCC}
+                  onChange={(e) => commit({ defaultCC: e.target.checked })}
+                />
+              </div>
+              <div className="set-row set-row-usage">
+                <div className="usage-cell set-row-toggle">
+                  <label>{t("显示剩余额度")}</label>
+                  <input
+                    id="set-show-usage"
+                    type="checkbox"
+                    checked={form.showUsage}
+                    onChange={(e) => commit({ showUsage: e.target.checked })}
+                  />
+                </div>
+                <div
+                  className="usage-cell"
+                  id="set-usage-style-wrap"
+                  hidden={!form.showUsage}
+                >
+                  <label>{t("额度显示样式")}</label>
+                  {seg(
+                    "set-usage-style",
+                    t("额度显示样式"),
+                    form.usageStyle,
+                    (v) => commit({ usageStyle: v }),
+                    [
+                      { v: "bar", label: t("进度条") },
+                      { v: "ring", label: t("圆环") },
+                    ]
+                  )}
+                </div>
+              </div>
+
+              <div className="set-subhead">{t("版本管理")}</div>
+              <div className="set-row set-row-toggle">
                 <label>{t("禁止 Claude Code 自动升级")}</label>
                 <input
                   id="set-disable-update"
@@ -1659,8 +1663,6 @@ export function SettingsPanel() {
                   onChange={(e) => commit({ disableUpd: e.target.checked })}
                 />
               </div>
-
-              <div className="set-subhead">{t("版本管理")}</div>
               <div className="set-row set-row-toggle">
                 <label>{t("使用 npm 镜像")}</label>
                 <input

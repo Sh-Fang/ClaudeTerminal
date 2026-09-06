@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { findSessionJsonl as findJsonl } from './claude-paths'
-import { prettyModelLabel } from '../shared/claude-models'
+import { prettyModelLabel, withContextSuffix } from '../shared/claude-models'
 
 export interface SessionMeta {
   exists: boolean
@@ -153,7 +153,9 @@ export function readSessionUsage(sessionId: string): SessionUsage {
   const ctx = snap ?? estimateFromTranscript(tail())
 
   const modelId = snap?.modelId || lastMainModel(tail())
-  const modelLabel = snap?.modelLabel || snap?.model || (modelId ? prettyModel(modelId) : undefined)
+  const rawLabel = snap?.modelLabel || snap?.model || (modelId ? prettyModel(modelId) : undefined)
+  // cc 对 1M 变体报的 display_name 与标准版相同，补后缀才能看出当前在哪个上下文档位
+  const modelLabel = rawLabel && modelId ? withContextSuffix(rawLabel, modelId) : rawLabel
 
   return {
     exists: true,

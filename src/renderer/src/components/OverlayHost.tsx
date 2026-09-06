@@ -67,10 +67,14 @@ function CtxMenu() {
 
   return (
     <div
-      className={'ctx' + (ctx ? ' open' : '')}
+      className={'ctx' + (ctx ? ' open' : '') + (ctx?.maxHeight != null ? ' ctx-capped' : '')}
       id="ctx"
       ref={ref}
-      style={ctx?.minWidth != null ? { minWidth: ctx.minWidth } : undefined}
+      style={{
+        ...(ctx?.minWidth != null ? { minWidth: ctx.minWidth } : null),
+        // 固定高度的菜单仍受视口上限约束，避免在小窗口里被顶出屏幕
+        ...(ctx?.maxHeight != null ? { maxHeight: ctx.maxHeight } : null)
+      }}
     >
       {ctx?.items.map((it, i) => {
         if (it.sep) return <div key={i} className="ctx-sep" />

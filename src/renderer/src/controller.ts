@@ -42,6 +42,7 @@ import {
   isKnownModel,
   isSafeModelValue,
   prettyModelLabel,
+  withContextSuffix,
   type LearnedModel
 } from '../../shared/claude-models'
 
@@ -170,7 +171,8 @@ export function learnModelFromSession(id: string, label?: string): void {
   if (isKnownModel(id, learned)) return
   const entry: LearnedModel = {
     id,
-    label: label?.trim() || prettyModelLabel(id),
+    // cc 对 claude-opus-5 与 claude-opus-5[1m] 报的 display_name 都是「Opus 5」
+    label: withContextSuffix(label?.trim() || prettyModelLabel(id), id),
     learnedAt: new Date().toISOString()
   }
   settings = { ...settings, learnedModels: [entry, ...learned] }
