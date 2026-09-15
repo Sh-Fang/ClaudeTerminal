@@ -318,8 +318,12 @@ export function registerPtyIpc(
       env.TERMINAL_HOOK_SETTINGS_JSON = hp.ccHooksJson
       if (opts?.tabName) env.TERMINAL_TAB_NAME = opts.tabName
       try {
-        const cp = loadSettings().claudePath?.trim()
+        const s = loadSettings()
+        const cp = s.claudePath?.trim()
         if (cp) env.TERMINAL_CLAUDE_PATH = cp
+        // cct 手动起 cc 时也跟随「默认危险模式」。env 在 spawn 时快照 →
+        // 改完开关要「重新加载标签」才对 cct 生效（渲染层自动起的 cc 则是即时生效）。
+        if (s.dangerousSkipPermissions) env.TERMINAL_CC_DANGEROUS = '1'
       } catch {}
       if (shouldDisableAutoupdate()) {
         env.DISABLE_AUTOUPDATER = '1'

@@ -97,6 +97,8 @@ export const I18N_EN: Record<string, string> = {
   '圆环': 'Rings',
   '语言': 'Language',
   '新建标签默认启动 Claude Code': 'Start Claude Code in new tabs',
+  '默认以危险模式启动': 'Start in dangerous mode by default',
+  '在终端里显示 Claude Code 状态行': 'Show the Claude Code status line in the terminal',
   '状态点停留时间': 'Dot hold time',
   '开启悬浮窗': 'Enable floating widget',
   '点击关闭按钮时': 'When the close button is clicked',

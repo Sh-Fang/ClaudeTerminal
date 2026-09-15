@@ -37,6 +37,11 @@ export interface Settings {
     // cc `--model` 实参；空串 = 不带 --model。仅新建会话（非 --resume）生效
     model: string
   }
+  // true = statusline 探针把用户自己配的 statusLine 命令跑一遍并透传其输出，
+  // 终端里的 cc 状态行与 app 外看到的一致；false = 探针只落盘不输出，状态行留空。
+  showStatusLine: boolean
+  // true = 每次启动 cc（新建会话与 --resume 都算）都带 --dangerously-skip-permissions
+  dangerousSkipPermissions: boolean
   claudePath: string  // 留空 = 直接调 'claude'；填 = 用这个绝对路径（多版本切换写这里）
   npmRegistry: string  // 安装 cc 版本用的 npm 镜像，空 = 走默认国内镜像
   npmMirrorEnabled: boolean  // false = 不用镜像，cc 版本管理走 npm 官方源
@@ -70,6 +75,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   appTheme: 'light',
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
+  showStatusLine: false,
+  dangerousSkipPermissions: false,
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
   npmMirrorEnabled: true,
@@ -148,6 +155,12 @@ function normalize(raw: unknown): Settings {
       // 允许 cc 完整模型 id（含 [1m] 等后缀），同时限定字符集防手改 settings.json 注入命令
       model: isSafeModelValue(def.model) ? def.model : DEFAULT_SETTINGS.defaults.model
     },
+    showStatusLine:
+      typeof r.showStatusLine === 'boolean' ? r.showStatusLine : DEFAULT_SETTINGS.showStatusLine,
+    dangerousSkipPermissions:
+      typeof r.dangerousSkipPermissions === 'boolean'
+        ? r.dangerousSkipPermissions
+        : DEFAULT_SETTINGS.dangerousSkipPermissions,
     claudePath: typeof r.claudePath === 'string' ? r.claudePath : DEFAULT_SETTINGS.claudePath,
     npmRegistry:
       typeof r.npmRegistry === 'string' && r.npmRegistry.trim()

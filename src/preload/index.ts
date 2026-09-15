@@ -124,6 +124,8 @@ export interface Settings {
   terminal: { scrollback: number; theme: ThemePreset }
   appTheme: AppTheme
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
+  showStatusLine: boolean
+  dangerousSkipPermissions: boolean
   claudePath: string
   npmRegistry: string
   npmMirrorEnabled: boolean

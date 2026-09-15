@@ -19,6 +19,10 @@ export interface Settings {
   // model = cc `--model <arg>` 实参（alias 或完整 id）；空串 = 跟随 cc 默认。
   // 只在新建会话（非 --resume）时生效，避免覆盖旧会话原有模型。
   defaults: { cwd: string; autoLaunchCC: boolean; model: string }
+  // true = 探针把用户自己配的 statusLine 命令跑一遍并透传输出；false = 状态行留空
+  showStatusLine: boolean
+  // true = 每次启动 cc（新建与 --resume 都算）都带 --dangerously-skip-permissions
+  dangerousSkipPermissions: boolean
   claudePath: string
   npmRegistry: string
   npmMirrorEnabled: boolean    // false = 不用镜像，cc 版本管理走 npm 官方源
@@ -52,6 +56,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminal: { scrollback: 5000, theme: 'vscode-dark' },
   appTheme: 'light',
   defaults: { cwd: '', autoLaunchCC: false, model: '' },
+  showStatusLine: false,
+  dangerousSkipPermissions: false,
   claudePath: '',
   npmRegistry: 'https://registry.npmmirror.com',
   npmMirrorEnabled: true,

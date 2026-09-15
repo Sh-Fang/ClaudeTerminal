@@ -123,6 +123,8 @@ interface Form {
   cursor: CursorStyle;
   cursorBlink: boolean;
   defaultCC: boolean;
+  dangerMode: boolean;
+  showStatusLine: boolean;
   disableUpd: boolean;
   showUsage: boolean;
   showFloater: boolean;
@@ -148,6 +150,8 @@ function formFromSettings(s: Settings): Form {
     cursor: s.cursor.style,
     cursorBlink: s.cursor.blink,
     defaultCC: s.defaults.autoLaunchCC,
+    dangerMode: s.dangerousSkipPermissions,
+    showStatusLine: s.showStatusLine,
     disableUpd: s.disableAutoupdater,
     showUsage: s.showClaudeUsage,
     showFloater: s.showFloater,
@@ -433,6 +437,8 @@ export function SettingsPanel() {
         autoLaunchCC: f.defaultCC,
         model: f.model ?? "",
       },
+      showStatusLine: f.showStatusLine,
+      dangerousSkipPermissions: f.dangerMode,
       // claudePath 由 CC 版本管理维护，面板不直接编辑（...cur 已带上）
       npmRegistry: f.npmReg.trim() || DEFAULT_SETTINGS.npmRegistry,
       npmMirrorEnabled: f.npmMirror,
@@ -1622,6 +1628,24 @@ export function SettingsPanel() {
                   type="checkbox"
                   checked={form.defaultCC}
                   onChange={(e) => commit({ defaultCC: e.target.checked })}
+                />
+              </div>
+              <div className="set-row set-row-toggle">
+                <label>{t("默认以危险模式启动")}</label>
+                <input
+                  id="set-danger-mode"
+                  type="checkbox"
+                  checked={form.dangerMode}
+                  onChange={(e) => commit({ dangerMode: e.target.checked })}
+                />
+              </div>
+              <div className="set-row set-row-toggle">
+                <label>{t("在终端里显示 Claude Code 状态行")}</label>
+                <input
+                  id="set-show-statusline"
+                  type="checkbox"
+                  checked={form.showStatusLine}
+                  onChange={(e) => commit({ showStatusLine: e.target.checked })}
                 />
               </div>
               <div className="set-row set-row-usage">

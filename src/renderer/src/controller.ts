@@ -479,10 +479,12 @@ async function launchCC(tab: TerminalTab): Promise<void> {
   const invoker = claudeBin && IS_WIN_PLATFORM ? '& ' : ''
 
   const settingsArg = await hookSettingsArg()
+  // 每次起 cc 都现读设置：改完开关再「重新加载标签」，新进程就按新模式起（不必重开 app）
+  const dangerArg = settings.dangerousSkipPermissions ? ' --dangerously-skip-permissions' : ''
   const active = tab.activeSessionId
   let cmd: string
   if (active && UUID_RE.test(active) && (await window.term.claudeSessionExists(active))) {
-    cmd = `${invoker}${claudeCmd} --resume ${active}${settingsArg}`
+    cmd = `${invoker}${claudeCmd} --resume ${active}${dangerArg}${settingsArg}`
   } else {
     // 幽灵会话清理：旧 UUID 对应的 jsonl 已不在，从栈里移除
     if (active && UUID_RE.test(active)) {
@@ -495,7 +497,7 @@ async function launchCC(tab: TerminalTab): Promise<void> {
     // 统一走 isSafeModelValue 校验后再 quoteShell，支持 [1m] 等完整 id，同时防注入。
     const model = settings.defaults.model
     const modelArg = isSafeModelValue(model) ? ` --model ${quoteShell(model)}` : ''
-    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quoteShell(tab.name)}${modelArg}${settingsArg}`
+    cmd = `${invoker}${claudeCmd} --session-id ${newId} --name ${quoteShell(tab.name)}${modelArg}${dangerArg}${settingsArg}`
   }
   window.term.send(tab.ptyId, cmd + '\r')
 }

@@ -17,16 +17,123 @@ export interface HookPaths {
 }
 
 // statusline 探针：cc 每 ~300ms 调一次并从 stdin 喂 JSON。用 node（pwsh 冷启动太慢扛不住此频率）
-// 把会话快照按 session_id 落盘；stdout 留空 → cc TUI 该行为空。
+// 把会话快照按 session_id 落盘。stdout 默认留空（cc TUI 该行为空，信息都在 app 自己的底栏）；
+// app 设置里打开「在终端里显示状态行」后，改为把用户自己配的 statusLine 命令跑一遍并透传其输出，
+// 于是 app 内外的 cc 看到同一条状态行。
 const STATUSLINE_JS = `// Claude Terminal · statusline 探针
 const fs = require('fs'); const path = require('path');
+const os = require('os'); const cp = require('child_process');
 const dir = process.argv[2];
+
+// 透传节流：cc 约每 300ms 调一次，而用户命令通常是 pwsh 脚本，单次一两秒。
+// TTL 内直接复用上次输出，只有过期的那一次才真跑；超时上限防用户命令卡死拖垮状态行。
+const PASS_TTL_MS = 3000;
+const PASS_TIMEOUT_MS = 5000;
+
+// app 自己的设置（<userData>/settings.json，dir 是它下面的 session-status）
+function appSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(path.dirname(dir), 'settings.json'), 'utf8'));
+  } catch (e) { return null; }
+}
+
+// 用户自己的 statusLine 命令：按 cc 的配置优先级找第一个有 statusLine 的，
+// 项目级 local → 项目级 → 用户级。app 传的 --settings 优先级最高，正是它把这条挡掉的。
+function userStatusLineCmd(cwd) {
+  const files = [];
+  if (cwd) {
+    files.push(path.join(cwd, '.claude', 'settings.local.json'));
+    files.push(path.join(cwd, '.claude', 'settings.json'));
+  }
+  files.push(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'));
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const j = JSON.parse(fs.readFileSync(files[i], 'utf8'));
+      const sl = j && j.statusLine;
+      if (sl && sl.type === 'command' && typeof sl.command === 'string' && sl.command.trim()) {
+        const c = sl.command.trim();
+        // 自引用保护：配置指回本探针会无限套娃
+        if (c.indexOf('statusline-probe') >= 0) return '';
+        return c;
+      }
+    } catch (e) {}
+  }
+  return '';
+}
+
+// Windows: cc 用类 unix shell 跑 statusLine，用户往往配成正斜杠路径，
+// 而这里走 cmd.exe，正斜杠会被当成开关。整条就是一个存在的文件路径时换成反斜杠。
+function shellReady(cmd) {
+  if (process.platform !== 'win32') return cmd;
+  const bare = cmd.replace(/^"([^"]*)"$/, '$1');
+  if (bare.indexOf('/') < 0) return cmd;
+  if (/[&|<>^]/.test(bare)) return cmd;
+  const win = bare.replace(/\\//g, '\\\\');
+  try { if (fs.existsSync(win)) return '"' + win + '"'; } catch (e) {}
+  return cmd;
+}
+
+// 跑用户命令，把 cc 给我们的原始 stdin 原样转喂。失败/超时返回 null 由调用方退回旧缓存。
+function runUserCmd(cmd, input, cb) {
+  let settled = false;
+  let out = '';
+  const finish = (v) => { if (settled) return; settled = true; cb(v); };
+  let child;
+  try {
+    child = cp.spawn(shellReady(cmd), { shell: true, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  } catch (e) { return finish(null); }
+  const timer = setTimeout(() => { try { child.kill(); } catch (e) {} finish(null); }, PASS_TIMEOUT_MS);
+  child.stdout.on('data', (d) => { out += d.toString(); });
+  child.on('error', () => { clearTimeout(timer); finish(null); });
+  child.on('close', () => { clearTimeout(timer); finish(out); });
+  try { child.stdin.write(input); child.stdin.end(); } catch (e) {}
+}
+
+function passthrough(j) {
+  const s = appSettings();
+  if (!s || s.showStatusLine !== true) return;
+  const ws = j && j.workspace;
+  const cwd = (ws && (ws.current_dir || ws.project_dir)) || (j && j.cwd) || '';
+  const cmd = userStatusLineCmd(cwd);
+  if (!cmd) return;
+  const sid = (j && j.session_id) || 'default';
+  const cacheFile = path.join(dir, '_statusline-' + sid + '.txt');
+  const lockFile = cacheFile + '.lock';
+  let cached = '';
+  let age = Infinity;
+  try {
+    cached = fs.readFileSync(cacheFile, 'utf8');
+    age = Date.now() - fs.statSync(cacheFile).mtimeMs;
+  } catch (e) {}
+  if (age < PASS_TTL_MS) { process.stdout.write(cached); return; }
+  // 上一次刷新还没跑完 → 本次只吐旧内容，不再叠一个进程
+  try {
+    if (Date.now() - fs.statSync(lockFile).mtimeMs < PASS_TIMEOUT_MS) { process.stdout.write(cached); return; }
+  } catch (e) {}
+  try { fs.writeFileSync(lockFile, String(process.pid)); } catch (e) {}
+  runUserCmd(cmd, raw, (out) => {
+    try { fs.unlinkSync(lockFile); } catch (e) {}
+    if (out == null) { process.stdout.write(cached); return; }
+    const text = out.replace(/\\s+$/, '');
+    try { fs.writeFileSync(cacheFile, text); } catch (e) {}
+    process.stdout.write(text);
+  });
+}
+
 let raw = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { raw += c; });
 process.stdin.on('end', () => {
-  try {
-    const j = JSON.parse(raw);
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (e) {}
+  try { snapshot(parsed); } catch (e) {}
+  // 落盘失败不该连累状态行，反之亦然 → 两段各自 try
+  try { passthrough(parsed); } catch (e) {}
+});
+
+function snapshot(j) {
+  {
+    if (!j) return;
     const sid = j.session_id; if (!sid || !dir) return;
     const cw = j.context_window || {};
     const cu = cw.current_usage || {};
@@ -77,9 +184,8 @@ process.stdin.on('end', () => {
         fs.writeFileSync(atmp, JSON.stringify(acct)); fs.renameSync(atmp, af);
       }
     }
-  } catch (e) {}
-  // 不输出任何内容 → cc 的 statusline 行留空
-});
+  }
+}
 `
 
 // 解析 node 绝对路径（cc 的 statusline shell 不一定有 PATH）；
@@ -236,6 +342,8 @@ function Global:cct {
     }
     $claudeBin = if ($env:TERMINAL_CLAUDE_PATH) { $env:TERMINAL_CLAUDE_PATH } else { 'claude' }
     $settingsArg = @('--settings', $env:TERMINAL_HOOK_SETTINGS_JSON)
+    # app 设置里开了「默认危险模式」→ pty:create 注入 TERMINAL_CC_DANGEROUS=1
+    if ($env:TERMINAL_CC_DANGEROUS -eq '1') { $settingsArg += '--dangerously-skip-permissions' }
     if ($isResume) {
         & $claudeBin @settingsArg --resume @passArgs
     } else {
@@ -262,14 +370,17 @@ const CCT_SH = `cct() {
     pass+=("$a")
   done
   local claude_bin=\${TERMINAL_CLAUDE_PATH:-claude}
+  # app 设置里开了「默认危险模式」→ pty:create 注入 TERMINAL_CC_DANGEROUS=1
+  local danger=()
+  [ "$TERMINAL_CC_DANGEROUS" = "1" ] && danger=(--dangerously-skip-permissions)
   if [ "$is_resume" -eq 1 ]; then
-    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" --resume "\${pass[@]}"
+    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" "\${danger[@]}" --resume "\${pass[@]}"
   else
     local sid
     sid=$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')
     [ -z "$sid" ] && sid=$(node -e 'console.log(require("crypto").randomUUID())' 2>/dev/null)
     local name=\${TERMINAL_TAB_NAME:-cct}
-    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" --session-id "$sid" --name "$name" "\${pass[@]}"
+    "$claude_bin" --settings "$TERMINAL_HOOK_SETTINGS_JSON" "\${danger[@]}" --session-id "$sid" --name "$name" "\${pass[@]}"
   fi
 }
 `
