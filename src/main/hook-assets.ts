@@ -256,14 +256,17 @@ process.stdin.on('error', () => {});
 process.stdin.on('end', () => {
   try {
     if (!dir || !tab) return;
-    let msg = null;
+    let msg = null; let errorKind = null;
     if (raw) {
       try {
         const j = JSON.parse(raw);
         if (j && typeof j.message === 'string') msg = j.message;
+        // StopFailure 不带 message：错误文案在 last_assistant_message，错误分类在 error
+        else if (j && typeof j.last_assistant_message === 'string') msg = j.last_assistant_message;
+        if (j && typeof j.error === 'string') errorKind = j.error;
       } catch (e) {}
     }
-    const obj = { state: state, message: msg, ts: new Date().toISOString() };
+    const obj = { state: state, message: msg, errorKind: errorKind, ts: new Date().toISOString() };
     try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
     const out = path.join(dir, tab + '.json');
     const tmp = out + '.' + process.pid + '.tmp';
@@ -497,6 +500,13 @@ export function ensureHookAssets(): HookPaths {
       ],
       Stop: [
         { matcher: '', hooks: [{ type: 'command', command: stateCmd('done') }] }
+      ],
+      // 本轮因 API 错误结束 → 红点。这是判定 API 出错的唯一可靠信号：cc 内部重试
+      // （实测最多 10 次、可长达 3 分钟）全程不发任何 hook，重试成功也不会发本事件，
+      // 所以挂上它之后，重试中间态不再被误判成错误（那是 terminal-tab 扫文本的老毛病）。
+      // stdin 带 error（错误分类）与 last_assistant_message（错误文案），state-probe 都取走。
+      StopFailure: [
+        { matcher: '', hooks: [{ type: 'command', command: stateCmd('error') }] }
       ],
       PostToolUse: [
         { matcher: '', hooks: [{ type: 'command', command: stateCmd('busy') }] }

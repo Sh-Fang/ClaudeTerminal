@@ -253,6 +253,20 @@ export const I18N_EN: Record<string, string> = {
   '接口请求超时': 'API request timed out',
   '服务端过载/异常': 'Server overloaded or error',
   '接口异常': 'API error',
+
+  // StopFailure hook 的错误分类（cc 原样给出的 error 值）→ 标签上显示的短句
+  '触发限流': 'Rate limited',
+  '服务端过载': 'Server overloaded',
+  '认证失败': 'Authentication failed',
+  '组织未授权': 'Organization not allowed',
+  '账号被冻结': 'Account on hold',
+  '计费异常': 'Billing error',
+  '请求不合法': 'Invalid request',
+  '模型不存在': 'Model not found',
+  '服务端异常': 'Server error',
+  '输出长度超限': 'Max output tokens exceeded',
+  '云凭据加载失败': 'Cloud credential error',
+
   '[启动 shell 失败] {0}': '[Failed to start shell] {0}',
   '请检查分组的路径是否仍存在，按任意键重试。': "Check that the group's path still exists, then press any key to retry.",
   '[pwsh 已退出 · 退出码 {0}]': '[pwsh exited · exit code {0}]',

@@ -93,6 +93,8 @@ export interface StateEvent {
   tabId: string
   state: TabStatus
   message?: string
+  // state='error' 时 StopFailure 给出的错误分类（rate_limit / overloaded / server_error…）
+  errorKind?: string
   ts?: string
 }
 

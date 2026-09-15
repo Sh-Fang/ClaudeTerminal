@@ -62,16 +62,29 @@ function decodeBase64Utf8(b64: string): string {
   }
 }
 
-// cc 报 API Error 时不发 Stop hook，错误行是打到 PTY 的可见文本（唯一痕迹），扫到即置 error。keyword → 中文 note。
+// 扫 PTY 文本判错是给老版本 cc 的兜底：新版有 StopFailure hook（见 hook-assets），
+// 那条路准确得多，状态由 hook 主导。这里只认「本轮已经失败」的终态文案，一律要求
+// 带 "API Error:" 前缀（冒号是关键，见下）。keyword → 中文 note。
 const CC_ERROR_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/Connection closed mid-response/i, '连接中断，回复可能未完成'],
-  [/API Error:\s*(?:Connection error|fetch failed|network)/i, '接口连接异常'],
+  // Connection refused 是实测到的真实文案（"API Error: Connection refused — a firewall or
+  // proxy may be blocking it (ConnectionRefused)"），原先只认 Connection error，会落到兜底
+  [/API Error:\s*(?:Connection (?:error|refused|reset)|fetch failed|network)/i, '接口连接异常'],
   [/API Error:\s*(?:Request timed out|timeout)/i, '接口请求超时'],
-  [/API Error:\s*5\d\d\b|overloaded/i, '服务端过载/异常'],
+  [/API Error:\s*(?:5\d\d\b|.*overloaded)/i, '服务端过载/异常'],
   [/API Error:/i, '接口异常'] // 兜底：其余 API Error 一律红点
 ]
 // 合并正则先快筛，命中再定位具体 note
 const CC_ERROR_RE = new RegExp(CC_ERROR_PATTERNS.map(([re]) => re.source).join('|'), 'i')
+
+// cc 重试中间态，长这样（实测原文）：
+//   API error · Retrying in 1s · attempt 1/10
+//   529 Overloaded · Retrying in 3s · attempt 3/10
+// 注意它是小写 error 且不带冒号，与终态的 "API Error: xxx" 有别。之前 overloaded 被写成正则里的
+// 顶层分支，不受 "API Error:" 前缀约束，于是重试第一秒就点亮红点——而这一轮往往重试几次就成功了，
+// 期间 cc 不发任何 hook，红点只能干等到下一个 PostToolUse/Stop 才消，这就是「错误恢复了红点还红着」。
+// 收紧前缀之后已经不会命中，这里再显式拦一道：带重试字样的片段一律不算错误。
+const CC_RETRY_RE = /Retrying in|attempt \d+\/\d+/i
 
 /*
  * 输入子系统要点（bind* 分工）：cc 是 PTY 内全屏 TUI，同一动作会被浏览器/xterm/cc 三层各解读一遍，
@@ -129,7 +142,10 @@ export class TerminalTab {
 
   // cc 错误兜底：errScanTail 存上一 chunk 末尾，拼接后再扫，避免错误行被 chunk 边界切开漏匹配
   private errScanTail = ''
-  private static readonly ERR_SCAN_TAIL_LEN = 80
+  // 实测单条错误/重试行可达 ~110 字符（"Connection refused — a firewall or proxy may be
+  // blocking it (ConnectionRefused) · Retrying in 1s · attempt 1/10"），尾巴要留得下整行，
+  // 否则 chunk 边界会把错误关键词和后面的重试字样切开，重试态又被当成错误。
+  private static readonly ERR_SCAN_TAIL_LEN = 200
 
   constructor(
     opts: {
@@ -567,6 +583,11 @@ export class TerminalTab {
       return
     }
     const hay = this.errScanTail + data
+    // 重试中间态：不是错误，且要把整段丢掉——留着做尾巴可能与后续输出拼出假命中
+    if (CC_RETRY_RE.test(hay)) {
+      this.errScanTail = ''
+      return
+    }
     if (CC_ERROR_RE.test(hay)) {
       const hit = CC_ERROR_PATTERNS.find(([re]) => re.test(hay))
       this.errScanTail = ''

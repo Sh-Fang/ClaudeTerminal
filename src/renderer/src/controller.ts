@@ -562,7 +562,8 @@ function makeTab(group: Group, opts: {
         tabRef.note = undefined
         refreshUI()
       },
-      // cc API Error：terminal-tab 已置 status=error，这里补 note 并刷新（红点需手动清除）
+      // 扫文本命中的 API Error（老版本 cc 兜底路径；新版走 StopFailure hook → onStateEvent）：
+      // terminal-tab 已置 status=error，这里补 note 并刷新。红点不自动降级，需手动清除。
       onErrorDetected: (note) => {
         tabRef.note = note
         refreshUI()
@@ -792,6 +793,32 @@ export function addTabToSavedGroup(savedId: string): void {
 let downgradeTimer: number | null = null
 let downgradeTabId: string | null = null
 let downgradeFromStatus: TerminalTab['status'] | null = null
+// StopFailure 的 error 分类 → 中文短句。cc 原文是英文长句（"API Error: Connection refused — a
+// firewall or proxy may be blocking it (ConnectionRefused)"），标签上放不下，能归类的一律出短句。
+const CC_ERROR_KIND_NOTE: Record<string, string> = {
+  rate_limit: '触发限流',
+  overloaded: '服务端过载',
+  authentication_failed: '认证失败',
+  oauth_org_not_allowed: '组织未授权',
+  account_on_hold: '账号被冻结',
+  billing_error: '计费异常',
+  invalid_request: '请求不合法',
+  model_not_found: '模型不存在',
+  server_error: '服务端异常',
+  max_output_tokens: '输出长度超限',
+  cloud_credential_error: '云凭据加载失败',
+  unknown: '接口异常'
+}
+const ERROR_NOTE_MAX = 60
+
+function errorNote(kind: string | undefined, message: string | undefined): string {
+  const mapped = kind ? CC_ERROR_KIND_NOTE[kind] : undefined
+  if (mapped) return t(mapped)
+  const raw = (message ?? '').trim()
+  if (!raw) return t('接口异常')
+  return raw.length > ERROR_NOTE_MAX ? raw.slice(0, ERROR_NOTE_MAX - 1) + '…' : raw
+}
+
 function clearDowngradeTimer(): void {
   if (downgradeTimer != null) { window.clearTimeout(downgradeTimer); downgradeTimer = null }
   downgradeTabId = null
@@ -2487,6 +2514,15 @@ export async function initApp(): Promise<void> {
   const offState = window.term.onStateEvent((ev) => {
     const ctx = findTab(ev.tabId)
     if (!ctx) return
+    // StopFailure 的错误分类优先出中文短句；分类缺失/不认识时退回 cc 原文（英文长句，截断显示）
+    if (ev.state === 'error') {
+      ctx.tab.status = 'error'
+      ctx.tab.note = errorNote(ev.errorKind, ev.message)
+      if (ev.tabId === downgradeTabId) clearDowngradeTimer()
+      scheduleSave()
+      refreshUI()
+      return
+    }
     // 外部 hook 不许把 done/attention 盖成 idle——降级是渲染层倒计时的独占权；
     // 否则 cc 的 idle_prompt 会把绿点静默盖成灰点（历史翻过车，此闸防回归）
     if (ev.state === 'idle' && (ctx.tab.status === 'done' || ctx.tab.status === 'attention')) {

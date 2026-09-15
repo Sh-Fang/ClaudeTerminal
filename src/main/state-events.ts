@@ -66,6 +66,8 @@ export class StateEventWatcher {
         tabId,
         state,
         message: typeof obj.message === 'string' ? obj.message : undefined,
+        // StopFailure 的错误分类（rate_limit / overloaded / server_error…），渲染层据此出中文文案
+        errorKind: typeof obj.errorKind === 'string' ? obj.errorKind : undefined,
         ts: typeof obj.ts === 'string' ? obj.ts : undefined
       }
       const wc = resolveTabWc(tabId)
